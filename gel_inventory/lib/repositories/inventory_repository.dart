@@ -115,3 +115,7 @@ final inventoryRepositoryProvider = Provider<InventoryRepository>((ref) {
     syncService: ref.watch(syncServiceProvider),
   );
 });
+
+final inventoryListProvider = FutureProvider<List<InventoryItem>>((ref) {
+  return ref.watch(inventoryRepositoryProvider).getAll();
+});

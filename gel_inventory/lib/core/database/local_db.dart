@@ -69,6 +69,8 @@ class Invoices extends Table {
   // status: draft | printed | cancelled
   TextColumn get status => text().withDefault(const Constant('draft'))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  // Human-readable invoice number: YYYYMMDD-NNN
+  TextColumn get invoiceNumber => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -117,11 +119,18 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          if (from < 2) {
+            await m.database.customStatement(
+              'ALTER TABLE invoices ADD COLUMN invoice_number TEXT',
+            );
+          }
+        },
       );
 }
 

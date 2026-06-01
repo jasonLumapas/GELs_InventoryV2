@@ -57,7 +57,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
     setState(() => _loading = true);
     final invoices = await ref
         .read(invoiceRepositoryProvider)
-        .getAll(date: _selectedDate);
+        .getAll(
+          startDate: DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day),
+          endDate: DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day + 1),
+        );
 
     final products = await ref.read(productRepositoryProvider).getAll();
     final productsMap = {for (final p in products) p.id: p};

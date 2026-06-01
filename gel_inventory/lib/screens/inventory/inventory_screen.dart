@@ -10,10 +10,11 @@ import '../../widgets/common/app_scaffold.dart';
 
 // Combines all products with their current inventory quantity.
 // Products with no inventory record show as 0 stock.
-final _inventoryViewProvider =
+// Uses public providers so external screens can invalidate after invoice saves.
+final inventoryViewProvider =
     FutureProvider<List<({Product product, InventoryItem? stock})>>((ref) async {
   final products = await ref.watch(productsListProvider.future);
-  final inventoryItems = await ref.watch(inventoryRepositoryProvider).getAll();
+  final inventoryItems = await ref.watch(inventoryListProvider.future);
   final stockByProductId = {for (final i in inventoryItems) i.productId: i};
   return products
       .map((p) => (product: p, stock: stockByProductId[p.id]))
@@ -25,7 +26,7 @@ class InventoryScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final viewAsync = ref.watch(_inventoryViewProvider);
+    final viewAsync = ref.watch(inventoryViewProvider);
 
     return AppScaffold(
       title: 'Inventory',
@@ -145,7 +146,7 @@ class InventoryScreen extends ConsumerWidget {
                     .read(inventoryRepositoryProvider)
                     .adjust(productId: product.id, deltaPieces: delta);
                 if (ctx.mounted) Navigator.pop(ctx);
-                ref.invalidate(_inventoryViewProvider);
+                ref.invalidate(inventoryViewProvider);
               },
               child: const Text('Confirm'),
             ),

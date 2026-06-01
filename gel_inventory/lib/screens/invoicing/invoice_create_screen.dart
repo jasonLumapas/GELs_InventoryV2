@@ -99,13 +99,42 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       return;
     }
 
+    // Pre-load inventory for products not yet cached so the picker can show stock levels
+    for (final p in available) {
+      if (!_inventoryCache.containsKey(p.id)) {
+        _inventoryCache[p.id] = await ref
+            .read(inventoryRepositoryProvider)
+            .getByProductId(p.id);
+      }
+    }
+
+    if (!mounted) return;
     final picked = await showSearchPicker<Product>(
       context: context,
       title: 'Select Product',
       items: available,
       labelOf: (p) => p.name,
+      leadingOf: (p) => _stockIndicator(_inventoryCache[p.id]?.quantityPieces ?? 0),
+      subtitleOf: (p) => _stockLabel(p, _inventoryCache[p.id]?.quantityPieces ?? 0),
+      subtitleStyleOf: (p) {
+        final qty = _inventoryCache[p.id]?.quantityPieces ?? 0;
+        return TextStyle(color: qty > 0 ? Colors.green.shade700 : Colors.red);
+      },
     );
     if (picked != null) await _addProduct(picked);
+  }
+
+  Widget _stockIndicator(int qty) => Icon(
+        qty > 0 ? Icons.check_circle : Icons.cancel,
+        color: qty > 0 ? Colors.green : Colors.red,
+        size: 20,
+      );
+
+  String _stockLabel(Product p, int qty) {
+    if (qty <= 0) return 'No stock';
+    final boxes = qty ~/ p.piecesPerBox;
+    final rem = qty % p.piecesPerBox;
+    return boxes > 0 ? '$boxes box(es) + $rem pcs  ($qty pcs total)' : '$qty pcs available';
   }
 
   Future<void> _addProduct(Product product) async {
@@ -147,6 +176,9 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
     setState(() => _saving = true);
     final invoiceId = const Uuid().v4();
     final now = DateTime.now();
+    final invoiceNumber = await ref
+        .read(invoiceRepositoryProvider)
+        .generateInvoiceNumber(now);
     final invoice = Invoice(
       id: invoiceId,
       clientId: _selectedClient!.id,
@@ -154,6 +186,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       totalAmount: _total,
       status: 'printed',
       createdAt: now,
+      invoiceNumber: invoiceNumber,
     );
 
     final items = _lineItems.map((li) {
@@ -174,6 +207,8 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
         );
 
     ref.invalidate(invoicesListProvider);
+    ref.invalidate(filteredInvoicesProvider);
+    ref.invalidate(inventoryListProvider);
 
     final productsById = {
       for (final li in _lineItems) li.product.id: li.product

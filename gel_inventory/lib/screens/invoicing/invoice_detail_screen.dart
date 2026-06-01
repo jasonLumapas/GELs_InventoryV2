@@ -1,18 +1,71 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
 import '../../models/client.dart';
+import '../../models/inventory_item.dart';
 import '../../models/invoice.dart';
 import '../../models/invoice_item.dart';
 import '../../models/product.dart';
+import '../../models/product_price.dart';
 import '../../repositories/client_repository.dart';
+import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../utils/pdf_generator.dart';
 import '../../widgets/common/app_scaffold.dart';
 import '../../widgets/common/confirm_dialog.dart';
+import '../../widgets/common/search_picker.dart';
+
+// ── Editable line item ────────────────────────────────────────────────────────
+
+class _EditItem {
+  final String itemId;
+  final Product product;
+  final double pricePerPiece;
+  InventoryItem? inventory;
+  String unitType;
+  int quantity;
+  // Pieces already deducted from inventory by the original invoice (0 for new items)
+  final int originalPieces;
+
+  _EditItem({
+    required this.itemId,
+    required this.product,
+    required this.pricePerPiece,
+    required this.inventory,
+    required this.unitType,
+    required this.quantity,
+    required this.originalPieces,
+  });
+
+  int get quantityInPieces =>
+      unitType == 'box' ? quantity * product.piecesPerBox : quantity;
+
+  double get subtotal => quantityInPieces * pricePerPiece;
+
+  // Effective available = current stock + what this invoice already holds
+  int effectiveAvailable(int currentInvPieces) =>
+      currentInvPieces + originalPieces;
+
+  bool hasEnoughStock(int currentInvPieces) =>
+      quantityInPieces <= effectiveAvailable(currentInvPieces);
+
+  InvoiceItem toInvoiceItem(String invoiceId) => InvoiceItem(
+        id: itemId,
+        invoiceId: invoiceId,
+        productId: product.id,
+        unitType: unitType,
+        quantity: quantityInPieces,
+        pricePerPiece: pricePerPiece,
+        subtotal: subtotal,
+      );
+}
+
+// ── Screen ────────────────────────────────────────────────────────────────────
 
 class InvoiceDetailScreen extends ConsumerStatefulWidget {
   final String invoiceId;
@@ -25,10 +78,16 @@ class InvoiceDetailScreen extends ConsumerStatefulWidget {
 
 class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   Invoice? _invoice;
-  List<InvoiceItem> _items = [];
-  Client? _client;
+  List<InvoiceItem> _originalItems = [];
+  List<_EditItem> _editItems = [];
+  Client? _selectedClient;
+  List<Client> _clients = [];
+  List<Product> _products = [];
   Map<String, Product> _productsById = {};
+  final Map<String, ProductPrice?> _priceCache = {};
+  final Map<String, InventoryItem?> _inventoryCache = {};
   bool _loading = true;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -37,148 +96,418 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   }
 
   Future<void> _load() async {
-    final invoices =
-        await ref.read(invoiceRepositoryProvider).getAll();
+    final invoices = await ref.read(invoiceRepositoryProvider).getAll();
     _invoice =
         invoices.where((i) => i.id == widget.invoiceId).firstOrNull;
     if (_invoice == null) {
       if (mounted) context.go('/invoices');
       return;
     }
-    _items = await ref
-        .read(invoiceRepositoryProvider)
-        .getItems(widget.invoiceId);
-    final clients = await ref.read(clientRepositoryProvider).getAll();
-    _client =
-        clients.where((c) => c.id == _invoice!.clientId).firstOrNull;
-    final products = await ref.read(productRepositoryProvider).getAll();
-    _productsById = {for (final p in products) p.id: p};
+
+    _originalItems =
+        await ref.read(invoiceRepositoryProvider).getItems(widget.invoiceId);
+    _clients = await ref.read(clientRepositoryProvider).getAll();
+    _products = await ref.read(productRepositoryProvider).getAll();
+    _productsById = {for (final p in _products) p.id: p};
+    _selectedClient =
+        _clients.where((c) => c.id == _invoice!.clientId).firstOrNull;
+
+    // Pre-load inventory for products in this invoice
+    for (final item in _originalItems) {
+      final inv = await ref
+          .read(inventoryRepositoryProvider)
+          .getByProductId(item.productId);
+      _inventoryCache[item.productId] = inv;
+    }
+
+    // Build editable items from original invoice items
+    _editItems = _originalItems
+        .map((item) {
+          final product = _productsById[item.productId];
+          if (product == null) return null;
+          final displayQty = item.unitType == 'box'
+              ? item.quantity ~/ product.piecesPerBox
+              : item.quantity;
+          return _EditItem(
+            itemId: item.id,
+            product: product,
+            pricePerPiece: item.pricePerPiece,
+            inventory: _inventoryCache[item.productId],
+            unitType: item.unitType,
+            quantity: displayQty,
+            originalPieces: item.quantity,
+          );
+        })
+        .whereType<_EditItem>()
+        .toList();
+
     setState(() => _loading = false);
   }
 
-  Future<void> _reprint() async {
-    if (_invoice == null || _client == null) return;
-    await printInvoice(
-      invoice: _invoice!,
-      client: _client!,
-      items: _items,
-      productsById: _productsById,
+  Future<void> _pickClient() async {
+    final picked = await showSearchPicker<Client>(
+      context: context,
+      title: 'Select Client / Store',
+      items: _clients,
+      labelOf: (c) => c.name,
+      subtitleOf: (c) => c.address,
     );
+    if (picked != null) setState(() => _selectedClient = picked);
   }
 
-  Future<void> _cancel() async {
+  Future<void> _pickProduct() async {
+    final alreadyAdded = _editItems.map((li) => li.product.id).toSet();
+    final available =
+        _products.where((p) => !alreadyAdded.contains(p.id)).toList();
+    if (available.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('All products already added.')));
+      }
+      return;
+    }
+
+    // Pre-load inventory for products not yet cached
+    for (final p in available) {
+      if (!_inventoryCache.containsKey(p.id)) {
+        _inventoryCache[p.id] = await ref
+            .read(inventoryRepositoryProvider)
+            .getByProductId(p.id);
+      }
+    }
+
+    if (!mounted) return;
+    final picked = await showSearchPicker<Product>(
+      context: context,
+      title: 'Select Product',
+      items: available,
+      labelOf: (p) => p.name,
+      leadingOf: (p) => _stockIndicator(_inventoryCache[p.id]?.quantityPieces ?? 0),
+      subtitleOf: (p) => _stockLabel(p, _inventoryCache[p.id]?.quantityPieces ?? 0),
+      subtitleStyleOf: (p) {
+        final qty = _inventoryCache[p.id]?.quantityPieces ?? 0;
+        return TextStyle(color: qty > 0 ? Colors.green.shade700 : Colors.red);
+      },
+    );
+    if (picked != null) await _addProduct(picked);
+  }
+
+  Widget _stockIndicator(int qty) => Icon(
+        qty > 0 ? Icons.check_circle : Icons.cancel,
+        color: qty > 0 ? Colors.green : Colors.red,
+        size: 20,
+      );
+
+  String _stockLabel(Product p, int qty) {
+    if (qty <= 0) return 'No stock';
+    final boxes = qty ~/ p.piecesPerBox;
+    final rem = qty % p.piecesPerBox;
+    return boxes > 0
+        ? '$boxes box(es) + $rem pcs  ($qty pcs total)'
+        : '$qty pcs available';
+  }
+
+  Future<void> _addProduct(Product product) async {
+    var price = _priceCache[product.id];
+    if (!_priceCache.containsKey(product.id)) {
+      price = await ref
+          .read(productRepositoryProvider)
+          .getCurrentPrice(product.id);
+      _priceCache[product.id] = price;
+    }
+    var inv = _inventoryCache[product.id];
+    if (!_inventoryCache.containsKey(product.id)) {
+      inv = await ref
+          .read(inventoryRepositoryProvider)
+          .getByProductId(product.id);
+      _inventoryCache[product.id] = inv;
+    }
+    if (price == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No price set for this product.')),
+        );
+      }
+      return;
+    }
+    setState(() {
+      _editItems.add(_EditItem(
+        itemId: const Uuid().v4(),
+        product: product,
+        pricePerPiece: price!.sellingPrice,
+        inventory: inv,
+        unitType: 'piece',
+        quantity: 1,
+        originalPieces: 0,
+      ));
+    });
+  }
+
+  double get _total =>
+      _editItems.fold(0.0, (sum, item) => sum + item.subtotal);
+
+  bool get _canSave {
+    if (_selectedClient == null || _editItems.isEmpty) return false;
+    return _editItems.every((item) {
+      final currentInv = item.inventory?.quantityPieces ?? 0;
+      return item.hasEnoughStock(currentInv);
+    });
+  }
+
+  Future<void> _saveAndPrint() async {
+    setState(() => _saving = true);
+
+    final updatedInvoice = _invoice!.copyWith(
+      clientId: _selectedClient!.id,
+      totalAmount: _total,
+      status: 'printed',
+    );
+    final newItems = _editItems
+        .map((li) => li.toInvoiceItem(widget.invoiceId))
+        .toList();
+
+    await ref.read(invoiceRepositoryProvider).editInvoice(
+          invoice: updatedInvoice,
+          newItems: newItems,
+          oldItems: _originalItems,
+        );
+
+    ref.invalidate(invoicesListProvider);
+    ref.invalidate(filteredInvoicesProvider);
+    ref.invalidate(inventoryListProvider);
+
+    final productsById = {
+      for (final li in _editItems) li.product.id: li.product
+    };
+    await printInvoice(
+      invoice: updatedInvoice,
+      client: _selectedClient!,
+      items: newItems,
+      productsById: productsById,
+    );
+
+    if (mounted) context.go('/invoices');
+  }
+
+  Future<void> _deleteInvoice() async {
+    final isPrinted = _invoice!.status == 'printed';
     final ok = await showConfirmDialog(
       context,
-      title: 'Cancel Invoice',
-      message: 'Mark this invoice as cancelled?',
-      confirmLabel: 'Cancel Invoice',
+      title: 'Delete Invoice',
+      message: isPrinted
+          ? 'Delete this invoice? Since it was printed, the ordered stock will be restored to inventory.'
+          : 'Delete this invoice? This cannot be undone.',
+      confirmLabel: 'Delete',
     );
     if (ok) {
-      await ref
-          .read(invoiceRepositoryProvider)
-          .cancelInvoice(widget.invoiceId);
+      await ref.read(invoiceRepositoryProvider).deleteInvoice(_invoice!);
+      ref.invalidate(invoicesListProvider);
+      ref.invalidate(filteredInvoicesProvider);
+      ref.invalidate(inventoryListProvider);
       if (mounted) context.go('/invoices');
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isCancelled = _invoice?.status == 'cancelled';
     final dateFmt = DateFormat('MMM dd, yyyy HH:mm');
 
     return AppScaffold(
       title: 'Invoice Detail',
       actions: [
-        if (_invoice?.status != 'cancelled') ...[
+        if (!isCancelled && !_loading)
           IconButton(
-            icon: const Icon(Icons.print),
-            tooltip: 'Reprint',
-            onPressed: _loading ? null : _reprint,
+            icon: const Icon(Icons.delete_outline, color: Colors.red),
+            tooltip: 'Delete Invoice',
+            onPressed: _saving ? null : _deleteInvoice,
           ),
-          IconButton(
-            icon: const Icon(Icons.cancel, color: Colors.red),
-            tooltip: 'Cancel Invoice',
-            onPressed: _loading ? null : _cancel,
-          ),
-        ],
       ],
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header info
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                              'Invoice #${_invoice!.id.substring(0, 8).toUpperCase()}',
-                              style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 4),
-                          Text('Client: ${_client?.name ?? _invoice!.clientId}'),
-                          if (_client?.address != null)
-                            Text('Address: ${_client!.address}'),
-                          Text(
-                              'Date: ${dateFmt.format(_invoice!.invoiceDate)}'),
-                          Text(
-                              'Status: ${_invoice!.status.toUpperCase()}',
-                              style: TextStyle(
-                                  color: _invoice!.status == 'cancelled'
-                                      ? Colors.red
-                                      : Colors.green)),
-                        ],
+          : Column(
+              children: [
+                // Invoice header chip row
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Invoice ${_invoice!.displayNumber}',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(dateFmt.format(_invoice!.invoiceDate),
+                          style: const TextStyle(
+                              color: Colors.grey, fontSize: 12)),
+                      const Spacer(),
+                      Chip(
+                        label: Text(_invoice!.status.toUpperCase()),
+                        backgroundColor: isCancelled
+                            ? Colors.red.shade100
+                            : Colors.green.shade100,
+                        padding: EdgeInsets.zero,
+                        labelPadding:
+                            const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                    ],
+                  ),
+                ),
+
+                if (!isCancelled) ...[
+                  // Client selector
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: InkWell(
+                      onTap: _pickClient,
+                      borderRadius: BorderRadius.circular(4),
+                      child: InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'Client / Store',
+                          border: OutlineInputBorder(),
+                          suffixIcon: Icon(Icons.search),
+                        ),
+                        child: Text(
+                          _selectedClient?.name ?? 'Tap to search…',
+                          style: TextStyle(
+                            color: _selectedClient == null
+                                ? Theme.of(context).hintColor
+                                : null,
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 4),
 
-                  // Items table
-                  const Text('Items',
-                      style: TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  Table(
-                    border: TableBorder.all(color: Colors.grey.shade300),
-                    columnWidths: const {
-                      0: FlexColumnWidth(4),
-                      1: FlexColumnWidth(1.5),
-                      2: FlexColumnWidth(1.5),
-                      3: FlexColumnWidth(2),
-                    },
-                    children: [
-                      _headerRow(
-                          ['Product', 'Unit', 'Qty', 'Subtotal']),
-                      ..._items.map((item) {
-                        final product = _productsById[item.productId];
-                        return _dataRow([
-                          product?.name ?? item.productId,
-                          item.unitType,
-                          '${item.quantity}',
-                          formatCurrency(item.subtotal),
-                        ]);
-                      }),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Total
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Text(
-                      'Total: ${formatCurrency(_invoice!.totalAmount)}',
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold),
+                  // Items header + add button
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 4),
+                    child: Row(
+                      children: [
+                        const Text('Items',
+                            style:
+                                TextStyle(fontWeight: FontWeight.bold)),
+                        const Spacer(),
+                        TextButton.icon(
+                          icon: const Icon(Icons.add),
+                          label: const Text('Add Product'),
+                          onPressed: _pickProduct,
+                        ),
+                      ],
                     ),
                   ),
+
+                  // Editable items list
+                  Expanded(
+                    child: _editItems.isEmpty
+                        ? const Center(
+                            child: Text('No items. Tap "Add Product".'))
+                        : ListView.builder(
+                            itemCount: _editItems.length,
+                            itemBuilder: (ctx, i) {
+                              final item = _editItems[i];
+                              final currentInv =
+                                  item.inventory?.quantityPieces ?? 0;
+                              return _EditItemTile(
+                                item: item,
+                                currentInventoryPieces: currentInv,
+                                onRemove: () =>
+                                    setState(() => _editItems.removeAt(i)),
+                                onChanged: () => setState(() {}),
+                              );
+                            },
+                          ),
+                  ),
+
+                  // Total + actions bar
+                  Container(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .surfaceContainerHighest,
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Total: ${formatCurrency(_total)}',
+                            style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        OutlinedButton(
+                          onPressed: () => context.go('/invoices'),
+                          child: const Text('Back'),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton.icon(
+                          icon: _saving
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white))
+                              : const Icon(Icons.print),
+                          label: const Text('Save & Print'),
+                          onPressed:
+                              _canSave && !_saving ? _saveAndPrint : null,
+                        ),
+                      ],
+                    ),
+                  ),
+                ] else ...[
+                  // Read-only view for cancelled invoices
+                  Expanded(child: _buildCancelledView()),
                 ],
-              ),
+              ],
             ),
+    );
+  }
+
+  Widget _buildCancelledView() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_selectedClient != null) ...[
+            Text('Client: ${_selectedClient!.name}',
+                style: const TextStyle(fontWeight: FontWeight.bold)),
+            if (_selectedClient!.address != null)
+              Text(_selectedClient!.address!),
+            const SizedBox(height: 12),
+          ],
+          Table(
+            border: TableBorder.all(color: Colors.grey.shade300),
+            columnWidths: const {
+              0: FlexColumnWidth(4),
+              1: FlexColumnWidth(1.5),
+              2: FlexColumnWidth(1.5),
+              3: FlexColumnWidth(2),
+            },
+            children: [
+              _headerRow(['Product', 'Unit', 'Qty', 'Subtotal']),
+              ..._editItems.map((item) => _dataRow([
+                    item.product.name,
+                    item.unitType,
+                    '${item.quantity}',
+                    formatCurrency(item.subtotal),
+                  ])),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text('Total: ${formatCurrency(_total)}',
+                style: const TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -202,4 +531,122 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                 ))
             .toList(),
       );
+}
+
+// ── Editable item tile ────────────────────────────────────────────────────────
+
+class _EditItemTile extends StatefulWidget {
+  final _EditItem item;
+  final int currentInventoryPieces;
+  final VoidCallback onRemove;
+  final VoidCallback onChanged;
+
+  const _EditItemTile({
+    required this.item,
+    required this.currentInventoryPieces,
+    required this.onRemove,
+    required this.onChanged,
+  });
+
+  @override
+  State<_EditItemTile> createState() => _EditItemTileState();
+}
+
+class _EditItemTileState extends State<_EditItemTile> {
+  late TextEditingController _qtyCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _qtyCtrl =
+        TextEditingController(text: widget.item.quantity.toString());
+  }
+
+  @override
+  void dispose() {
+    _qtyCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
+    final stockOk = item.hasEnoughStock(widget.currentInventoryPieces);
+    final effectiveAvail =
+        item.effectiveAvailable(widget.currentInventoryPieces);
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      color: stockOk ? null : Colors.red.shade50,
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(item.product.name,
+                      style:
+                          const TextStyle(fontWeight: FontWeight.bold)),
+                  if (!stockOk)
+                    Text(
+                      'Only $effectiveAvail pcs available',
+                      style: const TextStyle(
+                          color: Colors.red, fontSize: 12),
+                    ),
+                  Text(
+                    '@ ${formatCurrency(item.pricePerPiece)}/pc  •  ${formatCurrency(item.subtotal)}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'piece', label: Text('Pcs')),
+                ButtonSegment(value: 'box', label: Text('Box')),
+              ],
+              selected: {item.unitType},
+              onSelectionChanged: (s) {
+                final pieces = item.quantityInPieces;
+                setState(() {
+                  item.unitType = s.first;
+                  item.quantity = item.unitType == 'box'
+                      ? (pieces / item.product.piecesPerBox)
+                          .round()
+                          .clamp(1, 9999)
+                      : pieces;
+                  _qtyCtrl.text = item.quantity.toString();
+                });
+                widget.onChanged();
+              },
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 70,
+              child: TextField(
+                controller: _qtyCtrl,
+                decoration: const InputDecoration(
+                    labelText: 'Qty', isDense: true),
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly
+                ],
+                onChanged: (v) {
+                  item.quantity = int.tryParse(v) ?? 1;
+                  if (item.quantity < 1) item.quantity = 1;
+                  widget.onChanged();
+                },
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close, color: Colors.red),
+              onPressed: widget.onRemove,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

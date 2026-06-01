@@ -3,16 +3,104 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../repositories/client_repository.dart';
+import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../widgets/common/app_scaffold.dart';
+import '../../widgets/common/confirm_dialog.dart';
 
-class InvoiceListScreen extends ConsumerWidget {
+enum _FilterType { day, week, month }
+
+class InvoiceListScreen extends ConsumerStatefulWidget {
   const InvoiceListScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final invoicesAsync = ref.watch(invoicesListProvider);
+  ConsumerState<InvoiceListScreen> createState() => _InvoiceListScreenState();
+}
+
+class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
+  _FilterType _filter = _FilterType.day;
+  DateTime _anchor = DateTime.now();
+
+  // ── Date range helpers ───────────────────────────────────────────────────
+
+  DateTime get _startDate {
+    switch (_filter) {
+      case _FilterType.day:
+        return DateTime(_anchor.year, _anchor.month, _anchor.day);
+      case _FilterType.week:
+        final monday = _anchor.subtract(Duration(days: _anchor.weekday - 1));
+        return DateTime(monday.year, monday.month, monday.day);
+      case _FilterType.month:
+        return DateTime(_anchor.year, _anchor.month);
+    }
+  }
+
+  DateTime get _endDate {
+    switch (_filter) {
+      case _FilterType.day:
+        return _startDate.add(const Duration(days: 1));
+      case _FilterType.week:
+        return _startDate.add(const Duration(days: 7));
+      case _FilterType.month:
+        return DateTime(_anchor.year, _anchor.month + 1);
+    }
+  }
+
+  String get _periodLabel {
+    final s = _startDate;
+    switch (_filter) {
+      case _FilterType.day:
+        return DateFormat('EEE, MMM d, y').format(s);
+      case _FilterType.week:
+        final e = _endDate.subtract(const Duration(days: 1));
+        final sameMonth = s.month == e.month && s.year == e.year;
+        return sameMonth
+            ? '${DateFormat('MMM d').format(s)} – ${DateFormat('d, y').format(e)}'
+            : '${DateFormat('MMM d').format(s)} – ${DateFormat('MMM d, y').format(e)}';
+      case _FilterType.month:
+        return DateFormat('MMMM y').format(s);
+    }
+  }
+
+  void _prev() => setState(() {
+        switch (_filter) {
+          case _FilterType.day:
+            _anchor = _anchor.subtract(const Duration(days: 1));
+          case _FilterType.week:
+            _anchor = _anchor.subtract(const Duration(days: 7));
+          case _FilterType.month:
+            _anchor = DateTime(_anchor.year, _anchor.month - 1, _anchor.day);
+        }
+      });
+
+  void _next() => setState(() {
+        switch (_filter) {
+          case _FilterType.day:
+            _anchor = _anchor.add(const Duration(days: 1));
+          case _FilterType.week:
+            _anchor = _anchor.add(const Duration(days: 7));
+          case _FilterType.month:
+            _anchor = DateTime(_anchor.year, _anchor.month + 1, _anchor.day);
+        }
+      });
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _anchor,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) setState(() => _anchor = picked);
+  }
+
+  // ── Build ────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final invoicesAsync =
+        ref.watch(filteredInvoicesProvider((_startDate, _endDate)));
     final clientsAsync = ref.watch(clientsListProvider);
     final dateFmt = DateFormat('MMM dd, yyyy');
 
@@ -23,34 +111,175 @@ class InvoiceListScreen extends ConsumerWidget {
         label: const Text('New Invoice'),
         onPressed: () => context.go('/invoices/new'),
       ),
-      body: invoicesAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
-        data: (invoices) {
-          final clientsMap = {
-            for (final c in clientsAsync.valueOrNull ?? []) c.id: c
-          };
-          if (invoices.isEmpty) {
-            return const Center(child: Text('No invoices yet.'));
-          }
-          return ListView.separated(
-            itemCount: invoices.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (ctx, i) {
-              final inv = invoices[i];
-              final client = clientsMap[inv.clientId];
-              return ListTile(
-                leading: const Icon(Icons.receipt_long),
-                title: Text(client?.name ?? inv.clientId),
-                subtitle: Text(
-                    '${dateFmt.format(inv.invoiceDate)} • ${inv.status.toUpperCase()}'),
-                trailing: Text(formatCurrency(inv.totalAmount),
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
-                onTap: () => context.go('/invoices/${inv.id}'),
-              );
-            },
-          );
-        },
+      body: Column(
+        children: [
+          // ── Filter bar ─────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+            child: Row(
+              children: [
+                // Period type
+                SegmentedButton<_FilterType>(
+                  segments: const [
+                    ButtonSegment(value: _FilterType.day, label: Text('Day')),
+                    ButtonSegment(value: _FilterType.week, label: Text('Week')),
+                    ButtonSegment(
+                        value: _FilterType.month, label: Text('Month')),
+                  ],
+                  selected: {_filter},
+                  onSelectionChanged: (s) =>
+                      setState(() => _filter = s.first),
+                  style: const ButtonStyle(
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+                const SizedBox(width: 8),
+
+                // Previous
+                IconButton(
+                  icon: const Icon(Icons.chevron_left),
+                  onPressed: _prev,
+                  visualDensity: VisualDensity.compact,
+                ),
+
+                // Date label (tappable to pick a specific date)
+                Expanded(
+                  child: GestureDetector(
+                    onTap: _pickDate,
+                    child: Text(
+                      _periodLabel,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+
+                // Next
+                IconButton(
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: _next,
+                  visualDensity: VisualDensity.compact,
+                ),
+
+                // Today shortcut
+                TextButton(
+                  onPressed: () => setState(() => _anchor = DateTime.now()),
+                  style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact),
+                  child: const Text('Today'),
+                ),
+              ],
+            ),
+          ),
+
+          const Divider(height: 1),
+
+          // ── Invoice list ───────────────────────────────────────────────
+          Expanded(
+            child: invoicesAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text('Error: $e')),
+              data: (invoices) {
+                final clientsMap = {
+                  for (final c in clientsAsync.valueOrNull ?? []) c.id: c
+                };
+                if (invoices.isEmpty) {
+                  return Center(
+                    child: Text('No invoices for $_periodLabel.'),
+                  );
+                }
+
+                // Running total for the period
+                final periodTotal =
+                    invoices.fold(0.0, (s, i) => s + i.totalAmount);
+
+                return Column(
+                  children: [
+                    Expanded(
+                      child: ListView.separated(
+                        itemCount: invoices.length,
+                        separatorBuilder: (_, _) => const Divider(height: 1),
+                        itemBuilder: (ctx, i) {
+                          final inv = invoices[i];
+                          final client = clientsMap[inv.clientId];
+                          return ListTile(
+                            leading: const Icon(Icons.receipt_long),
+                            title: Text(inv.displayNumber),
+                            subtitle: Text(
+                              '${client?.name ?? inv.clientId}'
+                              '  •  ${dateFmt.format(inv.invoiceDate)}'
+                              '  •  ${inv.status.toUpperCase()}',
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  formatCurrency(inv.totalAmount),
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(width: 4),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline,
+                                      color: Colors.red),
+                                  tooltip: inv.status == 'printed'
+                                      ? 'Delete (restores stock)'
+                                      : 'Delete',
+                                  onPressed: () async {
+                                    final msg = inv.status == 'printed'
+                                        ? 'Delete invoice ${inv.displayNumber}?\n\nOrdered stock will be restored to inventory.'
+                                        : 'Delete invoice ${inv.displayNumber}? This cannot be undone.';
+                                    final ok = await showConfirmDialog(
+                                      ctx,
+                                      title: 'Delete Invoice',
+                                      message: msg,
+                                      confirmLabel: 'Delete',
+                                    );
+                                    if (ok) {
+                                      await ref
+                                          .read(invoiceRepositoryProvider)
+                                          .deleteInvoice(inv);
+                                      ref.invalidate(filteredInvoicesProvider);
+                                      ref.invalidate(invoicesListProvider);
+                                      ref.invalidate(inventoryListProvider);
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
+                            onTap: () => context.go('/invoices/${inv.id}'),
+                          );
+                        },
+                      ),
+                    ),
+
+                    // Period total footer
+                    Container(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('${invoices.length} invoice(s)',
+                              style: const TextStyle(color: Colors.grey)),
+                          Text(
+                            'Period total: ${formatCurrency(periodTotal)}',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 15),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

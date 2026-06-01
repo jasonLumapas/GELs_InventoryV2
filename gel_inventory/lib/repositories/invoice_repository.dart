@@ -19,28 +19,64 @@ class InvoiceRepository extends BaseRepository {
     required this.inventoryRepo,
   });
 
-  Future<List<Invoice>> getAll({DateTime? date}) async {
+  /// Generates a unique invoice number in YYYYMMDD-NNN format for the given date.
+  Future<String> generateInvoiceNumber(DateTime date) async {
+    final y = date.year.toString().padLeft(4, '0');
+    final m = date.month.toString().padLeft(2, '0');
+    final d = date.day.toString().padLeft(2, '0');
+    final dateStr = '$y$m$d';
+    final start = DateTime(date.year, date.month, date.day);
+    final end = start.add(const Duration(days: 1));
+
+    int count;
     if (isOnline) {
-      // Apply filters before .order() to stay on PostgrestFilterBuilder
+      final data = await Supabase.instance.client
+          .from('invoices')
+          .select('id')
+          .gte('created_at', start.toIso8601String())
+          .lt('created_at', end.toIso8601String());
+      count = (data as List).length + 1;
+    } else {
+      final rows = await (db.select(db.invoices)
+            ..where((t) =>
+                t.createdAt.isBiggerOrEqualValue(start) &
+                t.createdAt.isSmallerThanValue(end)))
+          .get();
+      count = rows.length + 1;
+    }
+    return '$dateStr-${count.toString().padLeft(3, '0')}';
+  }
+
+  Future<List<Invoice>> getAll({
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    if (isOnline) {
       var q = Supabase.instance.client
           .from('invoices')
           .select()
           .neq('status', 'cancelled');
-
-      if (date != null) {
-        final start = DateTime(date.year, date.month, date.day);
-        final end = start.add(const Duration(days: 1));
-        q = q
-            .gte('invoice_date', start.toIso8601String())
-            .lt('invoice_date', end.toIso8601String());
+      if (startDate != null) {
+        q = q.gte('invoice_date', startDate.toIso8601String());
       }
-
-      final data = await q.order('created_at', ascending: false);
+      if (endDate != null) {
+        q = q.lt('invoice_date', endDate.toIso8601String());
+      }
+      final data = await q.order('invoice_date', ascending: false);
       return (data as List).map((j) => Invoice.fromJson(j)).toList();
     }
     final rows = await (db.select(db.invoices)
-          ..where((t) => t.status.isNotValue('cancelled'))
-          ..orderBy([(t) => drift.OrderingTerm.desc(t.createdAt)]))
+          ..where((t) {
+            drift.Expression<bool> expr = t.status.isNotValue('cancelled');
+            if (startDate != null) {
+              expr = expr & t.invoiceDate.isBiggerOrEqualValue(startDate);
+            }
+            if (endDate != null) {
+              expr = expr & t.invoiceDate.isSmallerThanValue(endDate);
+            }
+            return expr;
+          })
+          ..orderBy([(t) => drift.OrderingTerm.desc(t.invoiceDate)]))
         .get();
     return rows
         .map((r) => Invoice(
@@ -50,6 +86,7 @@ class InvoiceRepository extends BaseRepository {
               totalAmount: r.totalAmount,
               status: r.status,
               createdAt: r.createdAt,
+              invoiceNumber: r.invoiceNumber,
             ))
         .toList();
   }
@@ -118,6 +155,114 @@ class InvoiceRepository extends BaseRepository {
     }
   }
 
+  /// Replaces the items of an existing invoice and adjusts inventory for the
+  /// difference between old and new quantities (per product, in pieces).
+  Future<void> editInvoice({
+    required Invoice invoice,
+    required List<InvoiceItem> newItems,
+    required List<InvoiceItem> oldItems,
+  }) async {
+    // Compute per-product piece delta (positive = ordered more, negative = ordered less)
+    final oldQty = <String, int>{};
+    for (final item in oldItems) {
+      oldQty[item.productId] = (oldQty[item.productId] ?? 0) + item.quantity;
+    }
+    final newQty = <String, int>{};
+    for (final item in newItems) {
+      newQty[item.productId] = (newQty[item.productId] ?? 0) + item.quantity;
+    }
+    for (final pid in {...oldQty.keys, ...newQty.keys}) {
+      final delta = (newQty[pid] ?? 0) - (oldQty[pid] ?? 0);
+      if (delta != 0) {
+        await inventoryRepo.adjust(productId: pid, deltaPieces: -delta);
+      }
+    }
+
+    // Update invoice record
+    final invPayload = invoice.toJson();
+    if (isOnline) {
+      await Supabase.instance.client
+          .from('invoices')
+          .update(invPayload)
+          .eq('id', invoice.id);
+    } else {
+      await syncService.enqueue(
+        tableName: 'invoices',
+        recordId: invoice.id,
+        operation: 'update',
+        payload: invPayload,
+      );
+    }
+    await _saveLocalInvoice(invoice);
+
+    // Delete all old items and re-insert new ones
+    if (isOnline) {
+      await Supabase.instance.client
+          .from('invoice_items')
+          .delete()
+          .eq('invoice_id', invoice.id);
+    }
+    await (db.delete(db.invoiceItems)
+          ..where((t) => t.invoiceId.equals(invoice.id)))
+        .go();
+
+    for (final item in newItems) {
+      final itemPayload = item.toJson();
+      if (isOnline) {
+        await Supabase.instance.client.from('invoice_items').insert(itemPayload);
+      } else {
+        await syncService.enqueue(
+          tableName: 'invoice_items',
+          recordId: item.id,
+          operation: 'insert',
+          payload: itemPayload,
+        );
+      }
+      await _saveLocalItem(item);
+    }
+  }
+
+  /// Permanently deletes an invoice and its items.
+  /// If the invoice was printed, inventory is restored first.
+  Future<void> deleteInvoice(Invoice invoice) async {
+    if (invoice.status == 'printed') {
+      final items = await getItems(invoice.id);
+      for (final item in items) {
+        await inventoryRepo.adjust(
+          productId: item.productId,
+          deltaPieces: item.quantity, // restore deducted stock
+        );
+      }
+    }
+
+    // Delete items
+    if (isOnline) {
+      await Supabase.instance.client
+          .from('invoice_items')
+          .delete()
+          .eq('invoice_id', invoice.id);
+    }
+    await (db.delete(db.invoiceItems)
+          ..where((t) => t.invoiceId.equals(invoice.id)))
+        .go();
+
+    // Delete invoice
+    if (isOnline) {
+      await Supabase.instance.client
+          .from('invoices')
+          .delete()
+          .eq('id', invoice.id);
+    } else {
+      await syncService.enqueue(
+        tableName: 'invoices',
+        recordId: invoice.id,
+        operation: 'delete',
+        payload: {'id': invoice.id},
+      );
+    }
+    await (db.delete(db.invoices)..where((t) => t.id.equals(invoice.id))).go();
+  }
+
   Future<void> cancelInvoice(String invoiceId) async {
     final updated = {'status': 'cancelled'};
     if (isOnline) {
@@ -145,6 +290,7 @@ class InvoiceRepository extends BaseRepository {
           totalAmount: drift.Value(inv.totalAmount),
           status: drift.Value(inv.status),
           createdAt: drift.Value(inv.createdAt),
+          invoiceNumber: drift.Value(inv.invoiceNumber),
         ));
   }
 
@@ -172,6 +318,16 @@ final invoiceRepositoryProvider = Provider<InvoiceRepository>((ref) {
   );
 });
 
+/// Unfiltered list — used for invalidation and the detail screen lookup.
 final invoicesListProvider = FutureProvider<List<Invoice>>((ref) {
   return ref.watch(invoiceRepositoryProvider).getAll();
+});
+
+/// Date-range filtered list — keyed on (startDate, endDate); null = no bound.
+final filteredInvoicesProvider =
+    FutureProvider.family<List<Invoice>, (DateTime?, DateTime?)>((ref, range) {
+  final (start, end) = range;
+  return ref
+      .watch(invoiceRepositoryProvider)
+      .getAll(startDate: start, endDate: end);
 });

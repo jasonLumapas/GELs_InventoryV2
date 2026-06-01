@@ -27,7 +27,7 @@ Future<void> printInvoice({
             style: pw.TextStyle(
                 fontSize: 20, fontWeight: pw.FontWeight.bold)),
         pw.SizedBox(height: 4),
-        pw.Text('Invoice #${invoice.id.substring(0, 8).toUpperCase()}'),
+        pw.Text('Invoice ${invoice.displayNumber}'),
         pw.Text('Date: ${dateFmt.format(invoice.invoiceDate)}'),
         pw.Divider(),
 

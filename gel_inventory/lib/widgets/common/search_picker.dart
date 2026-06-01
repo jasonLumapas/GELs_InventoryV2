@@ -8,6 +8,8 @@ Future<T?> showSearchPicker<T>({
   required List<T> items,
   required String Function(T) labelOf,
   String? Function(T)? subtitleOf,
+  TextStyle? Function(T)? subtitleStyleOf,
+  Widget? Function(T)? leadingOf,
 }) async {
   return showDialog<T>(
     context: context,
@@ -16,6 +18,8 @@ Future<T?> showSearchPicker<T>({
       items: items,
       labelOf: labelOf,
       subtitleOf: subtitleOf,
+      subtitleStyleOf: subtitleStyleOf,
+      leadingOf: leadingOf,
     ),
   );
 }
@@ -25,12 +29,16 @@ class _SearchPickerDialog<T> extends StatefulWidget {
   final List<T> items;
   final String Function(T) labelOf;
   final String? Function(T)? subtitleOf;
+  final TextStyle? Function(T)? subtitleStyleOf;
+  final Widget? Function(T)? leadingOf;
 
   const _SearchPickerDialog({
     required this.title,
     required this.items,
     required this.labelOf,
     this.subtitleOf,
+    this.subtitleStyleOf,
+    this.leadingOf,
   });
 
   @override
@@ -94,14 +102,18 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
                   ? const Center(child: Text('No results'))
                   : ListView.separated(
                       itemCount: _filtered.length,
-                      separatorBuilder: (_, _) =>
-                          const Divider(height: 1),
+                      separatorBuilder: (_, _) => const Divider(height: 1),
                       itemBuilder: (_, i) {
                         final item = _filtered[i];
                         final sub = widget.subtitleOf?.call(item);
+                        final subStyle = widget.subtitleStyleOf?.call(item);
+                        final leading = widget.leadingOf?.call(item);
                         return ListTile(
+                          leading: leading,
                           title: Text(widget.labelOf(item)),
-                          subtitle: sub != null ? Text(sub) : null,
+                          subtitle: sub != null
+                              ? Text(sub, style: subStyle)
+                              : null,
                           onTap: () => Navigator.pop(context, item),
                         );
                       },

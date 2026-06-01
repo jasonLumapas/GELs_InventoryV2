@@ -171,3 +171,7 @@ final invoiceRepositoryProvider = Provider<InvoiceRepository>((ref) {
     inventoryRepo: ref.watch(inventoryRepositoryProvider),
   );
 });
+
+final invoicesListProvider = FutureProvider<List<Invoice>>((ref) {
+  return ref.watch(invoiceRepositoryProvider).getAll();
+});

@@ -1,30 +1,19 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import '../../models/client.dart';
-import '../../models/invoice.dart';
 import '../../repositories/client_repository.dart';
 import '../../repositories/invoice_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../widgets/common/app_scaffold.dart';
-
-final _invoicesProvider = FutureProvider<List<Invoice>>((ref) {
-  return ref.watch(invoiceRepositoryProvider).getAll();
-});
-
-final _clientsMapProvider = FutureProvider<Map<String, Client>>((ref) async {
-  final all = await ref.watch(clientRepositoryProvider).getAll();
-  return {for (final c in all) c.id: c};
-});
 
 class InvoiceListScreen extends ConsumerWidget {
   const InvoiceListScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final invoicesAsync = ref.watch(_invoicesProvider);
-    final clientsMapAsync = ref.watch(_clientsMapProvider);
+    final invoicesAsync = ref.watch(invoicesListProvider);
+    final clientsAsync = ref.watch(clientsListProvider);
     final dateFmt = DateFormat('MMM dd, yyyy');
 
     return AppScaffold(
@@ -38,7 +27,9 @@ class InvoiceListScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
         data: (invoices) {
-          final clientsMap = clientsMapAsync.valueOrNull ?? {};
+          final clientsMap = {
+            for (final c in clientsAsync.valueOrNull ?? []) c.id: c
+          };
           if (invoices.isEmpty) {
             return const Center(child: Text('No invoices yet.'));
           }
@@ -52,7 +43,7 @@ class InvoiceListScreen extends ConsumerWidget {
                 leading: const Icon(Icons.receipt_long),
                 title: Text(client?.name ?? inv.clientId),
                 subtitle: Text(
-                    '${dateFmt.format(inv.invoiceDate)} â€¢ ${inv.status.toUpperCase()}'),
+                    '${dateFmt.format(inv.invoiceDate)} • ${inv.status.toUpperCase()}'),
                 trailing: Text(formatCurrency(inv.totalAmount),
                     style: const TextStyle(fontWeight: FontWeight.bold)),
                 onTap: () => context.go('/invoices/${inv.id}'),
@@ -64,4 +55,3 @@ class InvoiceListScreen extends ConsumerWidget {
     );
   }
 }
-

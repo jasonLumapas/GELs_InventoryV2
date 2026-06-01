@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -16,6 +16,7 @@ import '../../repositories/product_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../utils/pdf_generator.dart';
 import '../../widgets/common/app_scaffold.dart';
+import '../../widgets/common/search_picker.dart';
 
 class _LineItem {
   final Product product;
@@ -54,7 +55,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
   List<Product> _products = [];
   final Map<String, ProductPrice?> _priceCache = {};
   final Map<String, InventoryItem?> _inventoryCache = {};
-  String? _selectedClientId;
+  Client? _selectedClient;
   final List<_LineItem> _lineItems = [];
   bool _loading = true;
   bool _saving = false;
@@ -71,15 +72,47 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
     setState(() {
       _clients = clients;
       _products = products;
-      if (clients.isNotEmpty) _selectedClientId = clients.first.id;
       _loading = false;
     });
+  }
+
+  Future<void> _pickClient() async {
+    final picked = await showSearchPicker<Client>(
+      context: context,
+      title: 'Select Client / Store',
+      items: _clients,
+      labelOf: (c) => c.name,
+      subtitleOf: (c) => c.address,
+    );
+    if (picked != null) setState(() => _selectedClient = picked);
+  }
+
+  Future<void> _pickProduct() async {
+    final alreadyAdded = _lineItems.map((li) => li.product.id).toSet();
+    final available =
+        _products.where((p) => !alreadyAdded.contains(p.id)).toList();
+    if (available.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('All products already added.')));
+      }
+      return;
+    }
+
+    final picked = await showSearchPicker<Product>(
+      context: context,
+      title: 'Select Product',
+      items: available,
+      labelOf: (p) => p.name,
+    );
+    if (picked != null) await _addProduct(picked);
   }
 
   Future<void> _addProduct(Product product) async {
     var price = _priceCache[product.id];
     if (!_priceCache.containsKey(product.id)) {
-      price = await ref.read(productRepositoryProvider).getCurrentPrice(product.id);
+      price =
+          await ref.read(productRepositoryProvider).getCurrentPrice(product.id);
       _priceCache[product.id] = price;
     }
     var inv = _inventoryCache[product.id];
@@ -98,11 +131,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       return;
     }
     setState(() {
-      _lineItems.add(_LineItem(
-        product: product,
-        price: price!,
-        inventory: inv,
-      ));
+      _lineItems.add(_LineItem(product: product, price: price!, inventory: inv));
     });
   }
 
@@ -110,7 +139,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       _lineItems.fold(0.0, (sum, item) => sum + item.subtotal);
 
   bool get _canPrint =>
-      _selectedClientId != null &&
+      _selectedClient != null &&
       _lineItems.isNotEmpty &&
       _lineItems.every((i) => i.hasEnoughStock);
 
@@ -120,7 +149,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
     final now = DateTime.now();
     final invoice = Invoice(
       id: invoiceId,
-      clientId: _selectedClientId!,
+      clientId: _selectedClient!.id,
       invoiceDate: now,
       totalAmount: _total,
       status: 'printed',
@@ -133,9 +162,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
         invoiceId: invoiceId,
         productId: li.product.id,
         unitType: li.unitType,
-        quantity: li.unitType == 'box'
-            ? li.quantity * li.product.piecesPerBox
-            : li.quantity,
+        quantity: li.quantityInPieces,
         pricePerPiece: li.price.sellingPrice,
         subtotal: li.subtotal,
       );
@@ -146,14 +173,14 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
           items: items,
         );
 
-    final client =
-        _clients.firstWhere((c) => c.id == _selectedClientId);
+    ref.invalidate(invoicesListProvider);
+
     final productsById = {
       for (final li in _lineItems) li.product.id: li.product
     };
     await printInvoice(
       invoice: invoice,
-      client: client,
+      client: _selectedClient!,
       items: items,
       productsById: productsById,
     );
@@ -172,16 +199,24 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                 // Client selector
                 Padding(
                   padding: const EdgeInsets.all(12),
-                  child: DropdownButtonFormField<String>(
-                    initialValue: _selectedClientId,
-                    decoration: const InputDecoration(
-                        labelText: 'Client / Store', border: OutlineInputBorder()),
-                    items: _clients
-                        .map((c) => DropdownMenuItem(
-                            value: c.id, child: Text(c.name)))
-                        .toList(),
-                    onChanged: (v) =>
-                        setState(() => _selectedClientId = v),
+                  child: InkWell(
+                    onTap: _pickClient,
+                    borderRadius: BorderRadius.circular(4),
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Client / Store',
+                        border: OutlineInputBorder(),
+                        suffixIcon: Icon(Icons.search),
+                      ),
+                      child: Text(
+                        _selectedClient?.name ?? 'Tap to search…',
+                        style: TextStyle(
+                          color: _selectedClient == null
+                              ? Theme.of(context).hintColor
+                              : null,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
 
@@ -197,7 +232,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                       TextButton.icon(
                         icon: const Icon(Icons.add),
                         label: const Text('Add Product'),
-                        onPressed: () => _showProductPicker(context),
+                        onPressed: _pickProduct,
                       ),
                     ],
                   ),
@@ -239,7 +274,13 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                       ),
                       const SizedBox(width: 8),
                       FilledButton.icon(
-                        icon: const Icon(Icons.print),
+                        icon: _saving
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.print),
                         label: const Text('Print'),
                         onPressed: _canPrint && !_saving ? _print : null,
                       ),
@@ -248,38 +289,6 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                 ),
               ],
             ),
-    );
-  }
-
-  Future<void> _showProductPicker(BuildContext context) async {
-    final alreadyAdded = _lineItems.map((li) => li.product.id).toSet();
-    final available =
-        _products.where((p) => !alreadyAdded.contains(p.id)).toList();
-    if (available.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('All products already added.')));
-      return;
-    }
-    await showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Select Product'),
-        content: SizedBox(
-          width: 400,
-          child: ListView.separated(
-            shrinkWrap: true,
-            itemCount: available.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (_, i) => ListTile(
-              title: Text(available[i].name),
-              onTap: () {
-                Navigator.pop(ctx);
-                _addProduct(available[i]);
-              },
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
@@ -319,6 +328,7 @@ class _LineItemTileState extends State<_LineItemTile> {
   Widget build(BuildContext context) {
     final item = widget.item;
     final stockOk = item.hasEnoughStock;
+    final availQty = item.inventory?.quantityPieces ?? 0;
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       color: stockOk ? null : Colors.red.shade50,
@@ -334,15 +344,16 @@ class _LineItemTileState extends State<_LineItemTile> {
                       style:
                           const TextStyle(fontWeight: FontWeight.bold)),
                   if (!stockOk)
-                    const Text('Insufficient stock',
-                        style: TextStyle(color: Colors.red, fontSize: 12)),
-                  Text(
-                      'Subtotal: ${formatCurrency(item.subtotal)}',
+                    Text(
+                      'Only $availQty pcs available',
+                      style:
+                          const TextStyle(color: Colors.red, fontSize: 12),
+                    ),
+                  Text('Subtotal: ${formatCurrency(item.subtotal)}',
                       style: const TextStyle(fontSize: 12)),
                 ],
               ),
             ),
-            // Unit type toggle
             SegmentedButton<String>(
               segments: const [
                 ButtonSegment(value: 'piece', label: Text('Pcs')),
@@ -359,8 +370,8 @@ class _LineItemTileState extends State<_LineItemTile> {
               width: 70,
               child: TextField(
                 controller: _qtyCtrl,
-                decoration: const InputDecoration(
-                    labelText: 'Qty', isDense: true),
+                decoration:
+                    const InputDecoration(labelText: 'Qty', isDense: true),
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 onChanged: (v) {
@@ -380,4 +391,3 @@ class _LineItemTileState extends State<_LineItemTile> {
     );
   }
 }
-

@@ -204,8 +204,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
                               ..._summary.map(
                                 (row) => _tableRow([
                                   row.productName,
-                                  '${row.totalBoxes}',
-                                  '${row.totalPieces}',
+                                  row.totalBoxes > 0 ? '${row.totalBoxes}' : '',
+                                  row.remainPieces > 0 ? '${row.remainPieces}' : '',
                                   formatCurrency(row.totalAmount),
                                 ]),
                               ),
@@ -290,19 +290,17 @@ class _InventoryReportTab extends ConsumerWidget {
               0: FlexColumnWidth(4),
               1: FlexColumnWidth(2),
               2: FlexColumnWidth(2),
-              3: FlexColumnWidth(2),
             },
             children: [
-              _header(['Product', 'Qty (pcs)', 'Qty (boxes)', 'Rem. pcs']),
+              _header(['Product', 'Qty (boxes)', 'Rem. pcs']),
               ...products.map((p) {
                 final qty = inventoryMap[p.id] ?? 0;
                 final boxes = qty ~/ p.piecesPerBox;
                 final rem = qty % p.piecesPerBox;
                 return _row([
                   p.name,
-                  formatNumber(qty),
-                  '$boxes',
-                  '$rem',
+                  boxes > 0 ? '$boxes' : '',
+                  rem > 0 ? '$rem' : '',
                 ]);
               }),
             ],

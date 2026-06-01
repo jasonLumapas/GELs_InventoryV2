@@ -39,6 +39,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
   bool _loading = false;
   List<_SummaryRow> _summary = [];
   double _grandTotal = 0;
+  double _capital = 0;
+
+  double get _profit => _grandTotal - _capital;
 
   @override
   void initState() {
@@ -58,8 +61,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
     final invoices = await ref
         .read(invoiceRepositoryProvider)
         .getAll(
-          startDate: DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day),
-          endDate: DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day + 1),
+          startDate: DateTime(
+              _selectedDate.year, _selectedDate.month, _selectedDate.day),
+          endDate: DateTime(
+              _selectedDate.year, _selectedDate.month, _selectedDate.day + 1),
         );
 
     final products = await ref.read(productRepositoryProvider).getAll();
@@ -75,12 +80,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
       for (final item in items) {
         final product = productsMap[item.productId];
         if (product == null) continue;
-        final key = item.productId;
-        if (rowMap.containsKey(key)) {
-          rowMap[key]!.totalPieces += item.quantity;
-          rowMap[key]!.totalAmount += item.subtotal;
+        if (rowMap.containsKey(item.productId)) {
+          rowMap[item.productId]!.totalPieces += item.quantity;
+          rowMap[item.productId]!.totalAmount += item.subtotal;
         } else {
-          rowMap[key] = _SummaryRow(
+          rowMap[item.productId] = _SummaryRow(
             productName: product.name,
             totalPieces: item.quantity,
             totalAmount: item.subtotal,
@@ -91,9 +95,21 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
       }
     }
 
+    // Capital = withdrawal_price × pieces sold per product
+    double capital = 0;
+    for (final entry in rowMap.entries) {
+      final price = await ref
+          .read(productRepositoryProvider)
+          .getCurrentPrice(entry.key);
+      if (price != null) {
+        capital += price.withdrawalPrice * entry.value.totalPieces;
+      }
+    }
+
     setState(() {
       _summary = rowMap.values.toList();
       _grandTotal = total;
+      _capital = capital;
       _loading = false;
     });
   }
@@ -196,15 +212,15 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
                             ],
                           ),
                           const Divider(height: 24),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: Text(
-                              'Grand Total: ${formatCurrency(_grandTotal)}',
-                              style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold),
-                            ),
-                          ),
+                          _summaryFooterRow('Grand Total', _grandTotal,
+                              bold: true),
+                          const SizedBox(height: 6),
+                          _summaryFooterRow('Capital', _capital),
+                          const SizedBox(height: 6),
+                          _summaryFooterRow('Profit', _profit,
+                              color: _profit >= 0
+                                  ? Colors.green.shade700
+                                  : Colors.red),
                         ],
                       ),
                     ),
@@ -233,6 +249,22 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
                 ))
             .toList(),
       );
+
+  Widget _summaryFooterRow(String label, double amount,
+      {bool bold = false, Color? color}) {
+    final style = TextStyle(
+      fontSize: 15,
+      fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+      color: color,
+    );
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        Text('$label: ', style: style),
+        Text(formatCurrency(amount), style: style),
+      ],
+    );
+  }
 }
 
 class _InventoryReportTab extends ConsumerWidget {

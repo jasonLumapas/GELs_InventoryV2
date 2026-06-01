@@ -12,6 +12,7 @@ import 'screens/invoicing/invoice_list_screen.dart';
 import 'screens/invoicing/invoice_create_screen.dart';
 import 'screens/invoicing/invoice_detail_screen.dart';
 import 'screens/reports/reports_screen.dart';
+import 'screens/reports/order_summary_screen.dart';
 
 final _router = GoRouter(
   initialLocation: '/',
@@ -58,6 +59,9 @@ final _router = GoRouter(
 
     // Reports
     GoRoute(path: '/reports', builder: (ctx, s) => const ReportsScreen()),
+    GoRoute(
+        path: '/layout',
+        builder: (ctx, s) => const OrderSummaryScreen()),
   ],
 );
 

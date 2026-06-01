@@ -20,6 +20,7 @@ class ProductRepository extends BaseRepository {
       final data = await Supabase.instance.client
           .from('products')
           .select()
+          .eq('is_deleted', false)
           .order('name');
       final products = (data as List).map((j) => Product.fromJson(j)).toList();
       for (final p in products) {
@@ -28,6 +29,7 @@ class ProductRepository extends BaseRepository {
       return products;
     }
     final rows = await (db.select(db.products)
+          ..where((t) => t.isDeleted.equals(false))
           ..orderBy([(t) => drift.OrderingTerm.asc(t.name)]))
         .get();
     return rows
@@ -57,17 +59,24 @@ class ProductRepository extends BaseRepository {
   }
 
   Future<void> deleteProduct(String id) async {
+    // Soft delete — preserves referential integrity with product_prices,
+    // inventory, and invoice_items.
+    const payload = {'is_deleted': true};
     if (isOnline) {
-      await Supabase.instance.client.from('products').delete().eq('id', id);
+      await Supabase.instance.client
+          .from('products')
+          .update(payload)
+          .eq('id', id);
     } else {
       await syncService.enqueue(
         tableName: 'products',
         recordId: id,
-        operation: 'delete',
-        payload: {'id': id},
+        operation: 'update',
+        payload: payload,
       );
     }
-    await (db.delete(db.products)..where((t) => t.id.equals(id))).go();
+    await (db.update(db.products)..where((t) => t.id.equals(id)))
+        .write(const ProductsCompanion(isDeleted: drift.Value(true)));
   }
 
   Future<void> addPrice(ProductPrice price) async {

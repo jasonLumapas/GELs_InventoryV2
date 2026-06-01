@@ -120,6 +120,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
         final qty = _inventoryCache[p.id]?.quantityPieces ?? 0;
         return TextStyle(color: qty > 0 ? Colors.green.shade700 : Colors.red);
       },
+      isDisabledOf: (p) => (_inventoryCache[p.id]?.quantityPieces ?? 0) <= 0,
     );
     if (picked != null) await _addProduct(picked);
   }

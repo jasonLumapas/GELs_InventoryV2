@@ -45,6 +45,11 @@ class DashboardScreen extends StatelessWidget {
             label: 'Reports',
             route: '/reports',
           ),
+          _NavCard(
+            icon: Icons.summarize,
+            label: 'Layout',
+            route: '/layout',
+          ),
         ],
       ),
     );

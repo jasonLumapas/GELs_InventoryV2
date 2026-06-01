@@ -106,11 +106,14 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
 
     return AppScaffold(
       title: 'Invoices',
-      floatingActionButton: FloatingActionButton.extended(
-        icon: const Icon(Icons.add),
-        label: const Text('New Invoice'),
-        onPressed: () => context.go('/invoices/new'),
-      ),
+      actions: [
+        FilledButton.icon(
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('New Invoice'),
+          onPressed: () => context.go('/invoices/new'),
+        ),
+        const SizedBox(width: 8),
+      ],
       body: Column(
         children: [
           // ── Filter bar ─────────────────────────────────────────────────

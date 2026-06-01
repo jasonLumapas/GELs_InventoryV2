@@ -10,6 +10,7 @@ Future<T?> showSearchPicker<T>({
   String? Function(T)? subtitleOf,
   TextStyle? Function(T)? subtitleStyleOf,
   Widget? Function(T)? leadingOf,
+  bool Function(T)? isDisabledOf,
 }) async {
   return showDialog<T>(
     context: context,
@@ -20,6 +21,7 @@ Future<T?> showSearchPicker<T>({
       subtitleOf: subtitleOf,
       subtitleStyleOf: subtitleStyleOf,
       leadingOf: leadingOf,
+      isDisabledOf: isDisabledOf,
     ),
   );
 }
@@ -31,6 +33,7 @@ class _SearchPickerDialog<T> extends StatefulWidget {
   final String? Function(T)? subtitleOf;
   final TextStyle? Function(T)? subtitleStyleOf;
   final Widget? Function(T)? leadingOf;
+  final bool Function(T)? isDisabledOf;
 
   const _SearchPickerDialog({
     required this.title,
@@ -39,6 +42,7 @@ class _SearchPickerDialog<T> extends StatefulWidget {
     this.subtitleOf,
     this.subtitleStyleOf,
     this.leadingOf,
+    this.isDisabledOf,
   });
 
   @override
@@ -108,13 +112,18 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
                         final sub = widget.subtitleOf?.call(item);
                         final subStyle = widget.subtitleStyleOf?.call(item);
                         final leading = widget.leadingOf?.call(item);
+                        final disabled =
+                            widget.isDisabledOf?.call(item) ?? false;
                         return ListTile(
+                          enabled: !disabled,
                           leading: leading,
                           title: Text(widget.labelOf(item)),
                           subtitle: sub != null
                               ? Text(sub, style: subStyle)
                               : null,
-                          onTap: () => Navigator.pop(context, item),
+                          onTap: disabled
+                              ? null
+                              : () => Navigator.pop(context, item),
                         );
                       },
                     ),

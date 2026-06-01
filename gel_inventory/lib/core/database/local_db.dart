@@ -35,6 +35,8 @@ class Products extends Table {
   TextColumn get supplierId => text().references(Suppliers, #id)();
   IntColumn get piecesPerBox => integer()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  BoolColumn get isDeleted =>
+      boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -119,7 +121,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -128,6 +130,11 @@ class LocalDatabase extends _$LocalDatabase {
           if (from < 2) {
             await m.database.customStatement(
               'ALTER TABLE invoices ADD COLUMN invoice_number TEXT',
+            );
+          }
+          if (from < 3) {
+            await m.database.customStatement(
+              'ALTER TABLE products ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0',
             );
           }
         },

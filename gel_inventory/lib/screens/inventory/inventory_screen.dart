@@ -146,7 +146,7 @@ class InventoryScreen extends ConsumerWidget {
                     .read(inventoryRepositoryProvider)
                     .adjust(productId: product.id, deltaPieces: delta);
                 if (ctx.mounted) Navigator.pop(ctx);
-                ref.invalidate(inventoryViewProvider);
+                ref.invalidate(inventoryListProvider);
               },
               child: const Text('Confirm'),
             ),

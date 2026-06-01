@@ -723,6 +723,21 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _isDeletedMeta = const VerificationMeta(
+    'isDeleted',
+  );
+  @override
+  late final GeneratedColumn<bool> isDeleted = GeneratedColumn<bool>(
+    'is_deleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_deleted" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -730,6 +745,7 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
     supplierId,
     piecesPerBox,
     createdAt,
+    isDeleted,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -781,6 +797,12 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
         createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
       );
     }
+    if (data.containsKey('is_deleted')) {
+      context.handle(
+        _isDeletedMeta,
+        isDeleted.isAcceptableOrUnknown(data['is_deleted']!, _isDeletedMeta),
+      );
+    }
     return context;
   }
 
@@ -810,6 +832,10 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      isDeleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_deleted'],
+      )!,
     );
   }
 
@@ -825,12 +851,14 @@ class Product extends DataClass implements Insertable<Product> {
   final String supplierId;
   final int piecesPerBox;
   final DateTime createdAt;
+  final bool isDeleted;
   const Product({
     required this.id,
     required this.name,
     required this.supplierId,
     required this.piecesPerBox,
     required this.createdAt,
+    required this.isDeleted,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -840,6 +868,7 @@ class Product extends DataClass implements Insertable<Product> {
     map['supplier_id'] = Variable<String>(supplierId);
     map['pieces_per_box'] = Variable<int>(piecesPerBox);
     map['created_at'] = Variable<DateTime>(createdAt);
+    map['is_deleted'] = Variable<bool>(isDeleted);
     return map;
   }
 
@@ -850,6 +879,7 @@ class Product extends DataClass implements Insertable<Product> {
       supplierId: Value(supplierId),
       piecesPerBox: Value(piecesPerBox),
       createdAt: Value(createdAt),
+      isDeleted: Value(isDeleted),
     );
   }
 
@@ -864,6 +894,7 @@ class Product extends DataClass implements Insertable<Product> {
       supplierId: serializer.fromJson<String>(json['supplierId']),
       piecesPerBox: serializer.fromJson<int>(json['piecesPerBox']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      isDeleted: serializer.fromJson<bool>(json['isDeleted']),
     );
   }
   @override
@@ -875,6 +906,7 @@ class Product extends DataClass implements Insertable<Product> {
       'supplierId': serializer.toJson<String>(supplierId),
       'piecesPerBox': serializer.toJson<int>(piecesPerBox),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'isDeleted': serializer.toJson<bool>(isDeleted),
     };
   }
 
@@ -884,12 +916,14 @@ class Product extends DataClass implements Insertable<Product> {
     String? supplierId,
     int? piecesPerBox,
     DateTime? createdAt,
+    bool? isDeleted,
   }) => Product(
     id: id ?? this.id,
     name: name ?? this.name,
     supplierId: supplierId ?? this.supplierId,
     piecesPerBox: piecesPerBox ?? this.piecesPerBox,
     createdAt: createdAt ?? this.createdAt,
+    isDeleted: isDeleted ?? this.isDeleted,
   );
   Product copyWithCompanion(ProductsCompanion data) {
     return Product(
@@ -902,6 +936,7 @@ class Product extends DataClass implements Insertable<Product> {
           ? data.piecesPerBox.value
           : this.piecesPerBox,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      isDeleted: data.isDeleted.present ? data.isDeleted.value : this.isDeleted,
     );
   }
 
@@ -912,14 +947,15 @@ class Product extends DataClass implements Insertable<Product> {
           ..write('name: $name, ')
           ..write('supplierId: $supplierId, ')
           ..write('piecesPerBox: $piecesPerBox, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('isDeleted: $isDeleted')
           ..write(')'))
         .toString();
   }
 
   @override
   int get hashCode =>
-      Object.hash(id, name, supplierId, piecesPerBox, createdAt);
+      Object.hash(id, name, supplierId, piecesPerBox, createdAt, isDeleted);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -928,7 +964,8 @@ class Product extends DataClass implements Insertable<Product> {
           other.name == this.name &&
           other.supplierId == this.supplierId &&
           other.piecesPerBox == this.piecesPerBox &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.isDeleted == this.isDeleted);
 }
 
 class ProductsCompanion extends UpdateCompanion<Product> {
@@ -937,6 +974,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
   final Value<String> supplierId;
   final Value<int> piecesPerBox;
   final Value<DateTime> createdAt;
+  final Value<bool> isDeleted;
   final Value<int> rowid;
   const ProductsCompanion({
     this.id = const Value.absent(),
@@ -944,6 +982,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.supplierId = const Value.absent(),
     this.piecesPerBox = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.isDeleted = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ProductsCompanion.insert({
@@ -952,6 +991,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     required String supplierId,
     required int piecesPerBox,
     this.createdAt = const Value.absent(),
+    this.isDeleted = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        name = Value(name),
@@ -963,6 +1003,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     Expression<String>? supplierId,
     Expression<int>? piecesPerBox,
     Expression<DateTime>? createdAt,
+    Expression<bool>? isDeleted,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -971,6 +1012,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       if (supplierId != null) 'supplier_id': supplierId,
       if (piecesPerBox != null) 'pieces_per_box': piecesPerBox,
       if (createdAt != null) 'created_at': createdAt,
+      if (isDeleted != null) 'is_deleted': isDeleted,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -981,6 +1023,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     Value<String>? supplierId,
     Value<int>? piecesPerBox,
     Value<DateTime>? createdAt,
+    Value<bool>? isDeleted,
     Value<int>? rowid,
   }) {
     return ProductsCompanion(
@@ -989,6 +1032,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       supplierId: supplierId ?? this.supplierId,
       piecesPerBox: piecesPerBox ?? this.piecesPerBox,
       createdAt: createdAt ?? this.createdAt,
+      isDeleted: isDeleted ?? this.isDeleted,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1011,6 +1055,9 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (isDeleted.present) {
+      map['is_deleted'] = Variable<bool>(isDeleted.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1025,6 +1072,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
           ..write('supplierId: $supplierId, ')
           ..write('piecesPerBox: $piecesPerBox, ')
           ..write('createdAt: $createdAt, ')
+          ..write('isDeleted: $isDeleted, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3708,6 +3756,7 @@ typedef $$ProductsTableCreateCompanionBuilder =
       required String supplierId,
       required int piecesPerBox,
       Value<DateTime> createdAt,
+      Value<bool> isDeleted,
       Value<int> rowid,
     });
 typedef $$ProductsTableUpdateCompanionBuilder =
@@ -3717,6 +3766,7 @@ typedef $$ProductsTableUpdateCompanionBuilder =
       Value<String> supplierId,
       Value<int> piecesPerBox,
       Value<DateTime> createdAt,
+      Value<bool> isDeleted,
       Value<int> rowid,
     });
 
@@ -3824,6 +3874,11 @@ class $$ProductsTableFilterComposer
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3955,6 +4010,11 @@ class $$ProductsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$SuppliersTableOrderingComposer get supplierId {
     final $$SuppliersTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -4001,6 +4061,9 @@ class $$ProductsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get isDeleted =>
+      $composableBuilder(column: $table.isDeleted, builder: (column) => column);
 
   $$SuppliersTableAnnotationComposer get supplierId {
     final $$SuppliersTableAnnotationComposer composer = $composerBuilder(
@@ -4139,6 +4202,7 @@ class $$ProductsTableTableManager
                 Value<String> supplierId = const Value.absent(),
                 Value<int> piecesPerBox = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<bool> isDeleted = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProductsCompanion(
                 id: id,
@@ -4146,6 +4210,7 @@ class $$ProductsTableTableManager
                 supplierId: supplierId,
                 piecesPerBox: piecesPerBox,
                 createdAt: createdAt,
+                isDeleted: isDeleted,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -4155,6 +4220,7 @@ class $$ProductsTableTableManager
                 required String supplierId,
                 required int piecesPerBox,
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<bool> isDeleted = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProductsCompanion.insert(
                 id: id,
@@ -4162,6 +4228,7 @@ class $$ProductsTableTableManager
                 supplierId: supplierId,
                 piecesPerBox: piecesPerBox,
                 createdAt: createdAt,
+                isDeleted: isDeleted,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/inventory_item.dart';
@@ -8,15 +8,16 @@ import '../../repositories/product_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../widgets/common/app_scaffold.dart';
 
-final _inventoryProvider =
-    FutureProvider<List<InventoryItem>>((ref) async {
-  return ref.watch(inventoryRepositoryProvider).getAll();
-});
-
-final _productsMapProvider =
-    FutureProvider<Map<String, Product>>((ref) async {
-  final all = await ref.watch(productRepositoryProvider).getAll();
-  return {for (final p in all) p.id: p};
+// Combines all products with their current inventory quantity.
+// Products with no inventory record show as 0 stock.
+final _inventoryViewProvider =
+    FutureProvider<List<({Product product, InventoryItem? stock})>>((ref) async {
+  final products = await ref.watch(productsListProvider.future);
+  final inventoryItems = await ref.watch(inventoryRepositoryProvider).getAll();
+  final stockByProductId = {for (final i in inventoryItems) i.productId: i};
+  return products
+      .map((p) => (product: p, stock: stockByProductId[p.id]))
+      .toList();
 });
 
 class InventoryScreen extends ConsumerWidget {
@@ -24,48 +25,55 @@ class InventoryScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final inventoryAsync = ref.watch(_inventoryProvider);
-    final productsMapAsync = ref.watch(_productsMapProvider);
+    final viewAsync = ref.watch(_inventoryViewProvider);
 
     return AppScaffold(
       title: 'Inventory',
-      body: inventoryAsync.when(
+      body: viewAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
-        data: (items) {
-          final productsMap = productsMapAsync.valueOrNull ?? {};
-          if (items.isEmpty) {
+        data: (rows) {
+          if (rows.isEmpty) {
             return const Center(
-                child: Text('No inventory records. Add products first.'));
+                child: Text('No products yet. Add products first.'));
           }
           return ListView.separated(
-            itemCount: items.length,
+            itemCount: rows.length,
             separatorBuilder: (_, _) => const Divider(height: 1),
             itemBuilder: (ctx, i) {
-              final item = items[i];
-              final product = productsMap[item.productId];
-              final piecesPerBox = product?.piecesPerBox ?? 1;
-              final boxes = item.quantityPieces ~/ piecesPerBox;
-              final remainPieces = item.quantityPieces % piecesPerBox;
+              final row = rows[i];
+              final product = row.product;
+              final stock = row.stock;
+              final qty = stock?.quantityPieces ?? 0;
+              final boxes = qty ~/ product.piecesPerBox;
+              final remainPieces = qty % product.piecesPerBox;
               return ListTile(
-                leading: const Icon(Icons.inventory),
-                title: Text(product?.name ?? item.productId),
-                subtitle: Text(
-                    '$boxes box(es) + $remainPieces pcs = ${formatNumber(item.quantityPieces)} pcs total'),
+                leading: Icon(
+                  Icons.inventory,
+                  color: qty == 0 ? Colors.red : null,
+                ),
+                title: Text(product.name),
+                subtitle: qty == 0
+                    ? const Text('No stock', style: TextStyle(color: Colors.red))
+                    : Text(
+                        '$boxes box(es) + $remainPieces pcs'
+                        ' = ${formatNumber(qty)} pcs total'),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
                       icon: const Icon(Icons.add_circle, color: Colors.green),
                       tooltip: 'Add stock',
-                      onPressed: () => _showAdjustDialog(
-                          ctx, ref, item, productsMap, isAdd: true),
+                      onPressed: () =>
+                          _showAdjustDialog(ctx, ref, product, qty, isAdd: true),
                     ),
                     IconButton(
                       icon: const Icon(Icons.remove_circle, color: Colors.red),
                       tooltip: 'Remove stock',
-                      onPressed: () => _showAdjustDialog(
-                          ctx, ref, item, productsMap, isAdd: false),
+                      onPressed: qty == 0
+                          ? null
+                          : () => _showAdjustDialog(ctx, ref, product, qty,
+                              isAdd: false),
                     ),
                   ],
                 ),
@@ -80,14 +88,12 @@ class InventoryScreen extends ConsumerWidget {
   Future<void> _showAdjustDialog(
     BuildContext context,
     WidgetRef ref,
-    InventoryItem item,
-    Map<String, Product> productsMap, {
+    Product product,
+    int currentQty, {
     required bool isAdd,
   }) async {
-    final product = productsMap[item.productId];
     final ctrl = TextEditingController();
     String unitType = 'piece';
-    final piecesPerBox = product?.piecesPerBox ?? 1;
 
     await showDialog(
       context: context,
@@ -97,8 +103,10 @@ class InventoryScreen extends ConsumerWidget {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(product?.name ?? item.productId,
+              Text(product.name,
                   style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text('Current: ${formatNumber(currentQty)} pcs',
+                  style: const TextStyle(color: Colors.grey)),
               const SizedBox(height: 8),
               SegmentedButton<String>(
                 segments: const [
@@ -131,13 +139,13 @@ class InventoryScreen extends ConsumerWidget {
                 final qty = int.tryParse(ctrl.text) ?? 0;
                 if (qty <= 0) return;
                 final pieces =
-                    unitType == 'box' ? qty * piecesPerBox : qty;
+                    unitType == 'box' ? qty * product.piecesPerBox : qty;
                 final delta = isAdd ? pieces : -pieces;
                 await ref
                     .read(inventoryRepositoryProvider)
-                    .adjust(productId: item.productId, deltaPieces: delta);
+                    .adjust(productId: product.id, deltaPieces: delta);
                 if (ctx.mounted) Navigator.pop(ctx);
-                ref.invalidate(_inventoryProvider);
+                ref.invalidate(_inventoryViewProvider);
               },
               child: const Text('Confirm'),
             ),
@@ -147,4 +155,3 @@ class InventoryScreen extends ConsumerWidget {
     );
   }
 }
-

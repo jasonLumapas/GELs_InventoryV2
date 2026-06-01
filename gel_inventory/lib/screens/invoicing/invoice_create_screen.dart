@@ -185,15 +185,32 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                   ),
                 ),
 
+                // Add item row
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  child: Row(
+                    children: [
+                      const Text('Items',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      const Spacer(),
+                      TextButton.icon(
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add Product'),
+                        onPressed: () => _showProductPicker(context),
+                      ),
+                    ],
+                  ),
+                ),
+
                 // Line items
                 Expanded(
                   child: _lineItems.isEmpty
                       ? const Center(
-                          child: Text('Tap + to add product items'))
+                          child: Text('Tap "Add Product" to add items'))
                       : ListView.builder(
                           itemCount: _lineItems.length,
-                          itemBuilder: (ctx, i) =>
-                              _LineItemTile(
+                          itemBuilder: (ctx, i) => _LineItemTile(
                             item: _lineItems[i],
                             onRemove: () =>
                                 setState(() => _lineItems.removeAt(i)),
@@ -230,12 +247,6 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                   ),
                 ),
               ],
-            ),
-      floatingActionButton: _loading
-          ? null
-          : FloatingActionButton(
-              onPressed: () => _showProductPicker(context),
-              child: const Icon(Icons.add),
             ),
     );
   }

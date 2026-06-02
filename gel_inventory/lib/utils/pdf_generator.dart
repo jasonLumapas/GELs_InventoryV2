@@ -45,7 +45,7 @@ Future<void> printInvoice({
     4.0 * PdfPageFormat.inch,
     11.0 * PdfPageFormat.inch,
     marginTop: 10,
-    marginBottom: 20,
+    marginBottom: 25,
     marginLeft: 14,
     marginRight: 8,
   );
@@ -59,6 +59,7 @@ Future<void> printInvoice({
       pw.TextStyle(font: bold ? fontBold : font, fontSize: fs);
 
   final tsBusiness  = pw.TextStyle(font: fontBold,      fontSize: fsBusiness);
+  final tsBusinessAddress = pw.TextStyle(font: font,     fontSize: 12.0);
   final tsDesc      = pw.TextStyle(font: fontNarrowBold, fontSize: 11.5);
   final tsAmt       = pw.TextStyle(font: fontBold,      fontSize: 10.5);
   final tsDelivered     = pw.TextStyle(font: font,     fontSize: 12.0);
@@ -80,9 +81,9 @@ Future<void> printInvoice({
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
           pw.Text("GEL'S CONSUMER GOODS TRADING", style: tsBusiness),
-          pw.Text("Purok Tambis, Curyada", style: ts(false)),
-          pw.Text("San Remigio, Cebu, Philippines 6011", style: ts(false)),
-          pw.Text("Tel. (032) 316-7836 / 0936-9445027", style: ts(false)),
+          pw.Text("Purok Tambis, Curvada", style: tsBusinessAddress),
+          pw.Text("San Remigio, Cebu, Philippines 6011", style: tsBusinessAddress),
+          pw.Text("Tel. (032) 316-7836 / 0936-9445027", style: tsBusinessAddress),
           pw.SizedBox(height: 1 * cm),
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -149,7 +150,7 @@ Future<void> printInvoice({
 
     itemWidgets.add(
       pw.Padding(
-        padding: const pw.EdgeInsets.only(bottom: 2),
+        padding: const pw.EdgeInsets.only(bottom: 7),
         child: pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
@@ -245,7 +246,7 @@ Future<void> printInvoice({
             ),
           ],
         ),
-        pw.SizedBox(height: 6),
+        pw.SizedBox(height: 4),
         pageNum,
       ],
     );
@@ -258,7 +259,10 @@ Future<void> printInvoice({
     build: (ctx) => [...itemWidgets, ...totalWidgets],
   ));
 
-  await Printing.layoutPdf(onLayout: (_) => doc.save());
+  await Printing.layoutPdf(
+    onLayout: (_) => doc.save(),
+    format: pageFormat,
+  );
 }
 
 // ── Layout / Order Summary PDF ────────────────────────────────────────────────
@@ -330,7 +334,10 @@ Future<void> printOrderSummary({
     ),
   ));
 
-  await Printing.layoutPdf(onLayout: (_) => doc.save());
+  await Printing.layoutPdf(
+    onLayout: (_) => doc.save(),
+    format: PdfPageFormat.letter.copyWith(marginTop: 36),
+  );
 }
 
 pw.TableRow _headerRow(List<String> cells) => pw.TableRow(

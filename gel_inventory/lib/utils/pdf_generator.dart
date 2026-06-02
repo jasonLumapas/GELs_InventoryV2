@@ -44,8 +44,8 @@ Future<void> printInvoice({
   final pageFormat = PdfPageFormat(
     4.0 * PdfPageFormat.inch,
     11.0 * PdfPageFormat.inch,
-    marginTop: 20,
-    marginBottom: 55,
+    marginTop: 10,
+    marginBottom: 20,
     marginLeft: 14,
     marginRight: 8,
   );
@@ -186,16 +186,27 @@ Future<void> printInvoice({
     ),
   ];
 
-  // Signature block — pinned to bottom of last page via footer builder
+  // Footer — signature just above page number on last page; page number only on others
+  final tsPage = pw.TextStyle(font: font, fontSize: 10.0);
+
   pw.Widget pageFooter(pw.Context ctx) {
-    if (ctx.pageNumber < ctx.pagesCount) return pw.SizedBox();
+    final pageNum = pw.Align(
+      alignment: pw.Alignment.center,
+      child: pw.Text(
+        "Page ${ctx.pageNumber}/${ctx.pagesCount}",
+        style: tsPage,
+      ),
+    );
+
+    if (ctx.pageNumber < ctx.pagesCount) return pageNum;
+
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.Align(
           alignment: pw.Alignment.centerRight,
           child: pw.Text(
-            "Received the above goods and services\n in good order and condition.",
+            "Received the above goods and services in good order and condition.",
             style: tsSmall,
             textAlign: pw.TextAlign.right,
           ),
@@ -228,13 +239,14 @@ Future<void> printInvoice({
                 crossAxisAlignment: pw.CrossAxisAlignment.end,
                 children: [
                   pw.Text("____________________________", style: tsSmall),
-                  pw.Text("Customer signature over printed name",     style: tsSmall),
-                  // pw.Text("printed name",                style: tsSmall),
+                  pw.Text("Customer signature over printed name", style: tsSmall),
                 ],
               ),
             ),
           ],
         ),
+        pw.SizedBox(height: 6),
+        pageNum,
       ],
     );
   }
@@ -277,7 +289,7 @@ Future<void> printOrderSummary({
   final grandTotal = rows.fold(0.0, (s, r) => s + r.totalAmount);
 
   doc.addPage(pw.Page(
-    pageFormat: PdfPageFormat.a4,
+    pageFormat: PdfPageFormat.letter.copyWith(marginTop: 36),
     build: (ctx) => pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [

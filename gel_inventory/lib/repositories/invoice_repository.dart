@@ -1,4 +1,4 @@
-import 'package:drift/drift.dart' as drift;
+﻿import 'package:drift/drift.dart' as drift;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/database/local_db.dart' hide Invoice, InvoiceItem;
@@ -87,6 +87,7 @@ class InvoiceRepository extends BaseRepository {
               status: r.status,
               createdAt: r.createdAt,
               invoiceNumber: r.invoiceNumber,
+              invoiceType: r.invoiceType,
             ))
         .toList();
   }
@@ -111,6 +112,8 @@ class InvoiceRepository extends BaseRepository {
               quantity: r.quantity,
               pricePerPiece: r.pricePerPiece,
               subtotal: r.subtotal,
+              isFree: r.isFree,
+              discountPercent: r.discountPercent,
             ))
         .toList();
   }
@@ -130,7 +133,7 @@ class InvoiceRepository extends BaseRepository {
         payload: invPayload,
       );
     }
-    await _saveLocalInvoice(invoice);
+    await trySaveLocal(() => _saveLocalInvoice(invoice));
 
     for (final item in items) {
       final itemPayload = item.toJson();
@@ -146,7 +149,7 @@ class InvoiceRepository extends BaseRepository {
           payload: itemPayload,
         );
       }
-      await _saveLocalItem(item);
+      await trySaveLocal(() => _saveLocalItem(item));
 
       await inventoryRepo.adjust(
         productId: item.productId,
@@ -193,7 +196,7 @@ class InvoiceRepository extends BaseRepository {
         payload: invPayload,
       );
     }
-    await _saveLocalInvoice(invoice);
+    await trySaveLocal(() => _saveLocalInvoice(invoice));
 
     // Delete all old items and re-insert new ones
     if (isOnline) {
@@ -218,7 +221,7 @@ class InvoiceRepository extends BaseRepository {
           payload: itemPayload,
         );
       }
-      await _saveLocalItem(item);
+      await trySaveLocal(() => _saveLocalItem(item));
     }
   }
 
@@ -291,6 +294,7 @@ class InvoiceRepository extends BaseRepository {
           status: drift.Value(inv.status),
           createdAt: drift.Value(inv.createdAt),
           invoiceNumber: drift.Value(inv.invoiceNumber),
+          invoiceType: drift.Value(inv.invoiceType),
         ));
   }
 
@@ -305,6 +309,8 @@ class InvoiceRepository extends BaseRepository {
           quantity: drift.Value(item.quantity),
           pricePerPiece: drift.Value(item.pricePerPiece),
           subtotal: drift.Value(item.subtotal),
+          isFree: drift.Value(item.isFree),
+          discountPercent: drift.Value(item.discountPercent),
         ));
   }
 }
@@ -318,12 +324,12 @@ final invoiceRepositoryProvider = Provider<InvoiceRepository>((ref) {
   );
 });
 
-/// Unfiltered list — used for invalidation and the detail screen lookup.
+/// Unfiltered list â€” used for invalidation and the detail screen lookup.
 final invoicesListProvider = FutureProvider<List<Invoice>>((ref) {
   return ref.watch(invoiceRepositoryProvider).getAll();
 });
 
-/// Date-range filtered list — keyed on (startDate, endDate); null = no bound.
+/// Date-range filtered list â€” keyed on (startDate, endDate); null = no bound.
 final filteredInvoicesProvider =
     FutureProvider.family<List<Invoice>, (DateTime?, DateTime?)>((ref, range) {
   final (start, end) = range;
@@ -331,3 +337,4 @@ final filteredInvoicesProvider =
       .watch(invoiceRepositoryProvider)
       .getAll(startDate: start, endDate: end);
 });
+

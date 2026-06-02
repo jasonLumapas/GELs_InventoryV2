@@ -10,10 +10,11 @@ class DashboardScreen extends StatelessWidget {
     return AppScaffold(
       title: "GEL's Inventory",
       body: GridView.count(
-        crossAxisCount: 3,
+        crossAxisCount: 4,
+        childAspectRatio: 1.4,
         padding: const EdgeInsets.all(16),
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
         children: [
           _NavCard(
             icon: Icons.local_shipping,
@@ -50,6 +51,16 @@ class DashboardScreen extends StatelessWidget {
             label: 'Layout',
             route: '/layout',
           ),
+          _NavCard(
+            icon: Icons.remove_shopping_cart,
+            label: 'Bad Orders',
+            route: '/bad-orders',
+          ),
+          _NavCard(
+            icon: Icons.local_shipping,
+            label: 'Van Selling',
+            route: '/van-selling',
+          ),
         ],
       ),
     );
@@ -76,10 +87,10 @@ class _NavCard extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 48,
+            Icon(icon, size: 32,
                 color: Theme.of(context).colorScheme.primary),
-            const SizedBox(height: 8),
-            Text(label, style: const TextStyle(fontSize: 16)),
+            const SizedBox(height: 6),
+            Text(label, style: const TextStyle(fontSize: 13)),
           ],
         ),
       ),

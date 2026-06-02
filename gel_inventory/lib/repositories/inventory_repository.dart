@@ -21,7 +21,7 @@ class InventoryRepository extends BaseRepository {
       final items =
           (data as List).map((j) => InventoryItem.fromJson(j)).toList();
       for (final item in items) {
-        await _saveLocal(item);
+        await trySaveLocal(() => _saveLocal(item));
       }
       return items;
     }
@@ -95,7 +95,7 @@ class InventoryRepository extends BaseRepository {
         payload: payload,
       );
     }
-    await _saveLocal(item);
+    await trySaveLocal(() => _saveLocal(item!));
   }
 
   Future<void> _saveLocal(InventoryItem item) async {

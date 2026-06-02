@@ -7,6 +7,8 @@ import 'package:uuid/uuid.dart';
 import '../../models/product.dart';
 import '../../models/product_price.dart';
 import '../../models/supplier.dart';
+import '../../models/product_discount.dart';
+import '../../repositories/product_discount_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../repositories/supplier_repository.dart';
 import '../../utils/currency_format.dart';
@@ -34,13 +36,25 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
   List<ProductPrice> _priceHistory = [];
   List<Supplier> _suppliers = [];
   String? _selectedSupplierId;
+  ProductDiscount? _existingDiscount;
+  // Separate controllers per discount type so values don't bleed when toggling
+  final _percentMinQtyCtrl = TextEditingController();
+  final _percentValueCtrl  = TextEditingController();
+  final _amountMinQtyCtrl  = TextEditingController();
+  final _amountValueCtrl   = TextEditingController();
+  String _discountType = 'percent'; // 'percent' | 'amount'
+
+  TextEditingController get _activeMinQtyCtrl =>
+      _discountType == 'percent' ? _percentMinQtyCtrl : _amountMinQtyCtrl;
+  TextEditingController get _activeValueCtrl =>
+      _discountType == 'percent' ? _percentValueCtrl : _amountValueCtrl;
 
   bool get isNew => widget.productId == null || widget.productId == 'new';
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: isNew ? 1 : 2, vsync: this);
+    _tabController = TabController(length: isNew ? 1 : 3, vsync: this);
     _loadData();
   }
 
@@ -63,6 +77,18 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
           _sellingCtrl.text =
               _priceHistory.first.sellingPrice.toStringAsFixed(2);
         }
+        _existingDiscount = await ref
+            .read(productDiscountRepositoryProvider)
+            .getForProduct(_existing!.id);
+        if (_existingDiscount != null) {
+          final ppb = _existing!.piecesPerBox;
+          _discountType = _existingDiscount!.discountType;
+          // Populate only the matching type's controllers
+          _activeMinQtyCtrl.text =
+              (_existingDiscount!.minQuantityPieces ~/ ppb).toString();
+          _activeValueCtrl.text =
+              _existingDiscount!.discountValue.toStringAsFixed(1);
+        }
       }
     } else if (_suppliers.isNotEmpty) {
       _selectedSupplierId = _suppliers.first.id;
@@ -76,6 +102,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
     _piecesCtrl.dispose();
     _withdrawalCtrl.dispose();
     _sellingCtrl.dispose();
+    _percentMinQtyCtrl.dispose();
+    _percentValueCtrl.dispose();
+    _amountMinQtyCtrl.dispose();
+    _amountValueCtrl.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -117,6 +147,39 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
     if (mounted) context.go('/products');
   }
 
+  /// Saves only the discount rule for an existing product.
+  /// Called from the Discount tab so the Details form doesn't need to be mounted.
+  Future<void> _saveDiscountOnly() async {
+    final existing = _existing;
+    if (existing == null) return;
+
+    final minBoxes = int.tryParse(_activeMinQtyCtrl.text);
+    final discPct = double.tryParse(_activeValueCtrl.text);
+
+    if (minBoxes != null && minBoxes > 0 && discPct != null && discPct > 0) {
+      final newDiscount = ProductDiscount(
+        id: _existingDiscount?.id ?? const Uuid().v4(),
+        productId: existing.id,
+        minQuantityPieces: minBoxes * existing.piecesPerBox,
+        discountValue: discPct,
+        discountType: _discountType,
+      );
+      await ref.read(productDiscountRepositoryProvider).upsert(newDiscount);
+      setState(() => _existingDiscount = newDiscount);
+    } else {
+      await ref
+          .read(productDiscountRepositoryProvider)
+          .deleteForProduct(existing.id);
+      setState(() => _existingDiscount = null);
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Discount rule saved.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AppScaffold(
@@ -131,6 +194,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
                     tabs: const [
                       Tab(text: 'Details'),
                       Tab(text: 'Price History'),
+                      Tab(text: 'Discount'),
                     ],
                   ),
                 Expanded(
@@ -141,6 +205,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
                           children: [
                             _buildForm(),
                             _buildPriceHistory(),
+                            _buildDiscount(),
                           ],
                         ),
                 ),
@@ -236,6 +301,93 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
     );
   }
 
+  Widget _buildDiscount() {
+    final ppb = int.tryParse(_piecesCtrl.text) ??
+        _existing?.piecesPerBox ??
+        1;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Quantity Discount',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Automatically apply a discount when the ordered quantity reaches a threshold.',
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+          // Discount type selector
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(
+                  value: 'percent',
+                  icon: Icon(Icons.percent, size: 16),
+                  label: Text('Percentage')),
+              ButtonSegment(
+                  value: 'amount',
+                  icon: Icon(Icons.attach_money, size: 16),
+                  label: Text('Fixed Amount')),
+            ],
+            selected: {_discountType},
+            onSelectionChanged: (s) => setState(() => _discountType = s.first),
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _activeMinQtyCtrl,
+            decoration: InputDecoration(
+              labelText: 'Minimum quantity (boxes) to trigger discount',
+              helperText: ppb > 0
+                  ? '= ${(int.tryParse(_activeMinQtyCtrl.text) ?? 0) * ppb} pcs'
+                  : null,
+            ),
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _activeValueCtrl,
+            decoration: InputDecoration(
+              labelText: _discountType == 'percent'
+                  ? 'Discount %'
+                  : 'Discount Amount (₱)',
+              suffixText: _discountType == 'percent' ? '%' : null,
+              prefixText: _discountType == 'amount' ? '₱ ' : null,
+            ),
+            keyboardType:
+                const TextInputType.numberWithOptions(decimal: true),
+          ),
+          const SizedBox(height: 8),
+          if (_existingDiscount != null)
+            Text(
+              _existingDiscount!.isPercent
+                  ? 'Current: ${(_existingDiscount!.minQuantityPieces ~/ ppb)} boxes → ${_existingDiscount!.discountValue.toStringAsFixed(1)}% off'
+                  : 'Current: ${(_existingDiscount!.minQuantityPieces ~/ ppb)} boxes → ₱${_existingDiscount!.discountValue.toStringAsFixed(2)} off',
+              style: TextStyle(color: Colors.green.shade700, fontSize: 13),
+            ),
+          const SizedBox(height: 24),
+          Text(
+            'Leave both fields empty to remove the discount rule.',
+            style:
+                TextStyle(color: Colors.grey.shade500, fontSize: 12),
+          ),
+          const SizedBox(height: 16),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton(
+              onPressed: _saveDiscountOnly,
+              child: const Text('Save Discount'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildPriceHistory() {
     final dateFmt = DateFormat('MMM dd, yyyy HH:mm');
     return _priceHistory.isEmpty
@@ -259,4 +411,5 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
           );
   }
 }
+
 

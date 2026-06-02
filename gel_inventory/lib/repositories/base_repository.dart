@@ -14,4 +14,15 @@ abstract class BaseRepository {
   });
 
   bool get isOnline => connectivity.isOnline;
+
+  /// Runs a local cache write and silently swallows any SQLite error.
+  /// When online, Supabase is the source of truth, so a cache failure
+  /// should never crash the app.
+  Future<void> trySaveLocal(Future<void> Function() write) async {
+    try {
+      await write();
+    } catch (_) {
+      // Local write failed (e.g. readonly DB on first run); ignore when online.
+    }
+  }
 }

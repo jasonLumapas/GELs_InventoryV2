@@ -24,7 +24,7 @@ class SupplierRepository extends BaseRepository {
       final suppliers =
           (data as List).map((j) => Supplier.fromJson(j)).toList();
       for (final s in suppliers) {
-        await _saveLocal(s);
+        await trySaveLocal(() => _saveLocal(s));
       }
       return suppliers;
     }
@@ -54,7 +54,7 @@ class SupplierRepository extends BaseRepository {
         payload: payload,
       );
     }
-    await _saveLocal(supplier);
+    await trySaveLocal(() => _saveLocal(supplier));
   }
 
   Future<void> delete(String id) async {

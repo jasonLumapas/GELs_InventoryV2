@@ -72,6 +72,7 @@ class _OrderSummaryScreenState extends ConsumerState<OrderSummaryScreen> {
 
     for (final inv in invoices) {
       if (inv.status == 'cancelled') continue;
+      if (!inv.isDelivery) continue; // Layout only shows delivery invoices
       final items =
           await ref.read(invoiceRepositoryProvider).getItems(inv.id);
       for (final item in items) {

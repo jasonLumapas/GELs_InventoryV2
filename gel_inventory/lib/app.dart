@@ -13,6 +13,9 @@ import 'screens/invoicing/invoice_create_screen.dart';
 import 'screens/invoicing/invoice_detail_screen.dart';
 import 'screens/reports/reports_screen.dart';
 import 'screens/reports/order_summary_screen.dart';
+import 'screens/bad_orders/bad_order_list_screen.dart';
+import 'screens/bad_orders/bad_order_form_screen.dart';
+import 'screens/van_selling/van_selling_screen.dart';
 
 final _router = GoRouter(
   initialLocation: '/',
@@ -20,7 +23,9 @@ final _router = GoRouter(
     GoRoute(path: '/', builder: (ctx, s) => const DashboardScreen()),
 
     // Suppliers
-    GoRoute(path: '/suppliers', builder: (ctx, s) => const SupplierListScreen()),
+    GoRoute(
+        path: '/suppliers',
+        builder: (ctx, s) => const SupplierListScreen()),
     GoRoute(
       path: '/suppliers/:id',
       builder: (_, state) =>
@@ -36,7 +41,8 @@ final _router = GoRouter(
     ),
 
     // Products
-    GoRoute(path: '/products', builder: (ctx, s) => const ProductListScreen()),
+    GoRoute(
+        path: '/products', builder: (ctx, s) => const ProductListScreen()),
     GoRoute(
       path: '/products/:id',
       builder: (_, state) =>
@@ -44,10 +50,12 @@ final _router = GoRouter(
     ),
 
     // Inventory
-    GoRoute(path: '/inventory', builder: (ctx, s) => const InventoryScreen()),
+    GoRoute(
+        path: '/inventory', builder: (ctx, s) => const InventoryScreen()),
 
     // Invoices
-    GoRoute(path: '/invoices', builder: (ctx, s) => const InvoiceListScreen()),
+    GoRoute(
+        path: '/invoices', builder: (ctx, s) => const InvoiceListScreen()),
     GoRoute(
         path: '/invoices/new',
         builder: (ctx, s) => const InvoiceCreateScreen()),
@@ -57,11 +65,22 @@ final _router = GoRouter(
           InvoiceDetailScreen(invoiceId: state.pathParameters['id']!),
     ),
 
-    // Reports
+    // Reports + Layout
     GoRoute(path: '/reports', builder: (ctx, s) => const ReportsScreen()),
+    GoRoute(path: '/layout', builder: (ctx, s) => const OrderSummaryScreen()),
+
+    // Bad Orders
     GoRoute(
-        path: '/layout',
-        builder: (ctx, s) => const OrderSummaryScreen()),
+        path: '/bad-orders',
+        builder: (ctx, s) => const BadOrderListScreen()),
+    GoRoute(
+        path: '/bad-orders/new',
+        builder: (ctx, s) => const BadOrderFormScreen()),
+
+    // Van Selling
+    GoRoute(
+        path: '/van-selling',
+        builder: (ctx, s) => const VanSellingScreen()),
   ],
 );
 

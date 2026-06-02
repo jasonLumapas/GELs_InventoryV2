@@ -1,4 +1,4 @@
-import 'package:drift/drift.dart' as drift;
+﻿import 'package:drift/drift.dart' as drift;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/database/local_db.dart' hide Product, ProductPrice;
@@ -24,7 +24,7 @@ class ProductRepository extends BaseRepository {
           .order('name');
       final products = (data as List).map((j) => Product.fromJson(j)).toList();
       for (final p in products) {
-        await _saveLocalProduct(p);
+        await trySaveLocal(() => _saveLocalProduct(p));
       }
       return products;
     }
@@ -55,11 +55,11 @@ class ProductRepository extends BaseRepository {
         payload: payload,
       );
     }
-    await _saveLocalProduct(product);
+    await trySaveLocal(() => _saveLocalProduct(product));
   }
 
   Future<void> deleteProduct(String id) async {
-    // Soft delete — preserves referential integrity with product_prices,
+    // Soft delete â€” preserves referential integrity with product_prices,
     // inventory, and invoice_items.
     const payload = {'is_deleted': true};
     if (isOnline) {
@@ -160,6 +160,7 @@ class ProductRepository extends BaseRepository {
           supplierId: drift.Value(p.supplierId),
           piecesPerBox: drift.Value(p.piecesPerBox),
           createdAt: drift.Value(p.createdAt),
+          isDeleted: const drift.Value(false),
         ));
   }
 }
@@ -175,3 +176,4 @@ final productRepositoryProvider = Provider<ProductRepository>((ref) {
 final productsListProvider = FutureProvider<List<Product>>((ref) {
   return ref.watch(productRepositoryProvider).getAll();
 });
+

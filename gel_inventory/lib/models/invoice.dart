@@ -5,7 +5,8 @@ class Invoice {
   final double totalAmount;
   final String status; // draft | printed | cancelled
   final DateTime createdAt;
-  final String? invoiceNumber; // YYYYMMDD-NNN, null on legacy records
+  final String? invoiceNumber;
+  final String invoiceType; // delivery | walk_in
 
   const Invoice({
     required this.id,
@@ -15,6 +16,7 @@ class Invoice {
     required this.status,
     required this.createdAt,
     this.invoiceNumber,
+    this.invoiceType = 'delivery',
   });
 
   factory Invoice.fromJson(Map<String, dynamic> j) => Invoice(
@@ -25,6 +27,7 @@ class Invoice {
         status: j['status'] as String,
         createdAt: DateTime.parse(j['created_at'] as String),
         invoiceNumber: j['invoice_number'] as String?,
+        invoiceType: (j['invoice_type'] as String?) ?? 'delivery',
       );
 
   Map<String, dynamic> toJson() => {
@@ -35,11 +38,13 @@ class Invoice {
         'status': status,
         'created_at': createdAt.toIso8601String(),
         'invoice_number': invoiceNumber,
+        'invoice_type': invoiceType,
       };
 
-  /// Returns the display label: invoice number if set, otherwise a UUID prefix.
   String get displayNumber =>
       invoiceNumber ?? 'INV-${id.substring(0, 8).toUpperCase()}';
+
+  bool get isDelivery => invoiceType == 'delivery';
 
   Invoice copyWith({
     double? totalAmount,
@@ -47,6 +52,7 @@ class Invoice {
     String? clientId,
     DateTime? invoiceDate,
     String? invoiceNumber,
+    String? invoiceType,
   }) =>
       Invoice(
         id: id,
@@ -56,5 +62,6 @@ class Invoice {
         status: status ?? this.status,
         createdAt: createdAt,
         invoiceNumber: invoiceNumber ?? this.invoiceNumber,
+        invoiceType: invoiceType ?? this.invoiceType,
       );
 }

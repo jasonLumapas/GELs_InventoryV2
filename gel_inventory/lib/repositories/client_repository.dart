@@ -22,7 +22,7 @@ class ClientRepository extends BaseRepository {
           .order('name');
       final clients = (data as List).map((j) => Client.fromJson(j)).toList();
       for (final c in clients) {
-        await _saveLocal(c);
+        await trySaveLocal(() => _saveLocal(c));
       }
       return clients;
     }
@@ -51,7 +51,7 @@ class ClientRepository extends BaseRepository {
         payload: payload,
       );
     }
-    await _saveLocal(client);
+    await trySaveLocal(() => _saveLocal(client));
   }
 
   Future<void> delete(String id) async {

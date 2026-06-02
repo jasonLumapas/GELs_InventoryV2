@@ -8,39 +8,71 @@ import '../../models/invoice.dart';
 import '../../models/invoice_item.dart';
 import '../../models/inventory_item.dart';
 import '../../models/product.dart';
+import '../../models/product_discount.dart';
 import '../../models/product_price.dart';
 import '../../repositories/client_repository.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_repository.dart';
+import '../../repositories/product_discount_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../utils/pdf_generator.dart';
 import '../../widgets/common/app_scaffold.dart';
 import '../../widgets/common/search_picker.dart';
 
+// ── Line item ─────────────────────────────────────────────────────────────────
+
 class _LineItem {
   final Product product;
   final ProductPrice price;
   final InventoryItem? inventory;
-  String unitType = 'piece'; // 'box' | 'piece'
+  final ProductDiscount? discount;
+  String unitType = 'piece';
   int quantity = 1;
+  bool isFree = false;
 
   _LineItem({
     required this.product,
     required this.price,
     required this.inventory,
+    required this.discount,
   });
 
   int get quantityInPieces =>
       unitType == 'box' ? quantity * product.piecesPerBox : quantity;
 
-  double get subtotal => quantityInPieces * price.sellingPrice;
+  bool get _thresholdMet =>
+      !isFree && discount != null &&
+      quantityInPieces >= discount!.minQuantityPieces;
+
+  double get originalAmount => quantityInPieces * price.sellingPrice;
+
+  double get discountAmount {
+    if (!_thresholdMet) return 0;
+    if (discount!.isPercent) {
+      return originalAmount * discount!.discountValue / 100;
+    } else {
+      return discount!.discountValue.clamp(0.0, originalAmount);
+    }
+  }
+
+  double get subtotal {
+    if (isFree) return 0;
+    return (originalAmount - discountAmount).clamp(0.0, double.infinity);
+  }
+
+  String get discountLabel {
+    if (!_thresholdMet) return '';
+    return discount!.isPercent
+        ? 'Less ${discount!.discountValue.toStringAsFixed(0)}%'
+        : 'Less ${formatCurrency(discount!.discountValue)}';
+  }
 
   bool get hasEnoughStock =>
-      inventory == null
-          ? false
-          : inventory!.quantityPieces >= quantityInPieces;
+      inventory == null ? false : inventory!.quantityPieces >= quantityInPieces;
 }
+
+// ── Screen ────────────────────────────────────────────────────────────────────
 
 class InvoiceCreateScreen extends ConsumerStatefulWidget {
   const InvoiceCreateScreen({super.key});
@@ -55,7 +87,9 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
   List<Product> _products = [];
   final Map<String, ProductPrice?> _priceCache = {};
   final Map<String, InventoryItem?> _inventoryCache = {};
+  final Map<String, ProductDiscount?> _discountCache = {};
   Client? _selectedClient;
+  String _invoiceType = 'delivery';
   final List<_LineItem> _lineItems = [];
   bool _loading = true;
   bool _saving = false;
@@ -99,7 +133,6 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       return;
     }
 
-    // Pre-load inventory for products not yet cached so the picker can show stock levels
     for (final p in available) {
       if (!_inventoryCache.containsKey(p.id)) {
         _inventoryCache[p.id] = await ref
@@ -114,13 +147,17 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       title: 'Select Product',
       items: available,
       labelOf: (p) => p.name,
-      leadingOf: (p) => _stockIndicator(_inventoryCache[p.id]?.quantityPieces ?? 0),
-      subtitleOf: (p) => _stockLabel(p, _inventoryCache[p.id]?.quantityPieces ?? 0),
+      leadingOf: (p) =>
+          _stockIndicator(_inventoryCache[p.id]?.quantityPieces ?? 0),
+      subtitleOf: (p) =>
+          _stockLabel(p, _inventoryCache[p.id]?.quantityPieces ?? 0),
       subtitleStyleOf: (p) {
         final qty = _inventoryCache[p.id]?.quantityPieces ?? 0;
-        return TextStyle(color: qty > 0 ? Colors.green.shade700 : Colors.red);
+        return TextStyle(
+            color: qty > 0 ? Colors.green.shade700 : Colors.red);
       },
-      isDisabledOf: (p) => (_inventoryCache[p.id]?.quantityPieces ?? 0) <= 0,
+      isDisabledOf: (p) =>
+          (_inventoryCache[p.id]?.quantityPieces ?? 0) <= 0,
     );
     if (picked != null) await _addProduct(picked);
   }
@@ -135,14 +172,17 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
     if (qty <= 0) return 'No stock';
     final boxes = qty ~/ p.piecesPerBox;
     final rem = qty % p.piecesPerBox;
-    return boxes > 0 ? '$boxes box(es) + $rem pcs  ($qty pcs total)' : '$qty pcs available';
+    return boxes > 0
+        ? '$boxes box(es) + $rem pcs  ($qty pcs total)'
+        : '$qty pcs available';
   }
 
   Future<void> _addProduct(Product product) async {
     var price = _priceCache[product.id];
     if (!_priceCache.containsKey(product.id)) {
-      price =
-          await ref.read(productRepositoryProvider).getCurrentPrice(product.id);
+      price = await ref
+          .read(productRepositoryProvider)
+          .getCurrentPrice(product.id);
       _priceCache[product.id] = price;
     }
     var inv = _inventoryCache[product.id];
@@ -151,6 +191,13 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
           .read(inventoryRepositoryProvider)
           .getByProductId(product.id);
       _inventoryCache[product.id] = inv;
+    }
+    var disc = _discountCache[product.id];
+    if (!_discountCache.containsKey(product.id)) {
+      disc = await ref
+          .read(productDiscountRepositoryProvider)
+          .getForProduct(product.id);
+      _discountCache[product.id] = disc;
     }
     if (price == null) {
       if (mounted) {
@@ -161,7 +208,12 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       return;
     }
     setState(() {
-      _lineItems.add(_LineItem(product: product, price: price!, inventory: inv));
+      _lineItems.add(_LineItem(
+        product: product,
+        price: price!,
+        inventory: inv,
+        discount: disc,
+      ));
     });
   }
 
@@ -171,7 +223,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
   bool get _canPrint =>
       _selectedClient != null &&
       _lineItems.isNotEmpty &&
-      _lineItems.every((i) => i.hasEnoughStock);
+      _lineItems.every((i) => i.isFree || i.hasEnoughStock);
 
   Future<void> _print() async {
     setState(() => _saving = true);
@@ -188,6 +240,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       status: 'printed',
       createdAt: now,
       invoiceNumber: invoiceNumber,
+      invoiceType: _invoiceType,
     );
 
     final items = _lineItems.map((li) {
@@ -199,6 +252,10 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
         quantity: li.quantityInPieces,
         pricePerPiece: li.price.sellingPrice,
         subtotal: li.subtotal,
+        isFree: li.isFree,
+        discountPercent: (li._thresholdMet && li.discount!.isPercent)
+            ? li.discount!.discountValue
+            : 0,
       );
     }).toList();
 
@@ -232,9 +289,30 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
+                // Invoice type selector
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(
+                          value: 'delivery',
+                          icon: Icon(Icons.local_shipping, size: 16),
+                          label: Text('Delivery')),
+                      ButtonSegment(
+                          value: 'walk_in',
+                          icon: Icon(Icons.storefront, size: 16),
+                          label: Text('Walk-in')),
+                    ],
+                    selected: {_invoiceType},
+                    onSelectionChanged: (s) =>
+                        setState(() => _invoiceType = s.first),
+                  ),
+                ),
+
                 // Client selector
                 Padding(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: InkWell(
                     onTap: _pickClient,
                     borderRadius: BorderRadius.circular(4),
@@ -255,11 +333,12 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 4),
 
                 // Add item row
                 Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 4),
                   child: Row(
                     children: [
                       const Text('Items',
@@ -292,8 +371,9 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
 
                 // Total + actions
                 Container(
-                  color:
-                      Theme.of(context).colorScheme.surfaceContainerHighest,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .surfaceContainerHighest,
                   padding: const EdgeInsets.all(12),
                   child: Row(
                     children: [
@@ -301,7 +381,8 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                         child: Text(
                           'Total: ${formatCurrency(_total)}',
                           style: const TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold),
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold),
                         ),
                       ),
                       OutlinedButton(
@@ -315,10 +396,12 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                                 width: 16,
                                 height: 16,
                                 child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white))
+                                    strokeWidth: 2,
+                                    color: Colors.white))
                             : const Icon(Icons.print),
                         label: const Text('Print'),
-                        onPressed: _canPrint && !_saving ? _print : null,
+                        onPressed:
+                            _canPrint && !_saving ? _print : null,
                       ),
                     ],
                   ),
@@ -328,6 +411,8 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
     );
   }
 }
+
+// ── Line item tile ────────────────────────────────────────────────────────────
 
 class _LineItemTile extends StatefulWidget {
   final _LineItem item;
@@ -363,8 +448,10 @@ class _LineItemTileState extends State<_LineItemTile> {
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
-    final stockOk = item.hasEnoughStock;
+    final stockOk = item.isFree || item.hasEnoughStock;
     final availQty = item.inventory?.quantityPieces ?? 0;
+    final hasDiscount = item.discountAmount > 0;
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       color: stockOk ? null : Colors.red.shade50,
@@ -380,16 +467,52 @@ class _LineItemTileState extends State<_LineItemTile> {
                       style:
                           const TextStyle(fontWeight: FontWeight.bold)),
                   if (!stockOk)
+                    Text('Only $availQty pcs available',
+                        style: const TextStyle(
+                            color: Colors.red, fontSize: 12)),
+                  if (item.isFree)
+                    Text('FREE',
+                        style: TextStyle(
+                            color: Colors.green.shade700,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12))
+                  else if (hasDiscount) ...[
                     Text(
-                      'Only $availQty pcs available',
-                      style:
-                          const TextStyle(color: Colors.red, fontSize: 12),
+                      'Original:  ${formatCurrency(item.originalAmount)}',
+                      style: const TextStyle(fontSize: 12),
                     ),
-                  Text('Subtotal: ${formatCurrency(item.subtotal)}',
-                      style: const TextStyle(fontSize: 12)),
+                    Text(
+                      '${item.discountLabel}:  -${formatCurrency(item.discountAmount)}',
+                      style: TextStyle(
+                          color: Colors.green.shade700, fontSize: 12),
+                    ),
+                    Text(
+                      'Subtotal:  ${formatCurrency(item.subtotal)}',
+                      style: const TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                  ] else
+                    Text(
+                      'Subtotal:  ${formatCurrency(item.subtotal)}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
                 ],
               ),
             ),
+            // Free toggle
+            IconButton(
+              icon: Icon(
+                item.isFree ? Icons.card_giftcard : Icons.card_giftcard_outlined,
+                color: item.isFree ? Colors.green : Colors.grey,
+                size: 20,
+              ),
+              tooltip: item.isFree ? 'Remove free' : 'Mark as free',
+              onPressed: () {
+                setState(() => item.isFree = !item.isFree);
+                widget.onChanged();
+              },
+            ),
+            // Unit toggle
             SegmentedButton<String>(
               segments: const [
                 ButtonSegment(value: 'piece', label: Text('Pcs')),
@@ -406,10 +529,12 @@ class _LineItemTileState extends State<_LineItemTile> {
               width: 70,
               child: TextField(
                 controller: _qtyCtrl,
-                decoration:
-                    const InputDecoration(labelText: 'Qty', isDense: true),
+                decoration: const InputDecoration(
+                    labelText: 'Qty', isDense: true),
                 keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly
+                ],
                 onChanged: (v) {
                   item.quantity = int.tryParse(v) ?? 1;
                   if (item.quantity < 1) item.quantity = 1;

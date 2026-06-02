@@ -46,7 +46,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 2, vsync: this);
+    _tabs = TabController(length: 3, vsync: this);
     _loadSummary();
   }
 
@@ -125,6 +125,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
             tabs: const [
               Tab(text: 'Daily Summary'),
               Tab(text: 'Inventory Report'),
+              Tab(text: 'Movements'),
             ],
           ),
           Expanded(
@@ -133,6 +134,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
               children: [
                 _buildDailySummary(context),
                 const _InventoryReportTab(),
+                const _ProductMovementsTab(),
               ],
             ),
           ),
@@ -267,77 +269,615 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
   }
 }
 
-class _InventoryReportTab extends ConsumerWidget {
+class _InventoryReportTab extends ConsumerStatefulWidget {
   const _InventoryReportTab();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return FutureBuilder(
-      future: _loadData(ref),
-      builder: (ctx, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
-        final (products, inventoryMap) = snapshot.data!;
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(12),
-          child: Table(
-            border: TableBorder.all(color: Colors.grey.shade300),
-            columnWidths: const {
-              0: FlexColumnWidth(4),
-              1: FlexColumnWidth(2),
-              2: FlexColumnWidth(2),
-            },
+  ConsumerState<_InventoryReportTab> createState() =>
+      _InventoryReportTabState();
+}
+
+class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
+  DateTime _selectedDate = DateTime.now();
+
+  // Rebuild the FutureBuilder whenever the date changes
+  late Future<_InvData> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _loadData(_selectedDate);
+  }
+
+  void _setDate(DateTime d) =>
+      setState(() {
+        _selectedDate = d;
+        _future = _loadData(d);
+      });
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) _setDate(picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dateFmt = DateFormat('MMMM dd, yyyy');
+
+    return Column(
+      children: [
+        // ── Date navigation bar ───────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(
             children: [
-              _header(['Product', 'Qty (boxes)', 'Rem. pcs']),
-              ...products.map((p) {
-                final qty = inventoryMap[p.id] ?? 0;
-                final boxes = qty ~/ p.piecesPerBox;
-                final rem = qty % p.piecesPerBox;
-                return _row([
-                  p.name,
-                  boxes > 0 ? '$boxes' : '',
-                  rem > 0 ? '$rem' : '',
-                ]);
-              }),
+              IconButton(
+                icon: const Icon(Icons.chevron_left),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => _setDate(
+                    _selectedDate.subtract(const Duration(days: 1))),
+              ),
+              Expanded(
+                child: GestureDetector(
+                  onTap: _pickDate,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.calendar_today,
+                          size: 16, color: Colors.grey),
+                      const SizedBox(width: 6),
+                      Text(
+                        dateFmt.format(_selectedDate),
+                        style: const TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.chevron_right),
+                visualDensity: VisualDensity.compact,
+                onPressed: () =>
+                    _setDate(_selectedDate.add(const Duration(days: 1))),
+              ),
+              TextButton(
+                onPressed: () => _setDate(DateTime.now()),
+                style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact),
+                child: const Text('Today'),
+              ),
             ],
           ),
-        );
-      },
+        ),
+        const Divider(height: 1),
+
+        // ── Table ─────────────────────────────────────────────────────
+        Expanded(
+          child: FutureBuilder<_InvData>(
+            future: _future,
+            builder: (ctx, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(child: Text('Error: ${snapshot.error}'));
+              }
+              final data = snapshot.data!;
+              // Column flex: product=4, each pair=3 (1.5+1.5), total=13
+              return SingleChildScrollView(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  children: [
+                    // ── Group header row (Row widget for true centering) ──
+                    Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade400),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            flex: 4,
+                            child: Container(
+                              color: Colors.grey.shade300,
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 8, horizontal: 8),
+                              child: const Text(''),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 3,
+                            child: Container(
+                              color: _begDark,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: Text('Beginning',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 3,
+                            child: Container(
+                              color: _outDark,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: Text('Stock Out',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 3,
+                            child: Container(
+                              color: _endDark,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: Text('Ending',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // ── Column labels + data rows (Table) ──
+                    Table(
+                      border: TableBorder.all(color: Colors.grey.shade400),
+                      columnWidths: const {
+                        0: FlexColumnWidth(4),
+                        1: FlexColumnWidth(1.5),
+                        2: FlexColumnWidth(1.5),
+                        3: FlexColumnWidth(1.5),
+                        4: FlexColumnWidth(1.5),
+                        5: FlexColumnWidth(1.5),
+                        6: FlexColumnWidth(1.5),
+                      },
+                      children: [
+                        // Column label row (medium shades)
+                        TableRow(children: [
+                          _cell('Product', Colors.grey.shade200, bold: true),
+                          _cell('Boxes', _begMid, bold: true, center: true),
+                          _cell('Pcs',   _begMid, bold: true, center: true),
+                          _cell('Boxes', _outMid, bold: true, center: true),
+                          _cell('Pcs',   _outMid, bold: true, center: true),
+                          _cell('Boxes', _endMid, bold: true, center: true),
+                          _cell('Pcs',   _endMid, bold: true, center: true),
+                        ]),
+                        // Data rows (light shades)
+                        ...data.products.map((p) {
+                          final beg = data.beginning[p.id] ?? 0;
+                          final out = data.stockOut[p.id] ?? 0;
+                          final end = data.ending[p.id] ?? 0;
+                          return TableRow(children: [
+                            _cell(p.name, null),
+                            _cell(_fmt(beg ~/ p.piecesPerBox), _begLight,
+                                center: true),
+                            _cell(_fmt(beg % p.piecesPerBox), _begLight,
+                                center: true),
+                            _cell(_fmt(out ~/ p.piecesPerBox), _outLight,
+                                center: true),
+                            _cell(_fmt(out % p.piecesPerBox), _outLight,
+                                center: true),
+                            _cell(_fmt(end ~/ p.piecesPerBox), _endLight,
+                                center: true),
+                            _cell(_fmt(end % p.piecesPerBox), _endLight,
+                                center: true),
+                          ]);
+                        }),
+                      ],
+                    ),
+
+                    // ── Ending inventory total footer ──
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        'Ending Inventory Value: ${formatCurrency(data.totalEndingValue)}',
+                        style: const TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 
-  Future<(List<Product>, Map<String, int>)> _loadData(WidgetRef ref) async {
+  // ── Group colour palette ──────────────────────────────────────────
+  static final _begDark  = Colors.blue.shade200;
+  static final _begMid   = Colors.blue.shade100;
+  static final _begLight = Colors.blue.shade50;
+
+  static final _outDark  = Colors.orange.shade200;
+  static final _outMid   = Colors.orange.shade100;
+  static final _outLight = Colors.orange.shade50;
+
+  static final _endDark  = Colors.green.shade200;
+  static final _endMid   = Colors.green.shade100;
+  static final _endLight = Colors.green.shade50;
+
+  String _fmt(int v) => v > 0 ? '$v' : '';
+
+  Widget _cell(String text, Color? bg,
+      {bool bold = false, bool center = false}) =>
+      Container(
+        color: bg,
+        padding: const EdgeInsets.all(8),
+        child: Text(
+          text,
+          textAlign: center ? TextAlign.center : TextAlign.start,
+          style: TextStyle(
+              fontWeight: bold ? FontWeight.bold : FontWeight.normal),
+        ),
+      );
+
+  /// Computes beginning and ending inventory for [date] relative to the
+  /// current physical stock.
+  ///
+  /// Ending   = current + pieces sold AFTER selected date
+  /// Beginning = ending + pieces sold ON selected date
+  Future<_InvData> _loadData(DateTime date) async {
     final products = await ref.read(productRepositoryProvider).getAll();
+
     final inventoryItems =
         await ref.read(inventoryRepositoryProvider).getAll();
-    final inventoryMap = {
+    final currentInv = <String, int>{
       for (final i in inventoryItems) i.productId: i.quantityPieces
     };
-    return (products, inventoryMap);
+
+    final dayStart = DateTime(date.year, date.month, date.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+    final now = DateTime.now();
+    final nowEnd =
+        DateTime(now.year, now.month, now.day + 1);
+
+    // Pieces sold ON the selected date
+    final onDate = await _sumSold(ref, dayStart, dayEnd);
+
+    // Pieces sold AFTER the selected date (day+1 → today)
+    final Map<String, int> afterDate;
+    if (dayEnd.isBefore(nowEnd)) {
+      afterDate = await _sumSold(ref, dayEnd, nowEnd);
+    } else {
+      afterDate = {};
+    }
+
+    final ending = <String, int>{};
+    final beginning = <String, int>{};
+    for (final p in products) {
+      ending[p.id] = (currentInv[p.id] ?? 0) + (afterDate[p.id] ?? 0);
+      beginning[p.id] = ending[p.id]! + (onDate[p.id] ?? 0);
+    }
+
+    // Total ending inventory value = ending pieces × current selling price
+    double totalEndingValue = 0;
+    for (final p in products) {
+      final endPieces = ending[p.id] ?? 0;
+      if (endPieces > 0) {
+        final price = await ref
+            .read(productRepositoryProvider)
+            .getCurrentPrice(p.id);
+        if (price != null) {
+          totalEndingValue += price.withdrawalPrice * endPieces;
+        }
+      }
+    }
+
+    return _InvData(
+        products: products,
+        beginning: beginning,
+        ending: ending,
+        stockOut: onDate,
+        totalEndingValue: totalEndingValue);
   }
 
-  TableRow _header(List<String> cells) => TableRow(
-        decoration: BoxDecoration(color: Colors.grey.shade200),
-        children: cells
-            .map((c) => Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Text(c,
-                      style:
-                          const TextStyle(fontWeight: FontWeight.bold)),
-                ))
-            .toList(),
-      );
+  Future<Map<String, int>> _sumSold(
+      WidgetRef ref, DateTime from, DateTime to) async {
+    final invoices = await ref
+        .read(invoiceRepositoryProvider)
+        .getAll(startDate: from, endDate: to);
+    final sold = <String, int>{};
+    for (final inv in invoices) {
+      if (inv.status == 'cancelled') continue;
+      final items =
+          await ref.read(invoiceRepositoryProvider).getItems(inv.id);
+      for (final item in items) {
+        sold[item.productId] =
+            (sold[item.productId] ?? 0) + item.quantity;
+      }
+    }
+    return sold;
+  }
+}
 
-  TableRow _row(List<String> cells) => TableRow(
-        children: cells
-            .map((c) => Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Text(c),
-                ))
-            .toList(),
-      );
+class _InvData {
+  final List<Product> products;
+  final Map<String, int> beginning;
+  final Map<String, int> stockOut;
+  final Map<String, int> ending;
+  final double totalEndingValue;
+
+  const _InvData({
+    required this.products,
+    required this.beginning,
+    required this.stockOut,
+    required this.ending,
+    required this.totalEndingValue,
+  });
+}
+
+// ── Product Movements Tab ─────────────────────────────────────────────────────
+
+enum _MovementPeriod { day, week, month, year }
+
+class _ProductMovementsTab extends ConsumerStatefulWidget {
+  const _ProductMovementsTab();
+
+  @override
+  ConsumerState<_ProductMovementsTab> createState() =>
+      _ProductMovementsTabState();
+}
+
+class _ProductMovementsTabState extends ConsumerState<_ProductMovementsTab> {
+  _MovementPeriod _period = _MovementPeriod.month;
+  DateTime _anchor = DateTime.now();
+  late Future<List<_MovementRow>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  void _setPeriod(_MovementPeriod p) =>
+      setState(() {
+        _period = p;
+        _future = _load();
+      });
+
+  void _setAnchor(DateTime d) =>
+      setState(() {
+        _anchor = d;
+        _future = _load();
+      });
+
+  DateTime get _startDate {
+    switch (_period) {
+      case _MovementPeriod.day:
+        return DateTime(_anchor.year, _anchor.month, _anchor.day);
+      case _MovementPeriod.week:
+        final mon = _anchor.subtract(Duration(days: _anchor.weekday - 1));
+        return DateTime(mon.year, mon.month, mon.day);
+      case _MovementPeriod.month:
+        return DateTime(_anchor.year, _anchor.month);
+      case _MovementPeriod.year:
+        return DateTime(_anchor.year);
+    }
+  }
+
+  DateTime get _endDate {
+    switch (_period) {
+      case _MovementPeriod.day:
+        return _startDate.add(const Duration(days: 1));
+      case _MovementPeriod.week:
+        return _startDate.add(const Duration(days: 7));
+      case _MovementPeriod.month:
+        return DateTime(_anchor.year, _anchor.month + 1);
+      case _MovementPeriod.year:
+        return DateTime(_anchor.year + 1);
+    }
+  }
+
+  String get _periodLabel {
+    final fmt = DateFormat('MMM d, y');
+    switch (_period) {
+      case _MovementPeriod.day:
+        return DateFormat('EEE, MMM d, y').format(_startDate);
+      case _MovementPeriod.week:
+        return '${fmt.format(_startDate)} – ${fmt.format(_endDate.subtract(const Duration(days: 1)))}';
+      case _MovementPeriod.month:
+        return DateFormat('MMMM y').format(_startDate);
+      case _MovementPeriod.year:
+        return _startDate.year.toString();
+    }
+  }
+
+  Future<List<_MovementRow>> _load() async {
+    final invoices = await ref
+        .read(invoiceRepositoryProvider)
+        .getAll(startDate: _startDate, endDate: _endDate);
+    final products = await ref.read(productRepositoryProvider).getAll();
+    final productsById = {for (final p in products) p.id: p};
+
+    final Map<String, _MovementRow> rows = {};
+    for (final inv in invoices) {
+      if (inv.status == 'cancelled') continue;
+      final items =
+          await ref.read(invoiceRepositoryProvider).getItems(inv.id);
+      for (final item in items) {
+        final p = productsById[item.productId];
+        if (p == null) continue;
+        if (rows.containsKey(item.productId)) {
+          rows[item.productId]!.totalPieces += item.quantity;
+          rows[item.productId]!.totalAmount += item.subtotal;
+        } else {
+          rows[item.productId] = _MovementRow(
+            productName: p.name,
+            piecesPerBox: p.piecesPerBox,
+            totalPieces: item.quantity,
+            totalAmount: item.subtotal,
+          );
+        }
+      }
+    }
+    final sorted = rows.values.toList()
+      ..sort((a, b) => b.totalPieces.compareTo(a.totalPieces));
+    return sorted;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Period filter bar
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+          child: Row(
+            children: [
+              SegmentedButton<_MovementPeriod>(
+                segments: const [
+                  ButtonSegment(value: _MovementPeriod.day, label: Text('Day')),
+                  ButtonSegment(
+                      value: _MovementPeriod.week, label: Text('Week')),
+                  ButtonSegment(
+                      value: _MovementPeriod.month, label: Text('Month')),
+                  ButtonSegment(
+                      value: _MovementPeriod.year, label: Text('Year')),
+                ],
+                selected: {_period},
+                onSelectionChanged: (s) => _setPeriod(s.first),
+                style: const ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.chevron_left),
+                visualDensity: VisualDensity.compact,
+                onPressed: () {
+                  switch (_period) {
+                    case _MovementPeriod.day:
+                      _setAnchor(
+                          _anchor.subtract(const Duration(days: 1)));
+                    case _MovementPeriod.week:
+                      _setAnchor(
+                          _anchor.subtract(const Duration(days: 7)));
+                    case _MovementPeriod.month:
+                      _setAnchor(
+                          DateTime(_anchor.year, _anchor.month - 1));
+                    case _MovementPeriod.year:
+                      _setAnchor(DateTime(_anchor.year - 1));
+                  }
+                },
+              ),
+              Expanded(
+                child: Text(_periodLabel,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+              ),
+              IconButton(
+                icon: const Icon(Icons.chevron_right),
+                visualDensity: VisualDensity.compact,
+                onPressed: () {
+                  switch (_period) {
+                    case _MovementPeriod.day:
+                      _setAnchor(_anchor.add(const Duration(days: 1)));
+                    case _MovementPeriod.week:
+                      _setAnchor(_anchor.add(const Duration(days: 7)));
+                    case _MovementPeriod.month:
+                      _setAnchor(
+                          DateTime(_anchor.year, _anchor.month + 1));
+                    case _MovementPeriod.year:
+                      _setAnchor(DateTime(_anchor.year + 1));
+                  }
+                },
+              ),
+              TextButton(
+                onPressed: () => _setAnchor(DateTime.now()),
+                style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact),
+                child: const Text('Today'),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+
+        // Results
+        Expanded(
+          child: FutureBuilder<List<_MovementRow>>(
+            future: _future,
+            builder: (ctx, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final rows = snap.data ?? [];
+              if (rows.isEmpty) {
+                return const Center(
+                    child: Text('No movement data for this period.'));
+              }
+              return ListView.separated(
+                padding: const EdgeInsets.all(8),
+                itemCount: rows.length,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (ctx, i) {
+                  final row = rows[i];
+                  final isTop = i < 3;
+                  final isLeast = i >= rows.length - 3 && rows.length > 3;
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: isTop
+                          ? Colors.green.shade100
+                          : isLeast
+                              ? Colors.orange.shade100
+                              : Colors.grey.shade100,
+                      child: Text('${i + 1}',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: isTop
+                                  ? Colors.green.shade800
+                                  : isLeast
+                                      ? Colors.orange.shade800
+                                      : Colors.grey.shade600)),
+                    ),
+                    title: Text(row.productName),
+                    subtitle: Text(
+                        '${row.totalBoxes} box(es) + ${row.remainPieces} pcs  (${formatNumber(row.totalPieces)} pcs)'),
+                    trailing: Text(formatCurrency(row.totalAmount),
+                        style:
+                            const TextStyle(fontWeight: FontWeight.bold)),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MovementRow {
+  final String productName;
+  final int piecesPerBox;
+  int totalPieces;
+  double totalAmount;
+
+  _MovementRow({
+    required this.productName,
+    required this.piecesPerBox,
+    required this.totalPieces,
+    required this.totalAmount,
+  });
+
+  int get totalBoxes => totalPieces ~/ piecesPerBox;
+  int get remainPieces => totalPieces % piecesPerBox;
 }

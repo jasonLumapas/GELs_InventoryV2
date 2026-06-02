@@ -10,9 +10,11 @@ import '../../models/invoice.dart';
 import '../../models/invoice_item.dart';
 import '../../models/product.dart';
 import '../../models/product_price.dart';
+import '../../models/product_discount.dart';
 import '../../repositories/client_repository.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_repository.dart';
+import '../../repositories/product_discount_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../utils/pdf_generator.dart';
@@ -26,10 +28,11 @@ class _EditItem {
   final String itemId;
   final Product product;
   final double pricePerPiece;
+  final ProductDiscount? discount;
   InventoryItem? inventory;
   String unitType;
   int quantity;
-  // Pieces already deducted from inventory by the original invoice (0 for new items)
+  bool isFree;
   final int originalPieces;
 
   _EditItem({
@@ -40,19 +43,45 @@ class _EditItem {
     required this.unitType,
     required this.quantity,
     required this.originalPieces,
+    this.discount,
+    this.isFree = false,
   });
 
   int get quantityInPieces =>
       unitType == 'box' ? quantity * product.piecesPerBox : quantity;
 
-  double get subtotal => quantityInPieces * pricePerPiece;
+  bool get _thresholdMet =>
+      !isFree && discount != null &&
+      quantityInPieces >= discount!.minQuantityPieces;
 
-  // Effective available = current stock + what this invoice already holds
+  double get originalAmount => quantityInPieces * pricePerPiece;
+
+  double get discountAmount {
+    if (!_thresholdMet) return 0;
+    if (discount!.isPercent) {
+      return originalAmount * discount!.discountValue / 100;
+    } else {
+      return discount!.discountValue.clamp(0.0, originalAmount);
+    }
+  }
+
+  double get subtotal {
+    if (isFree) return 0;
+    return (originalAmount - discountAmount).clamp(0.0, double.infinity);
+  }
+
+  String get discountLabel {
+    if (!_thresholdMet) return '';
+    return discount!.isPercent
+        ? 'Less ${discount!.discountValue.toStringAsFixed(0)}%'
+        : 'Less ${formatCurrency(discount!.discountValue)}';
+  }
+
   int effectiveAvailable(int currentInvPieces) =>
       currentInvPieces + originalPieces;
 
   bool hasEnoughStock(int currentInvPieces) =>
-      quantityInPieces <= effectiveAvailable(currentInvPieces);
+      isFree || quantityInPieces <= effectiveAvailable(currentInvPieces);
 
   InvoiceItem toInvoiceItem(String invoiceId) => InvoiceItem(
         id: itemId,
@@ -62,6 +91,10 @@ class _EditItem {
         quantity: quantityInPieces,
         pricePerPiece: pricePerPiece,
         subtotal: subtotal,
+        isFree: isFree,
+        discountPercent: (_thresholdMet && discount!.isPercent)
+            ? discount!.discountValue
+            : 0,
       );
 }
 
@@ -86,6 +119,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   Map<String, Product> _productsById = {};
   final Map<String, ProductPrice?> _priceCache = {};
   final Map<String, InventoryItem?> _inventoryCache = {};
+  final Map<String, ProductDiscount?> _discountCache = {};
   bool _loading = true;
   bool _saving = false;
 
@@ -112,12 +146,16 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     _selectedClient =
         _clients.where((c) => c.id == _invoice!.clientId).firstOrNull;
 
-    // Pre-load inventory for products in this invoice
+    // Pre-load inventory + discounts for products in this invoice
     for (final item in _originalItems) {
       final inv = await ref
           .read(inventoryRepositoryProvider)
           .getByProductId(item.productId);
       _inventoryCache[item.productId] = inv;
+      final disc = await ref
+          .read(productDiscountRepositoryProvider)
+          .getForProduct(item.productId);
+      _discountCache[item.productId] = disc;
     }
 
     // Build editable items from original invoice items
@@ -136,6 +174,8 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
             unitType: item.unitType,
             quantity: displayQty,
             originalPieces: item.quantity,
+            isFree: item.isFree,
+            discount: _discountCache[item.productId],
           );
         })
         .whereType<_EditItem>()
@@ -223,6 +263,13 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
           .getByProductId(product.id);
       _inventoryCache[product.id] = inv;
     }
+    var disc = _discountCache[product.id];
+    if (!_discountCache.containsKey(product.id)) {
+      disc = await ref
+          .read(productDiscountRepositoryProvider)
+          .getForProduct(product.id);
+      _discountCache[product.id] = disc;
+    }
     if (price == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -240,6 +287,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
         unitType: 'piece',
         quantity: 1,
         originalPieces: 0,
+        discount: disc,
       ));
     });
   }
@@ -343,6 +391,18 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                           style: const TextStyle(
                               color: Colors.grey, fontSize: 12)),
                       const Spacer(),
+                      Chip(
+                        label: Text(_invoice!.invoiceType == 'delivery'
+                            ? 'Delivery'
+                            : 'Walk-in'),
+                        backgroundColor: _invoice!.isDelivery
+                            ? Colors.blue.shade100
+                            : Colors.purple.shade100,
+                        padding: EdgeInsets.zero,
+                        labelPadding:
+                            const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                      const SizedBox(width: 4),
                       Chip(
                         label: Text(_invoice!.status.toUpperCase()),
                         backgroundColor: isCancelled
@@ -596,12 +656,50 @@ class _EditItemTileState extends State<_EditItemTile> {
                       style: const TextStyle(
                           color: Colors.red, fontSize: 12),
                     ),
-                  Text(
-                    '@ ${formatCurrency(item.pricePerPiece)}/pc  •  ${formatCurrency(item.subtotal)}',
-                    style: const TextStyle(fontSize: 12),
-                  ),
+                  if (item.isFree)
+                    Text('FREE',
+                        style: TextStyle(
+                            color: Colors.green.shade700,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12))
+                  else if (item.discountAmount > 0) ...[
+                    Text(
+                      'Original:  ${formatCurrency(item.originalAmount)}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    Text(
+                      '${item.discountLabel}:  -${formatCurrency(item.discountAmount)}',
+                      style: TextStyle(
+                          color: Colors.green.shade700, fontSize: 12),
+                    ),
+                    Text(
+                      'Subtotal:  ${formatCurrency(item.subtotal)}',
+                      style: const TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                  ] else
+                    Text(
+                      '@ ${formatCurrency(item.pricePerPiece)}/pc  •  ${formatCurrency(item.subtotal)}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
                 ],
               ),
+            ),
+            // Free toggle
+            IconButton(
+              icon: Icon(
+                item.isFree
+                    ? Icons.card_giftcard
+                    : Icons.card_giftcard_outlined,
+                color: item.isFree ? Colors.green : Colors.grey,
+                size: 20,
+              ),
+              tooltip:
+                  item.isFree ? 'Remove free' : 'Mark as free',
+              onPressed: () {
+                setState(() => item.isFree = !item.isFree);
+                widget.onChanged();
+              },
             ),
             SegmentedButton<String>(
               segments: const [

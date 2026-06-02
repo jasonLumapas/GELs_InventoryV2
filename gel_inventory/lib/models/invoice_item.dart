@@ -6,6 +6,8 @@ class InvoiceItem {
   final int quantity;
   final double pricePerPiece;
   final double subtotal;
+  final bool isFree;
+  final double discountPercent;
 
   const InvoiceItem({
     required this.id,
@@ -15,6 +17,8 @@ class InvoiceItem {
     required this.quantity,
     required this.pricePerPiece,
     required this.subtotal,
+    this.isFree = false,
+    this.discountPercent = 0,
   });
 
   factory InvoiceItem.fromJson(Map<String, dynamic> j) => InvoiceItem(
@@ -25,6 +29,8 @@ class InvoiceItem {
         quantity: j['quantity'] as int,
         pricePerPiece: (j['price_per_piece'] as num).toDouble(),
         subtotal: (j['subtotal'] as num).toDouble(),
+        isFree: (j['is_free'] as bool?) ?? false,
+        discountPercent: (j['discount_percent'] as num?)?.toDouble() ?? 0,
       );
 
   Map<String, dynamic> toJson() => {
@@ -35,5 +41,7 @@ class InvoiceItem {
         'quantity': quantity,
         'price_per_piece': pricePerPiece,
         'subtotal': subtotal,
+        'is_free': isFree,
+        'discount_percent': discountPercent,
       };
 }

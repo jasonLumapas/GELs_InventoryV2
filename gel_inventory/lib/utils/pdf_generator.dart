@@ -157,19 +157,18 @@ Future<void> printInvoice({
             pw.SizedBox(
                 width: descW, child: pw.Text(name, style: tsDesc)),
             pw.SizedBox(width: qtyW, child: rAlignAmt(qtyStr)),
-            // Free items: blank price column
+            // Free items: show FREE in price, blank total
             pw.SizedBox(
                 width: priceW,
                 child: item.isFree
-                    ? pw.SizedBox()
+                    ? pw.Align(
+                        alignment: pw.Alignment.centerRight,
+                        child: pw.Text('FREE', style: tsAmt))
                     : rAlignAmt(_n(unitPrice))),
             pw.SizedBox(
               width: totalW,
               child: item.isFree
-                  ? pw.Align(
-                      alignment: pw.Alignment.centerRight,
-                      child: pw.Text('FREE', style: tsAmt),
-                    )
+                  ? pw.SizedBox()
                   : pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.end,
                       children: [

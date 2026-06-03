@@ -5,6 +5,7 @@ import '../../models/product.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_repository.dart';
 import '../../repositories/product_repository.dart';
+import '../../repositories/stock_movement_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../widgets/common/app_scaffold.dart';
 
@@ -395,10 +396,19 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                             child: Container(
                               color: _begDark,
                               padding: const EdgeInsets.symmetric(vertical: 8),
-                              child: Text('Beginning',
+                              child: const Text('Beginning',
                                   textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold)),
+                                  style: TextStyle(fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 3,
+                            child: Container(
+                              color: _inDark,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: const Text('Stock In',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(fontWeight: FontWeight.bold)),
                             ),
                           ),
                           Expanded(
@@ -406,10 +416,9 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                             child: Container(
                               color: _outDark,
                               padding: const EdgeInsets.symmetric(vertical: 8),
-                              child: Text('Stock Out',
+                              child: const Text('Stock Out',
                                   textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold)),
+                                  style: TextStyle(fontWeight: FontWeight.bold)),
                             ),
                           ),
                           Expanded(
@@ -417,10 +426,9 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                             child: Container(
                               color: _endDark,
                               padding: const EdgeInsets.symmetric(vertical: 8),
-                              child: Text('Ending',
+                              child: const Text('Ending',
                                   textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold)),
+                                  style: TextStyle(fontWeight: FontWeight.bold)),
                             ),
                           ),
                         ],
@@ -438,6 +446,8 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                         4: FlexColumnWidth(1.5),
                         5: FlexColumnWidth(1.5),
                         6: FlexColumnWidth(1.5),
+                        7: FlexColumnWidth(1.5),
+                        8: FlexColumnWidth(1.5),
                       },
                       children: [
                         // Column label row (medium shades)
@@ -445,6 +455,8 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                           _cell('Product', Colors.grey.shade200, bold: true),
                           _cell('Boxes', _begMid, bold: true, center: true),
                           _cell('Pcs',   _begMid, bold: true, center: true),
+                          _cell('Boxes', _inMid,  bold: true, center: true),
+                          _cell('Pcs',   _inMid,  bold: true, center: true),
                           _cell('Boxes', _outMid, bold: true, center: true),
                           _cell('Pcs',   _outMid, bold: true, center: true),
                           _cell('Boxes', _endMid, bold: true, center: true),
@@ -453,22 +465,19 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                         // Data rows (light shades)
                         ...data.products.map((p) {
                           final beg = data.beginning[p.id] ?? 0;
+                          final inn = data.stockIn[p.id]  ?? 0;
                           final out = data.stockOut[p.id] ?? 0;
-                          final end = data.ending[p.id] ?? 0;
+                          final end = data.ending[p.id]   ?? 0;
                           return TableRow(children: [
                             _cell(p.name, null),
-                            _cell(_fmt(beg ~/ p.piecesPerBox), _begLight,
-                                center: true),
-                            _cell(_fmt(beg % p.piecesPerBox), _begLight,
-                                center: true),
-                            _cell(_fmt(out ~/ p.piecesPerBox), _outLight,
-                                center: true),
-                            _cell(_fmt(out % p.piecesPerBox), _outLight,
-                                center: true),
-                            _cell(_fmt(end ~/ p.piecesPerBox), _endLight,
-                                center: true),
-                            _cell(_fmt(end % p.piecesPerBox), _endLight,
-                                center: true),
+                            _cell(_fmt(beg ~/ p.piecesPerBox), _begLight, center: true),
+                            _cell(_fmt(beg % p.piecesPerBox),  _begLight, center: true),
+                            _cell(_fmt(inn ~/ p.piecesPerBox), _inLight,  center: true),
+                            _cell(_fmt(inn % p.piecesPerBox),  _inLight,  center: true),
+                            _cell(_fmt(out ~/ p.piecesPerBox), _outLight, center: true),
+                            _cell(_fmt(out % p.piecesPerBox),  _outLight, center: true),
+                            _cell(_fmt(end ~/ p.piecesPerBox), _endLight, center: true),
+                            _cell(_fmt(end % p.piecesPerBox),  _endLight, center: true),
                           ]);
                         }),
                       ],
@@ -498,6 +507,10 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
   static final _begDark  = Colors.blue.shade200;
   static final _begMid   = Colors.blue.shade100;
   static final _begLight = Colors.blue.shade50;
+
+  static final _inDark   = Colors.teal.shade200;
+  static final _inMid    = Colors.teal.shade100;
+  static final _inLight  = Colors.teal.shade50;
 
   static final _outDark  = Colors.orange.shade200;
   static final _outMid   = Colors.orange.shade100;
@@ -574,11 +587,16 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
       }
     }
 
+    final stockIn = await ref
+        .read(stockMovementRepositoryProvider)
+        .sumInForDate(date);
+
     return _InvData(
         products: products,
         beginning: beginning,
-        ending: ending,
+        stockIn: stockIn,
         stockOut: onDate,
+        ending: ending,
         totalEndingValue: totalEndingValue);
   }
 
@@ -604,6 +622,7 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
 class _InvData {
   final List<Product> products;
   final Map<String, int> beginning;
+  final Map<String, int> stockIn;
   final Map<String, int> stockOut;
   final Map<String, int> ending;
   final double totalEndingValue;
@@ -611,6 +630,7 @@ class _InvData {
   const _InvData({
     required this.products,
     required this.beginning,
+    required this.stockIn,
     required this.stockOut,
     required this.ending,
     required this.totalEndingValue,
@@ -694,13 +714,14 @@ class _ProductMovementsTabState extends ConsumerState<_ProductMovementsTab> {
   }
 
   Future<List<_MovementRow>> _load() async {
+    final products = await ref.read(productRepositoryProvider).getAll();
+    final productsById = {for (final p in products) p.id: p};
+    final Map<String, _MovementRow> rows = {};
+
+    // Stock-out from invoices
     final invoices = await ref
         .read(invoiceRepositoryProvider)
         .getAll(startDate: _startDate, endDate: _endDate);
-    final products = await ref.read(productRepositoryProvider).getAll();
-    final productsById = {for (final p in products) p.id: p};
-
-    final Map<String, _MovementRow> rows = {};
     for (final inv in invoices) {
       if (inv.status == 'cancelled') continue;
       final items =
@@ -709,20 +730,41 @@ class _ProductMovementsTabState extends ConsumerState<_ProductMovementsTab> {
         final p = productsById[item.productId];
         if (p == null) continue;
         if (rows.containsKey(item.productId)) {
-          rows[item.productId]!.totalPieces += item.quantity;
+          rows[item.productId]!.outPieces += item.quantity;
           rows[item.productId]!.totalAmount += item.subtotal;
         } else {
           rows[item.productId] = _MovementRow(
             productName: p.name,
             piecesPerBox: p.piecesPerBox,
-            totalPieces: item.quantity,
+            outPieces: item.quantity,
             totalAmount: item.subtotal,
           );
         }
       }
     }
+
+    // Stock-in from manual stock movements
+    final stockIn = await ref
+        .read(stockMovementRepositoryProvider)
+        .sumInForRange(_startDate, _endDate);
+    for (final entry in stockIn.entries) {
+      final p = productsById[entry.key];
+      if (p == null) continue;
+      if (rows.containsKey(entry.key)) {
+        rows[entry.key]!.inPieces += entry.value;
+      } else {
+        rows[entry.key] = _MovementRow(
+          productName: p.name,
+          piecesPerBox: p.piecesPerBox,
+          outPieces: 0,
+          totalAmount: 0,
+          inPieces: entry.value,
+        );
+      }
+    }
+
     final sorted = rows.values.toList()
-      ..sort((a, b) => b.totalPieces.compareTo(a.totalPieces));
+      ..sort((a, b) => b.totalMoved.compareTo(a.totalMoved));
     return sorted;
   }
 
@@ -849,11 +891,25 @@ class _ProductMovementsTabState extends ConsumerState<_ProductMovementsTab> {
                                       : Colors.grey.shade600)),
                     ),
                     title: Text(row.productName),
-                    subtitle: Text(
-                        '${row.totalBoxes} box(es) + ${row.remainPieces} pcs  (${formatNumber(row.totalPieces)} pcs)'),
-                    trailing: Text(formatCurrency(row.totalAmount),
-                        style:
-                            const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (row.inPieces > 0)
+                          Text(
+                            'In: ${row.inBoxes} box(es) + ${row.inRemain} pcs',
+                            style: TextStyle(color: Colors.teal.shade700),
+                          ),
+                        if (row.outPieces > 0)
+                          Text(
+                            'Out: ${row.outBoxes} box(es) + ${row.outRemain} pcs',
+                            style: TextStyle(color: Colors.orange.shade700),
+                          ),
+                      ],
+                    ),
+                    trailing: row.totalAmount > 0
+                        ? Text(formatCurrency(row.totalAmount),
+                            style: const TextStyle(fontWeight: FontWeight.bold))
+                        : null,
                   );
                 },
               );
@@ -868,16 +924,21 @@ class _ProductMovementsTabState extends ConsumerState<_ProductMovementsTab> {
 class _MovementRow {
   final String productName;
   final int piecesPerBox;
-  int totalPieces;
+  int outPieces;
   double totalAmount;
+  int inPieces;
 
   _MovementRow({
     required this.productName,
     required this.piecesPerBox,
-    required this.totalPieces,
+    required this.outPieces,
     required this.totalAmount,
+    this.inPieces = 0,
   });
 
-  int get totalBoxes => totalPieces ~/ piecesPerBox;
-  int get remainPieces => totalPieces % piecesPerBox;
+  int get outBoxes => outPieces ~/ piecesPerBox;
+  int get outRemain => outPieces % piecesPerBox;
+  int get inBoxes  => inPieces ~/ piecesPerBox;
+  int get inRemain => inPieces % piecesPerBox;
+  int get totalMoved => outPieces + inPieces;
 }

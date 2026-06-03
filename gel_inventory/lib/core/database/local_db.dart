@@ -156,6 +156,23 @@ class VanStocks extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Manual stock-in/out movements with optional references.
+class StockMovements extends Table {
+  TextColumn get id => text()();
+  TextColumn get productId => text().references(Products, #id)();
+  // movementType: 'in' | 'out'
+  TextColumn get movementType => text()();
+  IntColumn get quantityPieces => integer()();
+  DateTimeColumn get referenceDate => dateTime().nullable()();
+  TextColumn get invoiceNumber => text().nullable()();
+  TextColumn get comments => text().nullable()();
+  DateTimeColumn get createdAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 class SyncQueue extends Table {
   TextColumn get id => text()();
   TextColumn get targetTable => text()();
@@ -184,13 +201,14 @@ class SyncQueue extends Table {
   BadOrders,
   BadOrderItems,
   VanStocks,
+  StockMovements,
   SyncQueue,
 ])
 class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -219,6 +237,9 @@ class LocalDatabase extends _$LocalDatabase {
           if (from < 5) {
             await _addColumnIfMissing(m.database, 'product_discounts',
                 'discount_type', "TEXT NOT NULL DEFAULT 'percent'");
+          }
+          if (from < 6) {
+            await m.createTable(stockMovements);
           }
         },
       );

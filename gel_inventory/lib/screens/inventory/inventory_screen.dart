@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 import '../../models/inventory_item.dart';
 import '../../models/product.dart';
+import '../../models/stock_movement.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/product_repository.dart';
+import '../../repositories/stock_movement_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../widgets/common/app_scaffold.dart';
 
@@ -93,43 +96,99 @@ class InventoryScreen extends ConsumerWidget {
     int currentQty, {
     required bool isAdd,
   }) async {
-    final ctrl = TextEditingController();
-    String unitType = 'piece';
+    final qtyCtrl     = TextEditingController();
+    final invCtrl     = TextEditingController();
+    final commentCtrl = TextEditingController();
+    String unitType   = 'piece';
+    DateTime refDate  = DateTime.now();
 
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
           title: Text(isAdd ? 'Add Stock' : 'Remove Stock'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(product.name,
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-              Text('Current: ${formatNumber(currentQty)} pcs',
-                  style: const TextStyle(color: Colors.grey)),
-              const SizedBox(height: 8),
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'piece', label: Text('Pieces')),
-                  ButtonSegment(value: 'box', label: Text('Boxes')),
-                ],
-                selected: {unitType},
-                onSelectionChanged: (s) =>
-                    setState(() => unitType = s.first),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: ctrl,
-                decoration: InputDecoration(
-                  labelText:
-                      'Quantity (${unitType == 'box' ? 'boxes' : 'pcs'})',
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(product.name,
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                Text('Current: ${formatNumber(currentQty)} pcs',
+                    style: const TextStyle(color: Colors.grey)),
+                const SizedBox(height: 8),
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(value: 'piece', label: Text('Pieces')),
+                    ButtonSegment(value: 'box', label: Text('Boxes')),
+                  ],
+                  selected: {unitType},
+                  onSelectionChanged: (s) =>
+                      setState(() => unitType = s.first),
                 ),
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                autofocus: true,
-              ),
-            ],
+                const SizedBox(height: 8),
+                TextField(
+                  controller: qtyCtrl,
+                  decoration: InputDecoration(
+                    labelText:
+                        'Quantity (${unitType == 'box' ? 'boxes' : 'pcs'})',
+                  ),
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  autofocus: true,
+                ),
+                if (isAdd) ...[
+                  const SizedBox(height: 16),
+                  const Divider(),
+                  const SizedBox(height: 4),
+                  const Text('Reference',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 13)),
+                  const SizedBox(height: 8),
+                  InkWell(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: ctx,
+                        initialDate: refDate,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2100),
+                      );
+                      if (picked != null) setState(() => refDate = picked);
+                    },
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Date',
+                        suffixIcon: Icon(Icons.calendar_today, size: 18),
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      child: Text(
+                        '${refDate.year}-'
+                        '${refDate.month.toString().padLeft(2, '0')}-'
+                        '${refDate.day.toString().padLeft(2, '0')}',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: invCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Invoice / Reference No.',
+                      isDense: true,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: commentCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Comments',
+                      isDense: true,
+                    ),
+                    maxLines: 2,
+                  ),
+                ],
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -137,7 +196,7 @@ class InventoryScreen extends ConsumerWidget {
                 child: const Text('Cancel')),
             FilledButton(
               onPressed: () async {
-                final qty = int.tryParse(ctrl.text) ?? 0;
+                final qty = int.tryParse(qtyCtrl.text) ?? 0;
                 if (qty <= 0) return;
                 final pieces =
                     unitType == 'box' ? qty * product.piecesPerBox : qty;
@@ -145,6 +204,24 @@ class InventoryScreen extends ConsumerWidget {
                 await ref
                     .read(inventoryRepositoryProvider)
                     .adjust(productId: product.id, deltaPieces: delta);
+                if (isAdd) {
+                  await ref
+                      .read(stockMovementRepositoryProvider)
+                      .save(StockMovement(
+                        id: const Uuid().v4(),
+                        productId: product.id,
+                        movementType: 'in',
+                        quantityPieces: pieces,
+                        referenceDate: refDate,
+                        invoiceNumber: invCtrl.text.trim().isEmpty
+                            ? null
+                            : invCtrl.text.trim(),
+                        comments: commentCtrl.text.trim().isEmpty
+                            ? null
+                            : commentCtrl.text.trim(),
+                        createdAt: DateTime.now(),
+                      ));
+                }
                 if (ctx.mounted) Navigator.pop(ctx);
                 ref.invalidate(inventoryListProvider);
               },

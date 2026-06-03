@@ -43,6 +43,8 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
   final _amountMinQtyCtrl  = TextEditingController();
   final _amountValueCtrl   = TextEditingController();
   String _discountType = 'percent'; // 'percent' | 'amount'
+  bool _percentEnabled = false;
+  bool _amountEnabled  = false;
 
   TextEditingController get _activeMinQtyCtrl =>
       _discountType == 'percent' ? _percentMinQtyCtrl : _amountMinQtyCtrl;
@@ -83,6 +85,8 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
         if (_existingDiscount != null) {
           final ppb = _existing!.piecesPerBox;
           _discountType = _existingDiscount!.discountType;
+          _percentEnabled = _discountType == 'percent';
+          _amountEnabled  = _discountType == 'amount';
           // Populate only the matching type's controllers
           _activeMinQtyCtrl.text =
               (_existingDiscount!.minQuantityPieces ~/ ppb).toString();
@@ -153,24 +157,26 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
     final existing = _existing;
     if (existing == null) return;
 
-    final minBoxes = int.tryParse(_activeMinQtyCtrl.text);
-    final discPct = double.tryParse(_activeValueCtrl.text);
-
-    if (minBoxes != null && minBoxes > 0 && discPct != null && discPct > 0) {
-      final newDiscount = ProductDiscount(
-        id: _existingDiscount?.id ?? const Uuid().v4(),
-        productId: existing.id,
-        minQuantityPieces: minBoxes * existing.piecesPerBox,
-        discountValue: discPct,
-        discountType: _discountType,
-      );
-      await ref.read(productDiscountRepositoryProvider).upsert(newDiscount);
-      setState(() => _existingDiscount = newDiscount);
-    } else {
+    final bool hasActive = _percentEnabled || _amountEnabled;
+    if (!hasActive) {
       await ref
           .read(productDiscountRepositoryProvider)
           .deleteForProduct(existing.id);
       setState(() => _existingDiscount = null);
+    } else {
+      final minBoxes = int.tryParse(_activeMinQtyCtrl.text);
+      final discVal  = double.tryParse(_activeValueCtrl.text);
+      if (minBoxes != null && minBoxes > 0 && discVal != null && discVal > 0) {
+        final newDiscount = ProductDiscount(
+          id: _existingDiscount?.id ?? const Uuid().v4(),
+          productId: existing.id,
+          minQuantityPieces: minBoxes * existing.piecesPerBox,
+          discountValue: discVal,
+          discountType: _discountType,
+        );
+        await ref.read(productDiscountRepositoryProvider).upsert(newDiscount);
+        setState(() => _existingDiscount = newDiscount);
+      }
     }
 
     if (mounted) {
@@ -302,80 +308,129 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
   }
 
   Widget _buildDiscount() {
-    final ppb = int.tryParse(_piecesCtrl.text) ??
-        _existing?.piecesPerBox ??
-        1;
+    final ppb = int.tryParse(_piecesCtrl.text) ?? _existing?.piecesPerBox ?? 1;
+
+    Widget discountSection({
+      required String title,
+      required IconData icon,
+      required bool enabled,
+      required ValueChanged<bool?> onToggle,
+      required TextEditingController minQtyCtrl,
+      required TextEditingController valueCtrl,
+      required String valueLabel,
+      String? suffixText,
+      String? prefixText,
+    }) {
+      return Card(
+        margin: const EdgeInsets.only(bottom: 12),
+        child: Column(
+          children: [
+            CheckboxListTile(
+              value: enabled,
+              onChanged: onToggle,
+              title: Row(
+                children: [
+                  Icon(icon, size: 16),
+                  const SizedBox(width: 6),
+                  Text(title,
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                ],
+              ),
+              controlAffinity: ListTileControlAffinity.leading,
+            ),
+            if (enabled)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Column(
+                  children: [
+                    TextFormField(
+                      controller: minQtyCtrl,
+                      enabled: enabled,
+                      decoration: InputDecoration(
+                        labelText: 'Minimum quantity (boxes)',
+                        helperText: ppb > 0
+                            ? '= ${(int.tryParse(minQtyCtrl.text) ?? 0) * ppb} pcs'
+                            : null,
+                      ),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: valueCtrl,
+                      enabled: enabled,
+                      decoration: InputDecoration(
+                        labelText: valueLabel,
+                        suffixText: suffixText,
+                        prefixText: prefixText,
+                      ),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Quantity Discount',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
+          const Text('Quantity Discount',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           const SizedBox(height: 4),
           Text(
-            'Automatically apply a discount when the ordered quantity reaches a threshold.',
+            'Enable one discount type. Enabling one disables the other.',
             style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
           ),
           const SizedBox(height: 12),
-          // Discount type selector
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(
-                  value: 'percent',
-                  icon: Icon(Icons.percent, size: 16),
-                  label: Text('Percentage')),
-              ButtonSegment(
-                  value: 'amount',
-                  icon: Icon(Icons.attach_money, size: 16),
-                  label: Text('Fixed Amount')),
-            ],
-            selected: {_discountType},
-            onSelectionChanged: (s) => setState(() => _discountType = s.first),
+          discountSection(
+            title: 'Percentage Discount',
+            icon: Icons.percent,
+            enabled: _percentEnabled,
+            onToggle: (val) => setState(() {
+              _percentEnabled = val ?? false;
+              if (_percentEnabled) {
+                _amountEnabled = false;
+                _discountType = 'percent';
+              }
+            }),
+            minQtyCtrl: _percentMinQtyCtrl,
+            valueCtrl: _percentValueCtrl,
+            valueLabel: 'Discount %',
+            suffixText: '%',
           ),
-          const SizedBox(height: 12),
-          TextFormField(
-            controller: _activeMinQtyCtrl,
-            decoration: InputDecoration(
-              labelText: 'Minimum quantity (boxes) to trigger discount',
-              helperText: ppb > 0
-                  ? '= ${(int.tryParse(_activeMinQtyCtrl.text) ?? 0) * ppb} pcs'
-                  : null,
-            ),
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            onChanged: (_) => setState(() {}),
+          discountSection(
+            title: 'Fixed Amount Discount',
+            icon: Icons.attach_money,
+            enabled: _amountEnabled,
+            onToggle: (val) => setState(() {
+              _amountEnabled = val ?? false;
+              if (_amountEnabled) {
+                _percentEnabled = false;
+                _discountType = 'amount';
+              }
+            }),
+            minQtyCtrl: _amountMinQtyCtrl,
+            valueCtrl: _amountValueCtrl,
+            valueLabel: 'Discount Amount (₱)',
+            prefixText: '₱ ',
           ),
-          const SizedBox(height: 12),
-          TextFormField(
-            controller: _activeValueCtrl,
-            decoration: InputDecoration(
-              labelText: _discountType == 'percent'
-                  ? 'Discount %'
-                  : 'Discount Amount (₱)',
-              suffixText: _discountType == 'percent' ? '%' : null,
-              prefixText: _discountType == 'amount' ? '₱ ' : null,
-            ),
-            keyboardType:
-                const TextInputType.numberWithOptions(decimal: true),
-          ),
-          const SizedBox(height: 8),
-          if (_existingDiscount != null)
+          if (_existingDiscount != null) ...[
             Text(
               _existingDiscount!.isPercent
-                  ? 'Current: ${(_existingDiscount!.minQuantityPieces ~/ ppb)} boxes → ${_existingDiscount!.discountValue.toStringAsFixed(1)}% off'
-                  : 'Current: ${(_existingDiscount!.minQuantityPieces ~/ ppb)} boxes → ₱${_existingDiscount!.discountValue.toStringAsFixed(2)} off',
+                  ? 'Active: ${_existingDiscount!.minQuantityPieces ~/ ppb} boxes → ${_existingDiscount!.discountValue.toStringAsFixed(1)}% off'
+                  : 'Active: ${_existingDiscount!.minQuantityPieces ~/ ppb} boxes → ₱${_existingDiscount!.discountValue.toStringAsFixed(2)} off',
               style: TextStyle(color: Colors.green.shade700, fontSize: 13),
             ),
-          const SizedBox(height: 24),
-          Text(
-            'Leave both fields empty to remove the discount rule.',
-            style:
-                TextStyle(color: Colors.grey.shade500, fontSize: 12),
-          ),
-          const SizedBox(height: 16),
+            const SizedBox(height: 8),
+          ],
+          const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerRight,
             child: FilledButton(

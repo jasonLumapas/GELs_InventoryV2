@@ -52,7 +52,8 @@ class _LineItem {
     if (discount!.isPercent) {
       return originalAmount * discount!.discountValue / 100;
     } else {
-      return discount!.discountValue.clamp(0.0, originalAmount);
+      final multiples = quantityInPieces ~/ discount!.minQuantityPieces;
+      return (multiples * discount!.discountValue).clamp(0.0, originalAmount);
     }
   }
 

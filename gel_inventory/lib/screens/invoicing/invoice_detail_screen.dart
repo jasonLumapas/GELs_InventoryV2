@@ -11,8 +11,10 @@ import '../../models/invoice_item.dart';
 import '../../models/product.dart';
 import '../../models/product_price.dart';
 import '../../models/product_discount.dart';
+import '../../models/invoice_payment.dart';
 import '../../repositories/client_repository.dart';
 import '../../repositories/inventory_repository.dart';
+import '../../repositories/invoice_payment_repository.dart';
 import '../../repositories/invoice_repository.dart';
 import '../../repositories/product_discount_repository.dart';
 import '../../repositories/product_repository.dart';
@@ -121,6 +123,13 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   final Map<String, ProductPrice?> _priceCache = {};
   final Map<String, InventoryItem?> _inventoryCache = {};
   final Map<String, ProductDiscount?> _discountCache = {};
+  String _paymentType = 'cash';
+  final _partialAmountCtrl = TextEditingController();
+  final _checkRefCtrl      = TextEditingController();
+  final _checkAmountCtrl   = TextEditingController();
+  DateTime? _checkDueDate;
+  DateTime? _partialDate;
+  List<InvoicePayment> _payments = [];
   bool _loading = true;
   bool _saving = false;
 
@@ -128,6 +137,14 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _partialAmountCtrl.dispose();
+    _checkRefCtrl.dispose();
+    _checkAmountCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -146,6 +163,20 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     _productsById = {for (final p in _products) p.id: p};
     _selectedClient =
         _clients.where((c) => c.id == _invoice!.clientId).firstOrNull;
+    _paymentType = _invoice!.paymentType;
+    if (_invoice!.partialAmount != null) {
+      _partialAmountCtrl.text =
+          _invoice!.partialAmount!.toStringAsFixed(2);
+    }
+    _partialDate = _invoice!.partialDate;
+    _checkRefCtrl.text    = _invoice!.checkReference ?? '';
+    _checkAmountCtrl.text = _invoice!.checkAmount != null
+        ? _invoice!.checkAmount!.toStringAsFixed(2)
+        : '';
+    _checkDueDate = _invoice!.checkDueDate;
+    _payments = await ref
+        .read(invoicePaymentRepositoryProvider)
+        .getForInvoice(widget.invoiceId);
 
     // Pre-load inventory + discounts for products in this invoice
     for (final item in _originalItems) {
@@ -183,6 +214,29 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
         .toList();
 
     setState(() => _loading = false);
+  }
+
+  Future<void> _addPayment() async {
+    final amount = double.tryParse(_partialAmountCtrl.text);
+    if (amount == null || amount <= 0) return;
+    final payment = InvoicePayment(
+      id: const Uuid().v4(),
+      invoiceId: widget.invoiceId,
+      amount: amount,
+      paymentDate: _partialDate ?? DateTime.now(),
+      createdAt: DateTime.now(),
+    );
+    await ref.read(invoicePaymentRepositoryProvider).add(payment);
+    setState(() {
+      _payments = [..._payments, payment];
+      _partialAmountCtrl.clear();
+      _partialDate = null;
+    });
+  }
+
+  Future<void> _deletePayment(String id) async {
+    await ref.read(invoicePaymentRepositoryProvider).delete(id);
+    setState(() => _payments = _payments.where((p) => p.id != id).toList());
   }
 
   Future<void> _pickClient() async {
@@ -307,9 +361,22 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   Future<void> _saveOnly() async {
     setState(() => _saving = true);
 
+    final partial = _paymentType == 'partial';
     final updatedInvoice = _invoice!.copyWith(
       clientId: _selectedClient!.id,
       totalAmount: _total,
+      paymentType: _paymentType,
+      partialAmount: partial
+          ? double.tryParse(_partialAmountCtrl.text)
+          : null,
+      partialDate: partial ? _partialDate : null,
+      checkReference: _paymentType == 'check'
+          ? (_checkRefCtrl.text.trim().isEmpty ? null : _checkRefCtrl.text.trim())
+          : null,
+      checkAmount: _paymentType == 'check'
+          ? double.tryParse(_checkAmountCtrl.text)
+          : null,
+      checkDueDate: _paymentType == 'check' ? _checkDueDate : null,
     );
     final newItems = _editItems
         .map((li) => li.toInvoiceItem(widget.invoiceId))
@@ -331,10 +398,23 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   Future<void> _saveAndPrint() async {
     setState(() => _saving = true);
 
+    final partial = _paymentType == 'partial';
     final updatedInvoice = _invoice!.copyWith(
       clientId: _selectedClient!.id,
       totalAmount: _total,
       status: 'printed',
+      paymentType: _paymentType,
+      partialAmount: partial
+          ? double.tryParse(_partialAmountCtrl.text)
+          : null,
+      partialDate: partial ? _partialDate : null,
+      checkReference: _paymentType == 'check'
+          ? (_checkRefCtrl.text.trim().isEmpty ? null : _checkRefCtrl.text.trim())
+          : null,
+      checkAmount: _paymentType == 'check'
+          ? double.tryParse(_checkAmountCtrl.text)
+          : null,
+      checkDueDate: _paymentType == 'check' ? _checkDueDate : null,
     );
     final newItems = _editItems
         .map((li) => li.toInvoiceItem(widget.invoiceId))
@@ -428,6 +508,21 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                             const EdgeInsets.symmetric(horizontal: 8),
                       ),
                       const SizedBox(width: 4),
+                      DropdownButton<String>(
+                        value: _paymentType,
+                        isDense: true,
+                        underline: const SizedBox(),
+                        items: const [
+                          DropdownMenuItem(value: 'cash',    child: Text('Cash')),
+                          DropdownMenuItem(value: 'check',   child: Text('Check')),
+                          DropdownMenuItem(value: 'credit',  child: Text('Credit')),
+                          DropdownMenuItem(value: 'partial', child: Text('Partial')),
+                        ],
+                        onChanged: !isCancelled
+                            ? (v) => setState(() => _paymentType = v!)
+                            : null,
+                      ),
+                      const SizedBox(width: 4),
                       Chip(
                         label: Text(_invoice!.status.toUpperCase()),
                         backgroundColor: isCancelled
@@ -442,9 +537,229 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                 ),
 
                 if (!isCancelled) ...[
+                  // Check fields
+                  if (_paymentType == 'check') ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _checkAmountCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Check Amount',
+                                prefixText: '₱ ',
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                              keyboardType: const TextInputType
+                                  .numberWithOptions(decimal: true),
+                              readOnly: isCancelled,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: InkWell(
+                              onTap: isCancelled ? null : () async {
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate:
+                                      _checkDueDate ?? DateTime.now(),
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime(2100),
+                                );
+                                if (picked != null) {
+                                  setState(() => _checkDueDate = picked);
+                                }
+                              },
+                              child: InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText: 'Due Date',
+                                  suffixIcon: Icon(
+                                      Icons.calendar_today, size: 18),
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                ),
+                                child: Text(
+                                  _checkDueDate == null
+                                      ? 'Select date'
+                                      : '${_checkDueDate!.year}-'
+                                        '${_checkDueDate!.month.toString().padLeft(2, '0')}-'
+                                        '${_checkDueDate!.day.toString().padLeft(2, '0')}',
+                                  style: TextStyle(
+                                    color: _checkDueDate == null
+                                        ? Theme.of(context).hintColor
+                                        : null,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                      child: TextField(
+                        controller: _checkRefCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Check Reference No.',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                        readOnly: isCancelled,
+                      ),
+                    ),
+                  ],
+
+                  // Partial payment — add form + history
+                  if (_paymentType == 'partial') ...[
+                    // Add payment row
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _partialAmountCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Amount',
+                                prefixText: '₱ ',
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                              keyboardType: const TextInputType
+                                  .numberWithOptions(decimal: true),
+                              readOnly: isCancelled,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: InkWell(
+                              onTap: isCancelled ? null : () async {
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate:
+                                      _partialDate ?? DateTime.now(),
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime(2100),
+                                );
+                                if (picked != null) {
+                                  setState(() => _partialDate = picked);
+                                }
+                              },
+                              child: InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText: 'Date',
+                                  suffixIcon: Icon(
+                                      Icons.calendar_today, size: 18),
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                ),
+                                child: Text(
+                                  _partialDate == null
+                                      ? 'Select date'
+                                      : DateFormat('MMM dd, yyyy')
+                                          .format(_partialDate!),
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: _partialDate == null
+                                        ? Theme.of(context).hintColor
+                                        : null,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          FilledButton(
+                            onPressed: isCancelled ? null : _addPayment,
+                            style: FilledButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12)),
+                            child: const Text('Add'),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Payment history
+                    if (_payments.isNotEmpty) ...[
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(12, 4, 12, 2),
+                        child: Text('Payment History',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13)),
+                      ),
+                      ..._payments.map((p) => ListTile(
+                            dense: true,
+                            contentPadding:
+                                const EdgeInsets.symmetric(horizontal: 12),
+                            title: Text(formatCurrency(p.amount),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w500)),
+                            subtitle: p.paymentDate == null
+                                ? null
+                                : Text(DateFormat('MMM dd, yyyy')
+                                    .format(p.paymentDate!)),
+                            trailing: isCancelled
+                                ? null
+                                : IconButton(
+                                    icon: const Icon(Icons.delete_outline,
+                                        color: Colors.red, size: 18),
+                                    onPressed: () => _deletePayment(p.id),
+                                  ),
+                          )),
+                    ],
+
+                    // Totals
+                    Builder(builder: (_) {
+                      final totalPaid =
+                          _payments.fold(0.0, (s, p) => s + p.amount);
+                      final balance = (_total - totalPaid)
+                          .clamp(0.0, double.infinity);
+                      return Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+                        child: Column(
+                          children: [
+                            const Divider(height: 8),
+                            Row(children: [
+                              const Text('Total Paid:',
+                                  style: TextStyle(fontSize: 13)),
+                              const SizedBox(width: 8),
+                              Text(formatCurrency(totalPaid),
+                                  style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500)),
+                            ]),
+                            const SizedBox(height: 2),
+                            Row(children: [
+                              const Text('Balance:',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600)),
+                              const SizedBox(width: 8),
+                              Text(
+                                formatCurrency(balance),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: balance > 0
+                                      ? Colors.red.shade700
+                                      : Colors.green.shade700,
+                                ),
+                              ),
+                            ]),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+
                   // Client selector
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 20),
                     child: InkWell(
                       onTap: _pickClient,
                       borderRadius: BorderRadius.circular(4),

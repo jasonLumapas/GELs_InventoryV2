@@ -3,7 +3,7 @@ class AppConstants {
 
   /// Set to true to run entirely on local SQLite (no Supabase calls).
   /// Set to false to enable online sync with Supabase.
-  static const bool offlineOnly = true;
+  static const bool offlineOnly = false;
 
   // Replace with your actual Supabase project URL and anon key
   static const String supabaseUrl = 'https://bcytplqoildjjznxpltl.supabase.co';

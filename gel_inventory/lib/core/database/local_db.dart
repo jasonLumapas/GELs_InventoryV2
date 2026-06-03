@@ -93,6 +93,14 @@ class Invoices extends Table {
   // invoice_type: 'delivery' | 'walk_in'
   TextColumn get invoiceType =>
       text().withDefault(const Constant('delivery'))();
+  // payment_type: 'cash' | 'check' | 'credit' | 'partial'
+  TextColumn get paymentType =>
+      text().withDefault(const Constant('cash'))();
+  RealColumn get partialAmount => real().nullable()();
+  DateTimeColumn get partialDate => dateTime().nullable()();
+  TextColumn get checkReference => text().nullable()();
+  RealColumn get checkAmount  => real().nullable()();
+  DateTimeColumn get checkDueDate => dateTime().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -173,6 +181,20 @@ class StockMovements extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Individual payment records for partial-payment invoices.
+class InvoicePayments extends Table {
+  TextColumn get id => text()();
+  TextColumn get invoiceId => text().references(Invoices, #id)();
+  RealColumn get amount => real()();
+  DateTimeColumn get paymentDate => dateTime().nullable()();
+  TextColumn get notes => text().nullable()();
+  DateTimeColumn get createdAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 class SyncQueue extends Table {
   TextColumn get id => text()();
   TextColumn get targetTable => text()();
@@ -202,13 +224,14 @@ class SyncQueue extends Table {
   BadOrderItems,
   VanStocks,
   StockMovements,
+  InvoicePayments,
   SyncQueue,
 ])
 class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -240,6 +263,29 @@ class LocalDatabase extends _$LocalDatabase {
           }
           if (from < 6) {
             await m.createTable(stockMovements);
+          }
+          if (from < 7) {
+            await _addColumnIfMissing(m.database, 'invoices', 'payment_type',
+                "TEXT NOT NULL DEFAULT 'cash'");
+          }
+          if (from < 8) {
+            await _addColumnIfMissing(
+                m.database, 'invoices', 'partial_amount', 'REAL');
+            await _addColumnIfMissing(
+                m.database, 'invoices', 'partial_date', 'INTEGER');
+          }
+          if (from < 9) {
+            await _addColumnIfMissing(
+                m.database, 'invoices', 'check_reference', 'TEXT');
+          }
+          if (from < 10) {
+            await _addColumnIfMissing(
+                m.database, 'invoices', 'check_amount', 'REAL');
+            await _addColumnIfMissing(
+                m.database, 'invoices', 'check_due_date', 'INTEGER');
+          }
+          if (from < 11) {
+            await m.createTable(invoicePayments);
           }
         },
       );

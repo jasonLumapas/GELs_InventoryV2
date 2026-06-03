@@ -86,8 +86,14 @@ class InvoiceRepository extends BaseRepository {
               totalAmount: r.totalAmount,
               status: r.status,
               createdAt: r.createdAt,
-              invoiceNumber: r.invoiceNumber,
-              invoiceType: r.invoiceType,
+              invoiceNumber:  r.invoiceNumber,
+              invoiceType:    r.invoiceType,
+              paymentType:    r.paymentType,
+              partialAmount:  r.partialAmount,
+              partialDate:    r.partialDate,
+              checkReference: r.checkReference,
+              checkAmount:    r.checkAmount,
+              checkDueDate:   r.checkDueDate,
             ))
         .toList();
   }
@@ -294,7 +300,13 @@ class InvoiceRepository extends BaseRepository {
           status: drift.Value(inv.status),
           createdAt: drift.Value(inv.createdAt),
           invoiceNumber: drift.Value(inv.invoiceNumber),
-          invoiceType: drift.Value(inv.invoiceType),
+          invoiceType:   drift.Value(inv.invoiceType),
+          paymentType:    drift.Value(inv.paymentType),
+          partialAmount:  drift.Value(inv.partialAmount),
+          partialDate:    drift.Value(inv.partialDate),
+          checkReference: drift.Value(inv.checkReference),
+          checkAmount:    drift.Value(inv.checkAmount),
+          checkDueDate:   drift.Value(inv.checkDueDate),
         ));
   }
 

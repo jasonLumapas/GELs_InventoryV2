@@ -3,10 +3,16 @@ class Invoice {
   final String clientId;
   final DateTime invoiceDate;
   final double totalAmount;
-  final String status; // draft | printed | cancelled
+  final String status;       // draft | printed | cancelled
   final DateTime createdAt;
   final String? invoiceNumber;
-  final String invoiceType; // delivery | walk_in
+  final String invoiceType;  // delivery | walk_in
+  final String paymentType;   // cash | check | credit | partial
+  final double? partialAmount;
+  final DateTime? partialDate;
+  final String?   checkReference;
+  final double?   checkAmount;
+  final DateTime? checkDueDate;
 
   const Invoice({
     required this.id,
@@ -17,6 +23,12 @@ class Invoice {
     required this.createdAt,
     this.invoiceNumber,
     this.invoiceType = 'delivery',
+    this.paymentType = 'cash',
+    this.partialAmount,
+    this.partialDate,
+    this.checkReference,
+    this.checkAmount,
+    this.checkDueDate,
   });
 
   factory Invoice.fromJson(Map<String, dynamic> j) => Invoice(
@@ -27,7 +39,17 @@ class Invoice {
         status: j['status'] as String,
         createdAt: DateTime.parse(j['created_at'] as String),
         invoiceNumber: j['invoice_number'] as String?,
-        invoiceType: (j['invoice_type'] as String?) ?? 'delivery',
+        invoiceType:    (j['invoice_type'] as String?) ?? 'delivery',
+        paymentType:    (j['payment_type'] as String?) ?? 'cash',
+        partialAmount:   (j['partial_amount'] as num?)?.toDouble(),
+        partialDate:     j['partial_date'] == null
+            ? null
+            : DateTime.parse(j['partial_date'] as String),
+        checkReference:  j['check_reference'] as String?,
+        checkAmount:     (j['check_amount'] as num?)?.toDouble(),
+        checkDueDate:    j['check_due_date'] == null
+            ? null
+            : DateTime.parse(j['check_due_date'] as String),
       );
 
   Map<String, dynamic> toJson() => {
@@ -38,13 +60,28 @@ class Invoice {
         'status': status,
         'created_at': createdAt.toIso8601String(),
         'invoice_number': invoiceNumber,
-        'invoice_type': invoiceType,
+        'invoice_type':   invoiceType,
+        'payment_type':   paymentType,
+        'partial_amount':  partialAmount,
+        'partial_date':    partialDate?.toIso8601String(),
+        'check_reference': checkReference,
+        'check_amount':    checkAmount,
+        'check_due_date':  checkDueDate?.toIso8601String(),
       };
 
   String get displayNumber =>
       invoiceNumber ?? 'INV-${id.substring(0, 8).toUpperCase()}';
 
   bool get isDelivery => invoiceType == 'delivery';
+
+  String get paymentLabel {
+    switch (paymentType) {
+      case 'check':   return 'Check';
+      case 'credit':  return 'Credit';
+      case 'partial': return 'Partial';
+      default:        return 'Cash';
+    }
+  }
 
   Invoice copyWith({
     double? totalAmount,
@@ -53,6 +90,12 @@ class Invoice {
     DateTime? invoiceDate,
     String? invoiceNumber,
     String? invoiceType,
+    String? paymentType,
+    Object? partialAmount  = _sentinel,
+    Object? partialDate    = _sentinel,
+    Object? checkReference = _sentinel,
+    Object? checkAmount    = _sentinel,
+    Object? checkDueDate   = _sentinel,
   }) =>
       Invoice(
         id: id,
@@ -63,5 +106,23 @@ class Invoice {
         createdAt: createdAt,
         invoiceNumber: invoiceNumber ?? this.invoiceNumber,
         invoiceType: invoiceType ?? this.invoiceType,
+        paymentType: paymentType ?? this.paymentType,
+        partialAmount: partialAmount == _sentinel
+            ? this.partialAmount
+            : partialAmount as double?,
+        partialDate: partialDate == _sentinel
+            ? this.partialDate
+            : partialDate as DateTime?,
+        checkReference: checkReference == _sentinel
+            ? this.checkReference
+            : checkReference as String?,
+        checkAmount: checkAmount == _sentinel
+            ? this.checkAmount
+            : checkAmount as double?,
+        checkDueDate: checkDueDate == _sentinel
+            ? this.checkDueDate
+            : checkDueDate as DateTime?,
       );
 }
+
+const Object _sentinel = Object();

@@ -90,7 +90,8 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
   final Map<String, InventoryItem?> _inventoryCache = {};
   final Map<String, ProductDiscount?> _discountCache = {};
   Client? _selectedClient;
-  String _invoiceType = 'delivery';
+  String _invoiceType  = 'delivery';
+  String _paymentType  = 'cash';
   final List<_LineItem> _lineItems = [];
   bool _loading = true;
   bool _saving = false;
@@ -239,7 +240,8 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       status: 'printed',
       createdAt: now,
       invoiceNumber: invoiceNumber,
-      invoiceType: _invoiceType,
+      invoiceType:  _invoiceType,
+      paymentType:  _paymentType,
     );
 
     final items = _lineItems.map((li) {
@@ -288,24 +290,41 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // Invoice type selector
+                // Invoice type + payment type
                 Padding(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(
-                          value: 'delivery',
-                          icon: Icon(Icons.local_shipping, size: 16),
-                          label: Text('Delivery')),
-                      ButtonSegment(
-                          value: 'walk_in',
-                          icon: Icon(Icons.storefront, size: 16),
-                          label: Text('Walk-in')),
+                  child: Row(
+                    children: [
+                      SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment(
+                              value: 'delivery',
+                              icon: Icon(Icons.local_shipping, size: 16),
+                              label: Text('Delivery')),
+                          ButtonSegment(
+                              value: 'walk_in',
+                              icon: Icon(Icons.storefront, size: 16),
+                              label: Text('Walk-in')),
+                        ],
+                        selected: {_invoiceType},
+                        onSelectionChanged: (s) =>
+                            setState(() => _invoiceType = s.first),
+                      ),
+                      const Spacer(),
+                      DropdownButton<String>(
+                        value: _paymentType,
+                        isDense: true,
+                        underline: const SizedBox(),
+                        items: const [
+                          DropdownMenuItem(value: 'cash',    child: Text('Cash')),
+                          DropdownMenuItem(value: 'check',   child: Text('Check')),
+                          DropdownMenuItem(value: 'credit',  child: Text('Credit')),
+                          DropdownMenuItem(value: 'partial', child: Text('Partial')),
+                        ],
+                        onChanged: (v) => setState(() => _paymentType = v!),
+                      ),
                     ],
-                    selected: {_invoiceType},
-                    onSelectionChanged: (s) =>
-                        setState(() => _invoiceType = s.first),
                   ),
                 ),
 

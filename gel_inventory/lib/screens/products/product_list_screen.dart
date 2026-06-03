@@ -6,13 +6,22 @@ import '../../repositories/supplier_repository.dart';
 import '../../widgets/common/app_scaffold.dart';
 import '../../widgets/common/confirm_dialog.dart';
 
-class ProductListScreen extends ConsumerWidget {
+class ProductListScreen extends ConsumerStatefulWidget {
   const ProductListScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final productsAsync = ref.watch(productsListProvider);
-    final suppliersMapAsync = ref.watch(suppliersListProvider);
+  ConsumerState<ProductListScreen> createState() => _ProductListScreenState();
+}
+
+class _ProductListScreenState extends ConsumerState<ProductListScreen> {
+  String? _selectedSupplierId;
+
+  @override
+  Widget build(BuildContext context) {
+    final productsAsync  = ref.watch(productsListProvider);
+    final suppliersAsync = ref.watch(suppliersListProvider);
+    final suppliers      = suppliersAsync.valueOrNull ?? [];
+    final suppliersMap   = {for (final s in suppliers) s.id: s};
 
     return AppScaffold(
       title: 'Products',
@@ -20,15 +29,54 @@ class ProductListScreen extends ConsumerWidget {
         onPressed: () => context.go('/products/new'),
         child: const Icon(Icons.add),
       ),
-      body: productsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
-        data: (products) {
-          final suppliers = suppliersMapAsync.valueOrNull ?? [];
-          final suppliersMap = {for (final s in suppliers) s.id: s};
-          return products.isEmpty
-              ? const Center(child: Text('No products yet.'))
-              : ListView.separated(
+      body: Column(
+        children: [
+          // ── Supplier filter ──────────────────────────────────────────
+          if (suppliers.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Row(
+                children: [
+                  const Text('Supplier:',
+                      style: TextStyle(fontSize: 13, color: Colors.grey)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: DropdownButton<String?>(
+                      value: _selectedSupplierId,
+                      isDense: true,
+                      isExpanded: true,
+                      items: [
+                        const DropdownMenuItem(
+                            value: null, child: Text('All Suppliers')),
+                        ...suppliers.map((s) => DropdownMenuItem(
+                            value: s.id, child: Text(s.name))),
+                      ],
+                      onChanged: (v) =>
+                          setState(() => _selectedSupplierId = v),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const Divider(height: 1),
+
+          // ── Product list ─────────────────────────────────────────────
+          Expanded(
+            child: productsAsync.when(
+              loading: () =>
+                  const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text('Error: $e')),
+              data: (allProducts) {
+                final products = _selectedSupplierId == null
+                    ? allProducts
+                    : allProducts
+                        .where((p) => p.supplierId == _selectedSupplierId)
+                        .toList();
+
+                if (products.isEmpty) {
+                  return const Center(child: Text('No products found.'));
+                }
+                return ListView.separated(
                   itemCount: products.length,
                   separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (ctx, i) {
@@ -44,10 +92,12 @@ class ProductListScreen extends ConsumerWidget {
                         children: [
                           IconButton(
                             icon: const Icon(Icons.edit),
-                            onPressed: () => context.go('/products/${p.id}'),
+                            onPressed: () =>
+                                context.go('/products/${p.id}'),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
+                            icon: const Icon(Icons.delete,
+                                color: Colors.red),
                             onPressed: () async {
                               final ok = await showConfirmDialog(
                                 ctx,
@@ -68,7 +118,10 @@ class ProductListScreen extends ConsumerWidget {
                     );
                   },
                 );
-        },
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

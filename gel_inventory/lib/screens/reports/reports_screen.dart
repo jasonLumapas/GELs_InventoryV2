@@ -6,6 +6,7 @@ import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../repositories/stock_movement_repository.dart';
+import '../../repositories/supplier_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../widgets/common/app_scaffold.dart';
 
@@ -280,20 +281,23 @@ class _InventoryReportTab extends ConsumerStatefulWidget {
 
 class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
   DateTime _selectedDate = DateTime.now();
+  String? _selectedSupplierId; // null = all suppliers
 
-  // Rebuild the FutureBuilder whenever the date changes
   late Future<_InvData> _future;
 
   @override
   void initState() {
     super.initState();
-    _future = _loadData(_selectedDate);
+    _future = _loadData(_selectedDate, null);
   }
 
-  void _setDate(DateTime d) =>
-      setState(() {
+  void _reload() => setState(() {
+        _future = _loadData(_selectedDate, _selectedSupplierId);
+      });
+
+  void _setDate(DateTime d) => setState(() {
         _selectedDate = d;
-        _future = _loadData(d);
+        _future = _loadData(d, _selectedSupplierId);
       });
 
   Future<void> _pickDate() async {
@@ -355,6 +359,37 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
               ),
             ],
           ),
+        ),
+        // ── Supplier filter ───────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          child: ref.watch(suppliersListProvider).maybeWhen(
+                data: (suppliers) => Row(
+                  children: [
+                    const Text('Supplier:',
+                        style: TextStyle(fontSize: 13, color: Colors.grey)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: DropdownButton<String?>(
+                        value: _selectedSupplierId,
+                        isDense: true,
+                        isExpanded: true,
+                        items: [
+                          const DropdownMenuItem(
+                              value: null, child: Text('All Suppliers')),
+                          ...suppliers.map((s) => DropdownMenuItem(
+                              value: s.id, child: Text(s.name))),
+                        ],
+                        onChanged: (v) {
+                          _selectedSupplierId = v;
+                          _reload();
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                orElse: () => const SizedBox.shrink(),
+              ),
         ),
         const Divider(height: 1),
 
@@ -483,6 +518,32 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                       ],
                     ),
 
+                    // ── Stock-in value aligned under the Stock In group ──
+                    if (data.totalStockInValue > 0)
+                      Row(
+                        children: [
+                          Expanded(flex: 4, child: const SizedBox()),
+                          Expanded(flex: 3, child: const SizedBox()),
+                          Expanded(
+                            flex: 3,
+                            child: Container(
+                              color: _inLight,
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 4, horizontal: 6),
+                              child: Text(
+                                formatCurrency(data.totalStockInValue),
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12),
+                              ),
+                            ),
+                          ),
+                          Expanded(flex: 3, child: const SizedBox()),
+                          Expanded(flex: 3, child: const SizedBox()),
+                        ],
+                      ),
+
                     // ── Ending inventory total footer ──
                     const SizedBox(height: 12),
                     Align(
@@ -540,8 +601,11 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
   ///
   /// Ending   = current + pieces sold AFTER selected date
   /// Beginning = ending + pieces sold ON selected date
-  Future<_InvData> _loadData(DateTime date) async {
-    final products = await ref.read(productRepositoryProvider).getAll();
+  Future<_InvData> _loadData(DateTime date, String? supplierId) async {
+    var products = await ref.read(productRepositoryProvider).getAll();
+    if (supplierId != null) {
+      products = products.where((p) => p.supplierId == supplierId).toList();
+    }
 
     final inventoryItems =
         await ref.read(inventoryRepositoryProvider).getAll();
@@ -596,16 +660,21 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
     }
 
     // Total ending inventory value = ending pieces × withdrawal price
-    double totalEndingValue = 0;
+    // Total stock-in value = stock-in pieces × withdrawal price
+    double totalEndingValue  = 0;
+    double totalStockInValue = 0;
     for (final p in products) {
+      final price = await ref
+          .read(productRepositoryProvider)
+          .getCurrentPrice(p.id);
+      if (price == null) continue;
       final endPieces = ending[p.id] ?? 0;
       if (endPieces > 0) {
-        final price = await ref
-            .read(productRepositoryProvider)
-            .getCurrentPrice(p.id);
-        if (price != null) {
-          totalEndingValue += price.withdrawalPrice * endPieces;
-        }
+        totalEndingValue += price.withdrawalPrice * endPieces;
+      }
+      final inPieces = stockIn[p.id] ?? 0;
+      if (inPieces > 0) {
+        totalStockInValue += price.withdrawalPrice * inPieces;
       }
     }
 
@@ -615,7 +684,8 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
         stockIn: stockIn,
         stockOut: onDate,
         ending: ending,
-        totalEndingValue: totalEndingValue);
+        totalEndingValue: totalEndingValue,
+        totalStockInValue: totalStockInValue);
   }
 
   Future<Map<String, int>> _sumSold(
@@ -644,6 +714,7 @@ class _InvData {
   final Map<String, int> stockOut;
   final Map<String, int> ending;
   final double totalEndingValue;
+  final double totalStockInValue;
 
   const _InvData({
     required this.products,
@@ -652,6 +723,7 @@ class _InvData {
     required this.stockOut,
     required this.ending,
     required this.totalEndingValue,
+    required this.totalStockInValue,
   });
 }
 

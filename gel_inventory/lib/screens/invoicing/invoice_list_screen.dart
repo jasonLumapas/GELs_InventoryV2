@@ -6,6 +6,7 @@ import '../../repositories/client_repository.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_repository.dart';
 import '../../utils/currency_format.dart';
+import '../../utils/pdf_generator.dart';
 import '../../widgets/common/app_scaffold.dart';
 import '../../widgets/common/confirm_dialog.dart';
 
@@ -95,6 +96,23 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
     if (picked != null) setState(() => _anchor = picked);
   }
 
+  Future<void> _print() async {
+    final invoices   = ref.read(filteredInvoicesProvider((_startDate, _endDate))).valueOrNull;
+    final clientsMap = {
+      for (final c in ref.read(clientsListProvider).valueOrNull ?? []) c.id: c
+    };
+    if (invoices == null || invoices.isEmpty) return;
+
+    final items = invoices.map((inv) => InvoiceListItem(
+          invoiceNumber: inv.displayNumber,
+          clientName: clientsMap[inv.clientId]?.name ?? inv.clientId,
+          date: inv.invoiceDate,
+          amount: inv.totalAmount,
+        )).toList();
+
+    await printInvoiceList(periodLabel: _periodLabel, items: items);
+  }
+
   // ── Build ────────────────────────────────────────────────────────────────
 
   @override
@@ -107,6 +125,11 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
     return AppScaffold(
       title: 'Invoices',
       actions: [
+        IconButton(
+          icon: const Icon(Icons.print),
+          tooltip: 'Print invoice list',
+          onPressed: _print,
+        ),
         FilledButton.icon(
           icon: const Icon(Icons.add, size: 18),
           label: const Text('New Invoice'),

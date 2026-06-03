@@ -8,7 +8,6 @@ import '../models/client.dart';
 import '../models/invoice.dart';
 import '../models/invoice_item.dart';
 import '../models/product.dart';
-import 'currency_format.dart';
 
 final _rcptFmt = NumberFormat('#,##0.00');
 String _n(double v) => _rcptFmt.format(v);
@@ -274,6 +273,110 @@ Future<void> printInvoice({
   );
 }
 
+// ── Invoice List PDF ─────────────────────────────────────────────────────────
+
+class InvoiceListItem {
+  final String invoiceNumber;
+  final String clientName;
+  final DateTime date;
+  final double amount;
+
+  const InvoiceListItem({
+    required this.invoiceNumber,
+    required this.clientName,
+    required this.date,
+    required this.amount,
+  });
+}
+
+Future<void> printInvoiceList({
+  required String periodLabel,
+  required List<InvoiceListItem> items,
+}) async {
+  final doc     = pw.Document();
+  final dateFmt = DateFormat('MMM dd, yyyy');
+  final numFmt  = NumberFormat('#,##0.00');
+  final grandTotal = items.fold(0.0, (s, i) => s + i.amount);
+
+  final pageFormat = PdfPageFormat.letter.copyWith(
+    marginTop: 40, marginBottom: 40,
+    marginLeft: 40, marginRight: 40,
+  );
+  final usableW = pageFormat.availableWidth;
+  final detailW = usableW * 0.70;
+  final amtW    = usableW * 0.30;
+
+  final font     = pw.Font.helvetica();
+  final fontBold = pw.Font.helveticaBold();
+  const double fs = 11.0;
+
+  pw.TextStyle ts({bool bold = false}) =>
+      pw.TextStyle(font: bold ? fontBold : font, fontSize: fs);
+
+  String phpFmt(double v) => 'Php ${numFmt.format(v)}';
+
+  doc.addPage(pw.MultiPage(
+    pageFormat: pageFormat,
+    build: (ctx) => [
+      // Period label
+      pw.Text(periodLabel, style: ts(bold: true)),
+      pw.SizedBox(height: 12),
+
+      // Column headers
+      pw.Row(children: [
+        pw.SizedBox(
+            width: detailW,
+            child: pw.Text('Invoice Details', style: ts(bold: true))),
+        pw.SizedBox(
+            width: amtW,
+            child: pw.Text('Amount',
+                style: ts(bold: true),
+                textAlign: pw.TextAlign.right)),
+      ]),
+      pw.Divider(height: 6, thickness: 0.5),
+
+      // Invoice rows
+      ...items.map((item) => pw.Padding(
+            padding: const pw.EdgeInsets.only(bottom: 8),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(item.invoiceNumber, style: ts()),
+                pw.Text(item.clientName, style: ts()),
+                pw.Row(children: [
+                  pw.SizedBox(
+                      width: detailW,
+                      child: pw.Text(
+                          dateFmt.format(item.date), style: ts())),
+                  pw.SizedBox(
+                      width: amtW,
+                      child: pw.Text(phpFmt(item.amount),
+                          style: ts(),
+                          textAlign: pw.TextAlign.right)),
+                ]),
+              ],
+            ),
+          )),
+
+      pw.Divider(height: 8, thickness: 0.5),
+      pw.SizedBox(height: 8),
+
+      // Grand total
+      pw.Align(
+        alignment: pw.Alignment.centerRight,
+        child: pw.Text('Grand Total: ${phpFmt(grandTotal)}',
+            style: ts(bold: true)),
+      ),
+    ],
+  ));
+
+  final bytes = await doc.save();
+  final home  = Platform.environment['USERPROFILE'] ??
+      Platform.environment['HOME'] ?? '.';
+  await File('$home\\Desktop\\invoice_list_${DateTime.now().millisecondsSinceEpoch}.pdf')
+      .writeAsBytes(bytes);
+}
+
 // ── Layout / Order Summary PDF ────────────────────────────────────────────────
 
 class OrderSummaryRow {
@@ -297,74 +400,89 @@ Future<void> printOrderSummary({
   required DateTime date,
   required List<OrderSummaryRow> rows,
 }) async {
-  final doc = pw.Document();
-  final dateFmt = DateFormat('MMMM dd, yyyy');
+  final doc      = pw.Document();
+  final dateFmt  = DateFormat('MMMM dd, yyyy');
+  final numFmt   = NumberFormat('#,##0.00');
   final grandTotal = rows.fold(0.0, (s, r) => s + r.totalAmount);
 
+  final pageFormat = PdfPageFormat.letter.copyWith(
+    marginTop: 40,
+    marginBottom: 40,
+    marginLeft: 40,
+    marginRight: 40,
+  );
+  final usableW = pageFormat.availableWidth;
+  final prodW  = usableW * 0.60;
+  final boxW   = usableW * 0.20;
+  final pcsW   = usableW * 0.20;
+
+  final font     = pw.Font.helvetica();
+  final fontBold = pw.Font.helveticaBold();
+  const double fs = 11.0;
+
+  pw.TextStyle ts({bool bold = false}) =>
+      pw.TextStyle(font: bold ? fontBold : font, fontSize: fs);
+
+  pw.Widget col(String text, double width,
+          {bool bold = false, bool right = false}) =>
+      pw.SizedBox(
+        width: width,
+        child: pw.Text(
+          text,
+          style: ts(bold: bold),
+          textAlign: right ? pw.TextAlign.right : pw.TextAlign.left,
+        ),
+      );
+
   doc.addPage(pw.Page(
-    pageFormat: PdfPageFormat.letter.copyWith(marginTop: 36),
+    pageFormat: pageFormat,
     build: (ctx) => pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        pw.Text("GEL's Inventory",
-            style:
-                pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
-        pw.SizedBox(height: 4),
-        pw.Text('Layout — ${dateFmt.format(date)}'),
-        pw.Divider(),
+        // Date header
+        pw.Text('Date: ${dateFmt.format(date)}', style: ts()),
+        pw.SizedBox(height: 16),
+
+        // Column headers
+        pw.Row(children: [
+          col('Products', prodW, bold: true),
+          col('Boxes',  boxW,  bold: true, right: true),
+          col('Pieces', pcsW,  bold: true, right: true),
+        ]),
+        pw.Divider(height: 6, thickness: 0.5),
+
+        // Data rows
+        ...rows.map((r) => pw.Padding(
+              padding: const pw.EdgeInsets.only(bottom: 4),
+              child: pw.Row(children: [
+                col(r.productName, prodW),
+                col(r.boxes > 0 ? '${r.boxes}' : '',
+                    boxW, right: true),
+                col(r.remainingPieces > 0 ? '${r.remainingPieces}' : '',
+                    pcsW, right: true),
+              ]),
+            )),
+
+        pw.Divider(height: 12, thickness: 0.5),
         pw.SizedBox(height: 8),
 
-        pw.Table(
-          border: pw.TableBorder.all(color: PdfColors.grey400),
-          columnWidths: {
-            0: const pw.FlexColumnWidth(5),
-            1: const pw.FlexColumnWidth(2),
-            2: const pw.FlexColumnWidth(2),
-          },
-          children: [
-            _headerRow(['Product', 'Boxes', 'Pieces']),
-            ...rows.map((r) => _dataRow([
-                  r.productName,
-                  r.boxes > 0 ? '${r.boxes}' : '',
-                  r.remainingPieces > 0 ? '${r.remainingPieces}' : '',
-                ])),
-          ],
-        ),
-        pw.SizedBox(height: 10),
+        // Grand total
         pw.Align(
           alignment: pw.Alignment.centerRight,
           child: pw.Text(
-            'Grand Total: ${formatCurrency(grandTotal)}',
-            style: pw.TextStyle(
-                fontSize: 13, fontWeight: pw.FontWeight.bold),
+            'Grand Total: Php ${numFmt.format(grandTotal)}',
+            style: ts(bold: true),
           ),
         ),
       ],
     ),
   ));
 
-  await Printing.layoutPdf(
-    onLayout: (_) => doc.save(),
-    format: PdfPageFormat.letter.copyWith(marginTop: 36),
-  );
+  // Output to desktop file
+  final bytes = await doc.save();
+  final home  = Platform.environment['USERPROFILE'] ??
+      Platform.environment['HOME'] ?? '.';
+  final tag   = DateFormat('yyyyMMdd').format(date);
+  await File('$home\\Desktop\\layout_$tag.pdf').writeAsBytes(bytes);
 }
 
-pw.TableRow _headerRow(List<String> cells) => pw.TableRow(
-      decoration: const pw.BoxDecoration(color: PdfColors.grey200),
-      children: cells
-          .map((c) => pw.Padding(
-                padding: const pw.EdgeInsets.all(6),
-                child: pw.Text(c,
-                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-              ))
-          .toList(),
-    );
-
-pw.TableRow _dataRow(List<String> cells) => pw.TableRow(
-      children: cells
-          .map((c) => pw.Padding(
-                padding: const pw.EdgeInsets.all(6),
-                child: pw.Text(c),
-              ))
-          .toList(),
-    );

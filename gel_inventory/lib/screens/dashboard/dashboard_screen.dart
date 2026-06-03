@@ -61,6 +61,11 @@ class DashboardScreen extends StatelessWidget {
             label: 'Van Selling',
             route: '/van-selling',
           ),
+          _NavCard(
+            icon: Icons.account_balance_wallet,
+            label: 'Collectibles',
+            route: '/collectibles',
+          ),
         ],
       ),
     );

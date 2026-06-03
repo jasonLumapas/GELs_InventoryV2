@@ -18,6 +18,11 @@ class SyncService {
     });
   }
 
+  /// Call this on app startup when the device is already online.
+  Future<void> drainOnStartup() async {
+    if (_supabase != null) await _drainQueue();
+  }
+
   Future<void> enqueue({
     required String tableName,
     required String recordId,
@@ -73,7 +78,15 @@ final syncServiceProvider = Provider<SyncService>((ref) {
   final supabase     = AppConstants.offlineOnly
       ? null
       : Supabase.instance.client;
-  return SyncService(db, supabase, connectivity);
+  final service = SyncService(db, supabase, connectivity);
+
+  // If the app starts already online, drain any queue items
+  // accumulated during the previous offline session immediately.
+  if (!AppConstants.offlineOnly && connectivity.isOnline) {
+    Future.microtask(service.drainOnStartup);
+  }
+
+  return service;
 });
 
 final localDatabaseProvider = Provider<LocalDatabase>((ref) {

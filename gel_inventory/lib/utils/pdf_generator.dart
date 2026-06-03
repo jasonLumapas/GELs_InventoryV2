@@ -335,28 +335,32 @@ Future<void> printInvoiceList({
       ]),
       pw.Divider(height: 6, thickness: 0.5),
 
-      // Invoice rows
-      ...items.map((item) => pw.Padding(
-            padding: const pw.EdgeInsets.only(bottom: 8),
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text(item.invoiceNumber, style: ts()),
-                pw.Text(item.clientName, style: ts()),
-                pw.Row(children: [
-                  pw.SizedBox(
-                      width: detailW,
-                      child: pw.Text(
-                          dateFmt.format(item.date), style: ts())),
-                  pw.SizedBox(
-                      width: amtW,
-                      child: pw.Text(phpFmt(item.amount),
-                          style: ts(),
-                          textAlign: pw.TextAlign.right)),
-                ]),
-              ],
-            ),
-          )),
+      // Invoice rows with separators
+      for (int i = 0; i < items.length; i++) ...[
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 4),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(items[i].invoiceNumber, style: ts()),
+              pw.Text(items[i].clientName, style: ts()),
+              pw.Row(children: [
+                pw.SizedBox(
+                    width: detailW,
+                    child: pw.Text(
+                        dateFmt.format(items[i].date), style: ts())),
+                pw.SizedBox(
+                    width: amtW,
+                    child: pw.Text(phpFmt(items[i].amount),
+                        style: ts(),
+                        textAlign: pw.TextAlign.right)),
+              ]),
+            ],
+          ),
+        ),
+        if (i < items.length - 1)
+          pw.Divider(height: 1, thickness: 0.3),
+      ],
 
       pw.Divider(height: 8, thickness: 0.5),
       pw.SizedBox(height: 8),
@@ -451,17 +455,23 @@ Future<void> printOrderSummary({
         ]),
         pw.Divider(height: 6, thickness: 0.5),
 
-        // Data rows
-        ...rows.map((r) => pw.Padding(
-              padding: const pw.EdgeInsets.only(bottom: 4),
-              child: pw.Row(children: [
-                col(r.productName, prodW),
-                col(r.boxes > 0 ? '${r.boxes}' : '',
-                    boxW, right: true),
-                col(r.remainingPieces > 0 ? '${r.remainingPieces}' : '',
-                    pcsW, right: true),
-              ]),
-            )),
+        // Data rows with separators
+        for (int i = 0; i < rows.length; i++) ...[
+          pw.Padding(
+            padding: const pw.EdgeInsets.symmetric(vertical: 3),
+            child: pw.Row(children: [
+              col(rows[i].productName, prodW),
+              col(rows[i].boxes > 0 ? '${rows[i].boxes}' : '',
+                  boxW, right: true),
+              col(rows[i].remainingPieces > 0
+                      ? '${rows[i].remainingPieces}'
+                      : '',
+                  pcsW, right: true),
+            ]),
+          ),
+          if (i < rows.length - 1)
+            pw.Divider(height: 1, thickness: 0.3),
+        ],
 
         pw.Divider(height: 12, thickness: 0.5),
         pw.SizedBox(height: 8),

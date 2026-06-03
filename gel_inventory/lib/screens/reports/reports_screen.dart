@@ -566,14 +566,36 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
       afterDate = {};
     }
 
+    // Stock-in ON the selected date
+    final stockIn = await ref
+        .read(stockMovementRepositoryProvider)
+        .sumInForDate(date);
+
+    // Stock-in AFTER the selected date (needed to back-calculate ending correctly)
+    final Map<String, int> stockInAfter;
+    if (dayEnd.isBefore(nowEnd)) {
+      stockInAfter = await ref
+          .read(stockMovementRepositoryProvider)
+          .sumInForRange(dayEnd, nowEnd);
+    } else {
+      stockInAfter = {};
+    }
+
+    // Reconstruct ending and beginning by working backwards from current stock.
+    // ending   = current + sold_after  - stockIn_after   (undo post-date changes)
+    // beginning = ending  + sold_on_date - stockIn_on_date (undo same-day changes)
     final ending = <String, int>{};
     final beginning = <String, int>{};
     for (final p in products) {
-      ending[p.id] = (currentInv[p.id] ?? 0) + (afterDate[p.id] ?? 0);
-      beginning[p.id] = ending[p.id]! + (onDate[p.id] ?? 0);
+      final end = (currentInv[p.id] ?? 0)
+          + (afterDate[p.id] ?? 0)
+          - (stockInAfter[p.id] ?? 0);
+      ending[p.id] = end.clamp(0, 999999);
+      final beg = end + (onDate[p.id] ?? 0) - (stockIn[p.id] ?? 0);
+      beginning[p.id] = beg.clamp(0, 999999);
     }
 
-    // Total ending inventory value = ending pieces × current selling price
+    // Total ending inventory value = ending pieces × withdrawal price
     double totalEndingValue = 0;
     for (final p in products) {
       final endPieces = ending[p.id] ?? 0;
@@ -586,10 +608,6 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
         }
       }
     }
-
-    final stockIn = await ref
-        .read(stockMovementRepositoryProvider)
-        .sumInForDate(date);
 
     return _InvData(
         products: products,

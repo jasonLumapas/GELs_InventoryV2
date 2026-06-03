@@ -182,11 +182,20 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final qtyCtrl     = TextEditingController();
     final invCtrl     = TextEditingController();
     final commentCtrl = TextEditingController();
-    String unitType   = 'piece';
+    String unitType   = isAdd ? 'box' : 'piece';
     DateTime refDate  = DateTime.now();
 
+    // Fetch withdrawal price for price-per-box display
+    final price = isAdd
+        ? await ref.read(productRepositoryProvider).getCurrentPrice(product.id)
+        : null;
+    final pricePerBox = price != null
+        ? price.withdrawalPrice * product.piecesPerBox
+        : null;
+
+    if (!mounted) return;
     await showDialog(
-      context: context,
+      context: this.context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
           title: Text(isAdd ? 'Add Stock' : 'Remove Stock'),
@@ -200,6 +209,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                         const TextStyle(fontWeight: FontWeight.bold)),
                 Text('Current: ${formatNumber(currentQty)} pcs',
                     style: const TextStyle(color: Colors.grey)),
+                if (pricePerBox != null)
+                  Text(
+                    'Price/box: ${formatCurrency(pricePerBox)}',
+                    style: TextStyle(
+                        color: Colors.blue.shade700, fontSize: 13),
+                  ),
                 const SizedBox(height: 8),
                 SegmentedButton<String>(
                   segments: const [
@@ -220,7 +235,23 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   keyboardType: TextInputType.number,
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   autofocus: true,
+                  onChanged: (_) => setState(() {}),
                 ),
+                if (isAdd && price != null) ...[
+                  const SizedBox(height: 4),
+                  Builder(builder: (_) {
+                    final qty = int.tryParse(qtyCtrl.text) ?? 0;
+                    final unitPrice = unitType == 'box'
+                        ? pricePerBox!
+                        : price.withdrawalPrice;
+                    final total = qty * unitPrice;
+                    return Text(
+                      'Total: ${formatCurrency(total)}',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 14),
+                    );
+                  }),
+                ],
                 if (isAdd) ...[
                   const SizedBox(height: 16),
                   const Divider(),

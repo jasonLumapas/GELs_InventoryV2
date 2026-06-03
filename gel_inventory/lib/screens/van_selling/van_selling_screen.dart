@@ -65,9 +65,10 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
                 DropdownButtonFormField<Product>(
                   decoration:
                       const InputDecoration(labelText: 'Product'),
+                  isExpanded: true,
                   items: _products
                       .map((p) => DropdownMenuItem(
-                          value: p, child: Text(p.name)))
+                          value: p, child: Text(p.name, overflow: TextOverflow.ellipsis)))
                       .toList(),
                   onChanged: (v) => setD(() => selectedProduct = v),
                 ),

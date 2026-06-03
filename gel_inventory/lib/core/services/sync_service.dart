@@ -3,17 +3,18 @@ import 'package:drift/drift.dart' as drift;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
+import '../constants.dart';
 import '../database/local_db.dart';
 import 'connectivity_service.dart';
 
 class SyncService {
   final LocalDatabase _db;
-  final SupabaseClient _supabase;
+  final SupabaseClient? _supabase; // null when offlineOnly = true
   final ConnectivityService _connectivity;
 
   SyncService(this._db, this._supabase, this._connectivity) {
     _connectivity.onlineStream.listen((online) {
-      if (online) _drainQueue();
+      if (online && _supabase != null) _drainQueue();
     });
   }
 
@@ -33,6 +34,7 @@ class SyncService {
   }
 
   Future<void> _drainQueue() async {
+    final client = _supabase!; // only called when _supabase != null
     final items = await (_db.select(_db.syncQueue)
           ..orderBy([(t) => drift.OrderingTerm.asc(t.createdAt)]))
         .get();
@@ -42,14 +44,14 @@ class SyncService {
         final payload = jsonDecode(item.payload) as Map<String, dynamic>;
         switch (item.operation) {
           case 'insert':
-            await _supabase.from(item.targetTable).upsert(payload);
+            await client.from(item.targetTable).upsert(payload);
           case 'update':
-            await _supabase
+            await client
                 .from(item.targetTable)
                 .update(payload)
                 .eq('id', item.recordId);
           case 'delete':
-            await _supabase
+            await client
                 .from(item.targetTable)
                 .delete()
                 .eq('id', item.recordId);
@@ -66,9 +68,11 @@ class SyncService {
 }
 
 final syncServiceProvider = Provider<SyncService>((ref) {
-  final db = ref.watch(localDatabaseProvider);
-  final supabase = Supabase.instance.client;
+  final db           = ref.watch(localDatabaseProvider);
   final connectivity = ref.watch(connectivityServiceProvider);
+  final supabase     = AppConstants.offlineOnly
+      ? null
+      : Supabase.instance.client;
   return SyncService(db, supabase, connectivity);
 });
 

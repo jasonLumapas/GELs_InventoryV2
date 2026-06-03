@@ -7,10 +7,12 @@ import 'core/constants.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Supabase.initialize(
-    url: AppConstants.supabaseUrl,
-    anonKey: AppConstants.supabaseAnonKey,
-  );
+  if (!AppConstants.offlineOnly) {
+    await Supabase.initialize(
+      url: AppConstants.supabaseUrl,
+      anonKey: AppConstants.supabaseAnonKey,
+    );
+  }
 
   runApp(
     const ProviderScope(

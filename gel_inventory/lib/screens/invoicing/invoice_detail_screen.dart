@@ -304,6 +304,30 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     });
   }
 
+  Future<void> _saveOnly() async {
+    setState(() => _saving = true);
+
+    final updatedInvoice = _invoice!.copyWith(
+      clientId: _selectedClient!.id,
+      totalAmount: _total,
+    );
+    final newItems = _editItems
+        .map((li) => li.toInvoiceItem(widget.invoiceId))
+        .toList();
+
+    await ref.read(invoiceRepositoryProvider).editInvoice(
+          invoice: updatedInvoice,
+          newItems: newItems,
+          oldItems: _originalItems,
+        );
+
+    ref.invalidate(invoicesListProvider);
+    ref.invalidate(filteredInvoicesProvider);
+    ref.invalidate(inventoryListProvider);
+
+    if (mounted) context.go('/invoices');
+  }
+
   Future<void> _saveAndPrint() async {
     setState(() => _saving = true);
 
@@ -503,6 +527,19 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                         OutlinedButton(
                           onPressed: () => context.go('/invoices'),
                           child: const Text('Back'),
+                        ),
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          icon: _saving
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2))
+                              : const Icon(Icons.save_outlined),
+                          label: const Text('Save'),
+                          onPressed:
+                              _canSave && !_saving ? _saveOnly : null,
                         ),
                         const SizedBox(width: 8),
                         FilledButton.icon(

@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 
 /// Shows a dialog with a live-filter search field above a scrollable list.
-/// Returns the selected [T] or null if dismissed.
+///
+/// Single-pick mode (default): returns the selected [T] or null if dismissed.
+///
+/// Multi-pick mode: when [onSelected] is provided, tapping an item calls the
+/// callback and removes the item from the list without closing the dialog.
+/// The dialog stays open until the user taps "Done" or dismisses it.
 Future<T?> showSearchPicker<T>({
   required BuildContext context,
   required String title,
@@ -11,6 +16,7 @@ Future<T?> showSearchPicker<T>({
   TextStyle? Function(T)? subtitleStyleOf,
   Widget? Function(T)? leadingOf,
   bool Function(T)? isDisabledOf,
+  void Function(T)? onSelected, // multi-pick mode when provided
 }) async {
   return showDialog<T>(
     context: context,
@@ -22,6 +28,7 @@ Future<T?> showSearchPicker<T>({
       subtitleStyleOf: subtitleStyleOf,
       leadingOf: leadingOf,
       isDisabledOf: isDisabledOf,
+      onSelected: onSelected,
     ),
   );
 }
@@ -34,6 +41,7 @@ class _SearchPickerDialog<T> extends StatefulWidget {
   final TextStyle? Function(T)? subtitleStyleOf;
   final Widget? Function(T)? leadingOf;
   final bool Function(T)? isDisabledOf;
+  final void Function(T)? onSelected;
 
   const _SearchPickerDialog({
     required this.title,
@@ -43,6 +51,7 @@ class _SearchPickerDialog<T> extends StatefulWidget {
     this.subtitleStyleOf,
     this.leadingOf,
     this.isDisabledOf,
+    this.onSelected,
   });
 
   @override
@@ -51,12 +60,16 @@ class _SearchPickerDialog<T> extends StatefulWidget {
 
 class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
   final _ctrl = TextEditingController();
+  late List<T> _remaining;
   List<T> _filtered = [];
+
+  bool get _multiPick => widget.onSelected != null;
 
   @override
   void initState() {
     super.initState();
-    _filtered = List.of(widget.items);
+    _remaining = List.of(widget.items);
+    _filtered  = List.of(_remaining);
     _ctrl.addListener(_onSearch);
   }
 
@@ -69,10 +82,22 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
   void _onSearch() {
     final q = _ctrl.text.toLowerCase();
     setState(() {
-      _filtered = widget.items
+      _filtered = _remaining
           .where((i) => widget.labelOf(i).toLowerCase().contains(q))
           .toList();
     });
+  }
+
+  void _onTap(T item) {
+    if (_multiPick) {
+      widget.onSelected!(item);
+      setState(() {
+        _remaining.remove(item);
+        _onSearch(); // rebuild filtered from updated remaining
+      });
+    } else {
+      Navigator.pop(context, item);
+    }
   }
 
   @override
@@ -103,7 +128,11 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
             const SizedBox(height: 8),
             Expanded(
               child: _filtered.isEmpty
-                  ? const Center(child: Text('No results'))
+                  ? Center(
+                      child: Text(_remaining.isEmpty
+                          ? 'All products added.'
+                          : 'No results'),
+                    )
                   : ListView.separated(
                       itemCount: _filtered.length,
                       separatorBuilder: (_, _) => const Divider(height: 1),
@@ -121,9 +150,7 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
                           subtitle: sub != null
                               ? Text(sub, style: subStyle)
                               : null,
-                          onTap: disabled
-                              ? null
-                              : () => Navigator.pop(context, item),
+                          onTap: disabled ? null : () => _onTap(item),
                         );
                       },
                     ),
@@ -133,7 +160,7 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
               alignment: Alignment.centerRight,
               child: TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
+                child: Text(_multiPick ? 'Done' : 'Cancel'),
               ),
             ),
           ],

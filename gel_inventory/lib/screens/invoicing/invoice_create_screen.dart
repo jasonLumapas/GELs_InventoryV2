@@ -123,13 +123,11 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
   }
 
   Future<void> _pickProduct() async {
-    final alreadyAdded = _lineItems.map((li) => li.product.id).toSet();
-    final available =
-        _products.where((p) => !alreadyAdded.contains(p.id)).toList();
+    final available = _products;
     if (available.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('All products already added.')));
+            const SnackBar(content: Text('No products available.')));
       }
       return;
     }
@@ -143,7 +141,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
     }
 
     if (!mounted) return;
-    final picked = await showSearchPicker<Product>(
+    await showSearchPicker<Product>(
       context: context,
       title: 'Select Product',
       items: available,
@@ -159,8 +157,8 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       },
       isDisabledOf: (p) =>
           (_inventoryCache[p.id]?.quantityPieces ?? 0) <= 0,
+      onSelected: (p) => _addProduct(p),
     );
-    if (picked != null) await _addProduct(picked);
   }
 
   Widget _stockIndicator(int qty) => Icon(

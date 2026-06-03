@@ -45,7 +45,7 @@ Future<void> printInvoice({
     4.0 * PdfPageFormat.inch,
     11.0 * PdfPageFormat.inch,
     marginTop: 10,
-    marginBottom: 25,
+    marginBottom: 45,
     marginLeft: 14,
     marginRight: 8,
   );
@@ -145,8 +145,8 @@ Future<void> printInvoice({
     }
 
     final originalAmt = item.quantity * item.pricePerPiece;
-    final discountAmt = item.isFree ? originalAmt : (originalAmt - item.subtotal);
-    final showDiscount = discountAmt > 0.01;
+    final discountAmt = item.isFree ? 0.0 : (originalAmt - item.subtotal);
+    final showDiscount = !item.isFree && discountAmt > 0.01;
 
     itemWidgets.add(
       pw.Padding(
@@ -157,17 +157,27 @@ Future<void> printInvoice({
             pw.SizedBox(
                 width: descW, child: pw.Text(name, style: tsDesc)),
             pw.SizedBox(width: qtyW, child: rAlignAmt(qtyStr)),
-            pw.SizedBox(width: priceW, child: rAlignAmt(_n(unitPrice))),
+            // Free items: blank price column
+            pw.SizedBox(
+                width: priceW,
+                child: item.isFree
+                    ? pw.SizedBox()
+                    : rAlignAmt(_n(unitPrice))),
             pw.SizedBox(
               width: totalW,
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.end,
-                children: [
-                  pw.Text(_n(originalAmt), style: tsAmt),
-                  if (showDiscount)
-                    pw.Text('(${_n(discountAmt)})', style: tsAmt),
-                ],
-              ),
+              child: item.isFree
+                  ? pw.Align(
+                      alignment: pw.Alignment.centerRight,
+                      child: pw.Text('FREE', style: tsAmt),
+                    )
+                  : pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.end,
+                      children: [
+                        pw.Text(_n(originalAmt), style: tsAmt),
+                        if (showDiscount)
+                          pw.Text('(${_n(discountAmt)})', style: tsAmt),
+                      ],
+                    ),
             ),
           ],
         ),

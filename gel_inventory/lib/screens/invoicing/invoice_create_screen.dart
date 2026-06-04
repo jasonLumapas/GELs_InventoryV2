@@ -28,7 +28,7 @@ class _LineItem {
   final InventoryItem? inventory;
   final ProductDiscount? discount;
   String unitType = 'piece';
-  int quantity = 1;
+  int quantity = 0;
   bool isFree = false;
 
   _LineItem({
@@ -147,17 +147,13 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       title: 'Select Product',
       items: available,
       labelOf: (p) => p.name,
-      leadingOf: (p) =>
-          _stockIndicator(_inventoryCache[p.id]?.quantityPieces ?? 0),
-      subtitleOf: (p) =>
-          _stockLabel(p, _inventoryCache[p.id]?.quantityPieces ?? 0),
+      leadingOf: (p) => _stockIndicator(_effectiveAvailable(p.id)),
+      subtitleOf: (p) => _stockLabel(p, _effectiveAvailable(p.id)),
       subtitleStyleOf: (p) {
-        final qty = _inventoryCache[p.id]?.quantityPieces ?? 0;
+        final qty = _effectiveAvailable(p.id);
         return TextStyle(
             color: qty > 0 ? Colors.green.shade700 : Colors.red);
       },
-      isDisabledOf: (p) =>
-          (_inventoryCache[p.id]?.quantityPieces ?? 0) <= 0,
       onSelected: (p) => _addProduct(p),
     );
   }
@@ -217,18 +213,44 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
     });
   }
 
+  // Total pieces already committed to _lineItems for a product, optionally
+  // excluding one index (used so a tile can check its own slot fairly).
+  int _committedPieces(String productId, {int? excludeIndex}) {
+    int total = 0;
+    for (int i = 0; i < _lineItems.length; i++) {
+      if (i == excludeIndex) continue;
+      if (_lineItems[i].product.id == productId) {
+        total += _lineItems[i].quantityInPieces;
+      }
+    }
+    return total;
+  }
+
+  int _effectiveAvailable(String productId, {int? excludeIndex}) {
+    final inv = _inventoryCache[productId]?.quantityPieces ?? 0;
+    return (inv - _committedPieces(productId, excludeIndex: excludeIndex))
+        .clamp(0, inv);
+  }
+
   double get _total =>
       _lineItems.fold(0.0, (sum, item) => sum + item.subtotal);
 
-  bool get _canPrint =>
-      _selectedClient != null &&
-      _lineItems.isNotEmpty &&
-      _lineItems.every((i) => i.isFree || i.hasEnoughStock);
+  bool get _canPrint {
+    if (_selectedClient == null || _lineItems.isEmpty) return false;
+    for (int i = 0; i < _lineItems.length; i++) {
+      final item = _lineItems[i];
+      if (item.quantity <= 0) { return false; }
+      if (_effectiveAvailable(item.product.id, excludeIndex: i) <
+          item.quantityInPieces) { return false; }
+    }
+    return true;
+  }
 
   Future<void> _print() async {
     setState(() => _saving = true);
     final invoiceId = const Uuid().v4();
-    final now = DateTime.now();
+    final today = DateTime.now();
+    final now   = DateTime(today.year, today.month, today.day + 1);
     final invoiceNumber = await ref
         .read(invoiceRepositoryProvider)
         .generateInvoiceNumber(now);
@@ -380,6 +402,9 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                           itemCount: _lineItems.length,
                           itemBuilder: (ctx, i) => _LineItemTile(
                             item: _lineItems[i],
+                            effectiveAvailable: _effectiveAvailable(
+                                _lineItems[i].product.id,
+                                excludeIndex: i),
                             onRemove: () =>
                                 setState(() => _lineItems.removeAt(i)),
                             onChanged: () => setState(() {}),
@@ -434,11 +459,13 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
 
 class _LineItemTile extends StatefulWidget {
   final _LineItem item;
+  final int effectiveAvailable;
   final VoidCallback onRemove;
   final VoidCallback onChanged;
 
   const _LineItemTile({
     required this.item,
+    required this.effectiveAvailable,
     required this.onRemove,
     required this.onChanged,
   });
@@ -453,8 +480,7 @@ class _LineItemTileState extends State<_LineItemTile> {
   @override
   void initState() {
     super.initState();
-    _qtyCtrl =
-        TextEditingController(text: widget.item.quantity.toString());
+    _qtyCtrl = TextEditingController(text: '');
   }
 
   @override
@@ -463,11 +489,21 @@ class _LineItemTileState extends State<_LineItemTile> {
     super.dispose();
   }
 
+  String _availLabel(_LineItem item, int availQty, bool stockOk) {
+    final ppb = item.product.piecesPerBox;
+    final boxes = availQty ~/ ppb;
+    final pcs = availQty % ppb;
+    final qty = boxes > 0
+        ? '$boxes box(es)${pcs > 0 ? ' + $pcs pcs' : ''}'
+        : '$availQty pcs';
+    return stockOk ? 'Available: $qty' : 'Only $qty available';
+  }
+
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
-    final stockOk = item.isFree || item.hasEnoughStock;
-    final availQty = item.inventory?.quantityPieces ?? 0;
+    final availQty = widget.effectiveAvailable;
+    final stockOk = item.isFree || availQty >= item.quantityInPieces;
     final hasDiscount = item.discountAmount > 0;
 
     return Card(
@@ -484,10 +520,14 @@ class _LineItemTileState extends State<_LineItemTile> {
                   Text(item.product.name,
                       style:
                           const TextStyle(fontWeight: FontWeight.bold)),
-                  if (!stockOk)
-                    Text('Only $availQty pcs available',
-                        style: const TextStyle(
-                            color: Colors.red, fontSize: 12)),
+                  Text(
+                    _availLabel(item, availQty, stockOk),
+                    style: TextStyle(
+                        color: stockOk
+                            ? Colors.grey.shade600
+                            : Colors.red,
+                        fontSize: 12),
+                  ),
                   if (item.isFree)
                     Text('FREE',
                         style: TextStyle(
@@ -547,6 +587,7 @@ class _LineItemTileState extends State<_LineItemTile> {
               width: 70,
               child: TextField(
                 controller: _qtyCtrl,
+                enabled: widget.effectiveAvailable > 0,
                 decoration: const InputDecoration(
                     labelText: 'Qty', isDense: true),
                 keyboardType: TextInputType.number,
@@ -554,8 +595,7 @@ class _LineItemTileState extends State<_LineItemTile> {
                   FilteringTextInputFormatter.digitsOnly
                 ],
                 onChanged: (v) {
-                  item.quantity = int.tryParse(v) ?? 1;
-                  if (item.quantity < 1) item.quantity = 1;
+                  item.quantity = int.tryParse(v) ?? 0;
                   widget.onChanged();
                 },
               ),

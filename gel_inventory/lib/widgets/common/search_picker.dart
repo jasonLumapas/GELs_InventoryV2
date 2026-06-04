@@ -91,10 +91,6 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
   void _onTap(T item) {
     if (_multiPick) {
       widget.onSelected!(item);
-      setState(() {
-        _remaining.remove(item);
-        _onSearch(); // rebuild filtered from updated remaining
-      });
     } else {
       Navigator.pop(context, item);
     }
@@ -128,11 +124,7 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
             const SizedBox(height: 8),
             Expanded(
               child: _filtered.isEmpty
-                  ? Center(
-                      child: Text(_remaining.isEmpty
-                          ? 'All products added.'
-                          : 'No results'),
-                    )
+                  ? const Center(child: Text('No results'))
                   : ListView.separated(
                       itemCount: _filtered.length,
                       separatorBuilder: (_, _) => const Divider(height: 1),

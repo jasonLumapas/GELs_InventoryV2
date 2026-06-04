@@ -42,7 +42,8 @@ class OrderSummaryScreen extends ConsumerStatefulWidget {
 }
 
 class _OrderSummaryScreenState extends ConsumerState<OrderSummaryScreen> {
-  DateTime _selectedDate = DateTime.now();
+  DateTime _selectedDate =
+      DateTime.now().add(const Duration(days: 1));
   bool _loading = false;
   List<_Row> _rows = [];
 
@@ -198,7 +199,8 @@ class _OrderSummaryScreenState extends ConsumerState<OrderSummaryScreen> {
                 ),
                 TextButton(
                   onPressed: () {
-                    setState(() => _selectedDate = DateTime.now());
+                    setState(() => _selectedDate =
+                        DateTime.now().add(const Duration(days: 1)));
                     _load();
                   },
                   style: TextButton.styleFrom(

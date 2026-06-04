@@ -38,7 +38,8 @@ class ReportsScreen extends ConsumerStatefulWidget {
 class _ReportsScreenState extends ConsumerState<ReportsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabs;
-  DateTime _selectedDate = DateTime.now();
+  DateTime _selectedDate =
+      DateTime.now().add(const Duration(days: 1));
   bool _loading = false;
   List<_SummaryRow> _summary = [];
   double _grandTotal = 0;
@@ -166,7 +167,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
                     context: context,
                     initialDate: _selectedDate,
                     firstDate: DateTime(2020),
-                    lastDate: DateTime.now(),
+                    lastDate: DateTime(2100),
                   );
                   if (picked != null) {
                     setState(() => _selectedDate = picked);
@@ -617,8 +618,10 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
     final dayStart = DateTime(date.year, date.month, date.day);
     final dayEnd = dayStart.add(const Duration(days: 1));
     final now = DateTime.now();
+    // +2 days so that invoices dated tomorrow (the new default) are always
+    // captured in the "after" window for today's report.
     final nowEnd =
-        DateTime(now.year, now.month, now.day + 1);
+        DateTime(now.year, now.month, now.day + 2);
 
     // Helper: sum van stock transactions by type for a date range
     Future<Map<String, int>> sumVan(String type, DateTime from, DateTime to) async {

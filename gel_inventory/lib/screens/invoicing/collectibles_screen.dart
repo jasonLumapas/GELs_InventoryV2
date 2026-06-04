@@ -9,6 +9,8 @@ import '../../repositories/invoice_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../widgets/common/app_scaffold.dart';
 
+enum _DateFilter { all, day, week, month }
+
 class _CollectibleItem {
   final Invoice invoice;
   final String clientName;
@@ -33,6 +35,83 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
   bool _loading = true;
   List<_CollectibleItem> _items = [];
   String? _filterType; // null = all
+
+  _DateFilter _dateFilter = _DateFilter.all;
+  DateTime _anchor = DateTime.now();
+
+  DateTime get _startDate {
+    switch (_dateFilter) {
+      case _DateFilter.all:  return DateTime(2000);
+      case _DateFilter.day:
+        return DateTime(_anchor.year, _anchor.month, _anchor.day);
+      case _DateFilter.week:
+        final mon = _anchor.subtract(Duration(days: _anchor.weekday - 1));
+        return DateTime(mon.year, mon.month, mon.day);
+      case _DateFilter.month:
+        return DateTime(_anchor.year, _anchor.month);
+    }
+  }
+
+  DateTime get _endDate {
+    switch (_dateFilter) {
+      case _DateFilter.all:  return DateTime(2100);
+      case _DateFilter.day:  return _startDate.add(const Duration(days: 1));
+      case _DateFilter.week: return _startDate.add(const Duration(days: 7));
+      case _DateFilter.month:
+        return DateTime(_anchor.year, _anchor.month + 1);
+    }
+  }
+
+  String get _periodLabel {
+    switch (_dateFilter) {
+      case _DateFilter.all: return 'All dates';
+      case _DateFilter.day:
+        return DateFormat('EEE, MMM d, y').format(_startDate);
+      case _DateFilter.week:
+        final e = _endDate.subtract(const Duration(days: 1));
+        final sameMonth =
+            _startDate.month == e.month && _startDate.year == e.year;
+        return sameMonth
+            ? '${DateFormat('MMM d').format(_startDate)} – ${DateFormat('d, y').format(e)}'
+            : '${DateFormat('MMM d').format(_startDate)} – ${DateFormat('MMM d, y').format(e)}';
+      case _DateFilter.month:
+        return DateFormat('MMMM y').format(_startDate);
+    }
+  }
+
+  void _prev() => setState(() {
+        switch (_dateFilter) {
+          case _DateFilter.all: break;
+          case _DateFilter.day:
+            _anchor = _anchor.subtract(const Duration(days: 1));
+          case _DateFilter.week:
+            _anchor = _anchor.subtract(const Duration(days: 7));
+          case _DateFilter.month:
+            _anchor = DateTime(_anchor.year, _anchor.month - 1, _anchor.day);
+        }
+      });
+
+  void _next() => setState(() {
+        switch (_dateFilter) {
+          case _DateFilter.all: break;
+          case _DateFilter.day:
+            _anchor = _anchor.add(const Duration(days: 1));
+          case _DateFilter.week:
+            _anchor = _anchor.add(const Duration(days: 7));
+          case _DateFilter.month:
+            _anchor = DateTime(_anchor.year, _anchor.month + 1, _anchor.day);
+        }
+      });
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _anchor,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) setState(() => _anchor = picked);
+  }
 
   @override
   void initState() {
@@ -87,9 +166,13 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
     });
   }
 
-  List<_CollectibleItem> get _filtered => _filterType == null
-      ? _items
-      : _items.where((i) => i.invoice.paymentType == _filterType).toList();
+  List<_CollectibleItem> get _filtered => _items.where((i) {
+        if (_filterType != null && i.invoice.paymentType != _filterType) {
+          return false;
+        }
+        final d = i.invoice.invoiceDate;
+        return !d.isBefore(_startDate) && d.isBefore(_endDate);
+      }).toList();
 
   @override
   Widget build(BuildContext context) {
@@ -109,12 +192,67 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
       ],
       body: Column(
         children: [
-          // Filter chips
+          // Date filter bar
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
             child: Row(
               children: [
-                const Text('Filter:',
+                SegmentedButton<_DateFilter>(
+                  segments: const [
+                    ButtonSegment(value: _DateFilter.all,   label: Text('All')),
+                    ButtonSegment(value: _DateFilter.day,   label: Text('Day')),
+                    ButtonSegment(value: _DateFilter.week,  label: Text('Week')),
+                    ButtonSegment(value: _DateFilter.month, label: Text('Month')),
+                  ],
+                  selected: {_dateFilter},
+                  onSelectionChanged: (s) =>
+                      setState(() => _dateFilter = s.first),
+                  style: const ButtonStyle(
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                if (_dateFilter != _DateFilter.all) ...[
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left),
+                    onPressed: _prev,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: _pickDate,
+                      child: Text(
+                        _periodLabel,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right),
+                    onPressed: _next,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  TextButton(
+                    onPressed: () =>
+                        setState(() => _anchor = DateTime.now()),
+                    style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact),
+                    child: const Text('Today'),
+                  ),
+                ] else
+                  const Expanded(child: SizedBox()),
+              ],
+            ),
+          ),
+
+          // Payment type chips
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+            child: Row(
+              children: [
+                const Text('Type:',
                     style: TextStyle(fontSize: 13, color: Colors.grey)),
                 const SizedBox(width: 8),
                 _chip('All',     null),

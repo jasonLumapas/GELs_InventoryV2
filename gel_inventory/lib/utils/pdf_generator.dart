@@ -293,17 +293,17 @@ Future<void> printInvoiceList({
   required String periodLabel,
   required List<InvoiceListItem> items,
 }) async {
-  final doc     = pw.Document();
-  final dateFmt = DateFormat('MMM dd, yyyy');
-  final numFmt  = NumberFormat('#,##0.00');
+  final doc    = pw.Document();
+  final numFmt = NumberFormat('#,##0.00');
   final grandTotal = items.fold(0.0, (s, i) => s + i.amount);
 
-  final pageFormat = PdfPageFormat.letter.copyWith(
+  final pageFormat = PdfPageFormat.a4.copyWith(
     marginTop: 40, marginBottom: 40,
     marginLeft: 40, marginRight: 40,
   );
   final usableW = pageFormat.availableWidth;
-  final detailW = usableW * 0.70;
+  final invNoW  = usableW * 0.22;
+  final clientW = usableW * 0.48;
   final amtW    = usableW * 0.30;
 
   final font     = pw.Font.helvetica();
@@ -325,8 +325,11 @@ Future<void> printInvoiceList({
       // Column headers
       pw.Row(children: [
         pw.SizedBox(
-            width: detailW,
-            child: pw.Text('Invoice Details', style: ts(bold: true))),
+            width: invNoW,
+            child: pw.Text('Invoice #', style: ts(bold: true))),
+        pw.SizedBox(
+            width: clientW,
+            child: pw.Text('Store', style: ts(bold: true))),
         pw.SizedBox(
             width: amtW,
             child: pw.Text('Amount',
@@ -335,28 +338,22 @@ Future<void> printInvoiceList({
       ]),
       pw.Divider(height: 6, thickness: 0.5),
 
-      // Invoice rows with separators
+      // Invoice rows
       for (int i = 0; i < items.length; i++) ...[
         pw.Padding(
           padding: const pw.EdgeInsets.symmetric(vertical: 4),
-          child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Text(items[i].invoiceNumber, style: ts()),
-              pw.Text(items[i].clientName, style: ts()),
-              pw.Row(children: [
-                pw.SizedBox(
-                    width: detailW,
-                    child: pw.Text(
-                        dateFmt.format(items[i].date), style: ts())),
-                pw.SizedBox(
-                    width: amtW,
-                    child: pw.Text(phpFmt(items[i].amount),
-                        style: ts(),
-                        textAlign: pw.TextAlign.right)),
-              ]),
-            ],
-          ),
+          child: pw.Row(children: [
+            pw.SizedBox(
+                width: invNoW,
+                child: pw.Text(items[i].invoiceNumber, style: ts())),
+            pw.SizedBox(
+                width: clientW,
+                child: pw.Text(items[i].clientName, style: ts())),
+            pw.SizedBox(
+                width: amtW,
+                child: pw.Text(phpFmt(items[i].amount),
+                    style: ts(), textAlign: pw.TextAlign.right)),
+          ]),
         ),
         if (i < items.length - 1)
           pw.Divider(height: 1, thickness: 0.3),
@@ -369,16 +366,16 @@ Future<void> printInvoiceList({
       pw.Align(
         alignment: pw.Alignment.centerRight,
         child: pw.Text('Grand Total: ${phpFmt(grandTotal)}',
-            style: ts(bold: true)),
+            style: pw.TextStyle(
+                font: fontBold, fontSize: 14)),
       ),
     ],
   ));
 
-  final bytes = await doc.save();
-  final home  = Platform.environment['USERPROFILE'] ??
-      Platform.environment['HOME'] ?? '.';
-  await File('$home\\Desktop\\invoice_list_${DateTime.now().millisecondsSinceEpoch}.pdf')
-      .writeAsBytes(bytes);
+  await Printing.layoutPdf(
+    onLayout: (_) => doc.save(),
+    format: pageFormat,
+  );
 }
 
 // ── Layout / Order Summary PDF ────────────────────────────────────────────────
@@ -409,7 +406,7 @@ Future<void> printOrderSummary({
   final numFmt   = NumberFormat('#,##0.00');
   final grandTotal = rows.fold(0.0, (s, r) => s + r.totalAmount);
 
-  final pageFormat = PdfPageFormat.letter.copyWith(
+  final pageFormat = PdfPageFormat.a4.copyWith(
     marginTop: 40,
     marginBottom: 40,
     marginLeft: 40,
@@ -488,12 +485,10 @@ Future<void> printOrderSummary({
     ),
   ));
 
-  // Output to desktop file
-  final bytes = await doc.save();
-  final home  = Platform.environment['USERPROFILE'] ??
-      Platform.environment['HOME'] ?? '.';
-  final tag   = DateFormat('yyyyMMdd').format(date);
-  await File('$home\\Desktop\\layout_$tag.pdf').writeAsBytes(bytes);
+  await Printing.layoutPdf(
+    onLayout: (_) => doc.save(),
+    format: PdfPageFormat.a4.copyWith(marginTop: 36),
+  );
 }
 
 // ── Van Stock History PDF ─────────────────────────────────────────────────────
@@ -530,7 +525,7 @@ Future<void> printVanStockHistory({
   final dateFmt = DateFormat('MMMM dd, yyyy');
   final timeFmt = DateFormat('HH:mm');
 
-  final pageFormat = PdfPageFormat.letter.copyWith(
+  final pageFormat = PdfPageFormat.a4.copyWith(
     marginTop: 40, marginBottom: 40,
     marginLeft: 40, marginRight: 40,
   );
@@ -650,7 +645,7 @@ Future<void> printLoadingReport({
   final doc     = pw.Document();
   final dateFmt = DateFormat('MMMM dd, yyyy');
 
-  final pageFormat = PdfPageFormat.letter.copyWith(
+  final pageFormat = PdfPageFormat.a4.copyWith(
     marginTop: 36, marginBottom: 36,
     marginLeft: 40, marginRight: 40,
   );
@@ -728,11 +723,10 @@ Future<void> printLoadingReport({
     ),
   ));
 
-  final bytes = await doc.save();
-  final home  = Platform.environment['USERPROFILE'] ??
-      Platform.environment['HOME'] ?? '.';
-  final tag   = DateFormat('yyyyMMdd').format(returnDate);
-  await File('$home\\Desktop\\loading_report_$tag.pdf').writeAsBytes(bytes);
+  await Printing.layoutPdf(
+    onLayout: (_) => doc.save(),
+    format: pageFormat,
+  );
 }
 
 // ── Van Loading / Stocks Return PDF ──────────────────────────────────────────
@@ -892,11 +886,9 @@ Future<void> printVanTransactions({
 
   doc.addPage(pw.MultiPage(pageFormat: pageFormat, build: (_) => widgets));
 
-  final bytes = await doc.save();
-  final home  = Platform.environment['USERPROFILE'] ??
-      Platform.environment['HOME'] ?? '.';
-  final tag   = DateFormat('yyyyMMdd').format(date);
-  final label = title.toLowerCase().replaceAll(' ', '_');
-  await File('$home\\Desktop\\${label}_$tag.pdf').writeAsBytes(bytes);
+  await Printing.layoutPdf(
+    onLayout: (_) => doc.save(),
+    format: pageFormat,
+  );
 }
 

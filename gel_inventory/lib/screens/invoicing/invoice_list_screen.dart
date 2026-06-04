@@ -5,12 +5,42 @@ import 'package:intl/intl.dart';
 import '../../repositories/client_repository.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_repository.dart';
+import '../../repositories/product_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../utils/pdf_generator.dart';
 import '../../widgets/common/app_scaffold.dart';
 import '../../widgets/common/confirm_dialog.dart';
 
 enum _FilterType { day, week, month }
+
+class _Financials {
+  final double grandTotal;
+  final double capital;
+  double get profit => grandTotal - capital;
+  const _Financials(this.grandTotal, this.capital);
+}
+
+final _financialsProvider = FutureProvider.autoDispose
+    .family<_Financials, (DateTime, DateTime)>((ref, range) async {
+  final invoices = await ref.watch(filteredInvoicesProvider(range).future);
+  final invoiceRepo = ref.read(invoiceRepositoryProvider);
+  final productRepo = ref.read(productRepositoryProvider);
+  double grandTotal = 0;
+  double capital = 0;
+  for (final inv in invoices) {
+    if (inv.status == 'cancelled') continue;
+    grandTotal += inv.totalAmount;
+    final items = await invoiceRepo.getItems(inv.id);
+    for (final item in items) {
+      if (item.isFree) continue;
+      final price = await productRepo.getCurrentPrice(item.productId);
+      if (price != null) {
+        capital += price.withdrawalPrice * item.quantity;
+      }
+    }
+  }
+  return _Financials(grandTotal, capital);
+});
 
 class InvoiceListScreen extends ConsumerStatefulWidget {
   const InvoiceListScreen({super.key});
@@ -21,7 +51,7 @@ class InvoiceListScreen extends ConsumerStatefulWidget {
 
 class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
   _FilterType _filter = _FilterType.day;
-  DateTime _anchor = DateTime.now();
+  DateTime _anchor = DateTime.now().add(const Duration(days: 1));
 
   // ── Date range helpers ───────────────────────────────────────────────────
 
@@ -190,7 +220,8 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
 
                 // Today shortcut
                 TextButton(
-                  onPressed: () => setState(() => _anchor = DateTime.now()),
+                  onPressed: () => setState(() =>
+                      _anchor = DateTime.now().add(const Duration(days: 1))),
                   style: TextButton.styleFrom(
                       visualDensity: VisualDensity.compact),
                   child: const Text('Today'),
@@ -280,7 +311,7 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                       ),
                     ),
 
-                    // Period total footer
+                    // Footer: invoice count + financials
                     Container(
                       color: Theme.of(context)
                           .colorScheme
@@ -288,15 +319,53 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 10),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text('${invoices.length} invoice(s)',
                               style: const TextStyle(color: Colors.grey)),
-                          Text(
-                            'Period total: ${formatCurrency(periodTotal)}',
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 15),
-                          ),
+                          const Spacer(),
+                          ref
+                              .watch(_financialsProvider(
+                                  (_startDate, _endDate)))
+                              .when(
+                                loading: () => const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2)),
+                                error: (_, s) => Text(
+                                    'Total: ${formatCurrency(periodTotal)}',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15)),
+                                data: (fin) => Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      'Total: ${formatCurrency(fin.grandTotal)}',
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 15),
+                                    ),
+                                    Text(
+                                      'Capital: ${formatCurrency(fin.capital)}',
+                                      style: TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.grey.shade700),
+                                    ),
+                                    Text(
+                                      'Profit: ${formatCurrency(fin.profit)}',
+                                      style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: fin.profit >= 0
+                                              ? Colors.green.shade700
+                                              : Colors.red),
+                                    ),
+                                  ],
+                                ),
+                              ),
                         ],
                       ),
                     ),

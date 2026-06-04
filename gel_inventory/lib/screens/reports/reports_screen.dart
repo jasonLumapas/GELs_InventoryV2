@@ -7,6 +7,7 @@ import '../../repositories/invoice_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../repositories/stock_movement_repository.dart';
 import '../../repositories/supplier_repository.dart';
+import '../../repositories/van_stock_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../widgets/common/app_scaffold.dart';
 
@@ -619,36 +620,60 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
     final nowEnd =
         DateTime(now.year, now.month, now.day + 1);
 
-    // Pieces sold ON the selected date
-    final onDate = await _sumSold(ref, dayStart, dayEnd);
-
-    // Pieces sold AFTER the selected date (day+1 → today)
-    final Map<String, int> afterDate;
-    if (dayEnd.isBefore(nowEnd)) {
-      afterDate = await _sumSold(ref, dayEnd, nowEnd);
-    } else {
-      afterDate = {};
+    // Helper: sum van stock transactions by type for a date range
+    Future<Map<String, int>> sumVan(String type, DateTime from, DateTime to) async {
+      final txs = await ref.read(vanStockRepositoryProvider).getForRange(from, to);
+      final totals = <String, int>{};
+      for (final t in txs.where((t) => t.type == type)) {
+        totals[t.productId] = (totals[t.productId] ?? 0) + t.quantityPieces;
+      }
+      return totals;
     }
 
-    // Stock-in ON the selected date
-    final stockIn = await ref
-        .read(stockMovementRepositoryProvider)
-        .sumInForDate(date);
-
-    // Stock-in AFTER the selected date (needed to back-calculate ending correctly)
-    final Map<String, int> stockInAfter;
-    if (dayEnd.isBefore(nowEnd)) {
-      stockInAfter = await ref
-          .read(stockMovementRepositoryProvider)
-          .sumInForRange(dayEnd, nowEnd);
-    } else {
-      stockInAfter = {};
+    Map<String, int> merge(Map<String, int> a, Map<String, int> b) {
+      final r = Map<String, int>.from(a);
+      for (final e in b.entries) { r[e.key] = (r[e.key] ?? 0) + e.value; }
+      return r;
     }
+
+    // Pieces sold + van-out ON the selected date → Stock Out
+    final invoiceOut    = await _sumSold(ref, dayStart, dayEnd);
+    final vanOutOnDate  = await sumVan('out', dayStart, dayEnd);
+    final onDate        = merge(invoiceOut, vanOutOnDate);
+
+    // Pieces sold + van-out AFTER the selected date
+    final Map<String, int> invoiceOutAfter;
+    final Map<String, int> vanOutAfter;
+    if (dayEnd.isBefore(nowEnd)) {
+      invoiceOutAfter = await _sumSold(ref, dayEnd, nowEnd);
+      vanOutAfter     = await sumVan('out', dayEnd, nowEnd);
+    } else {
+      invoiceOutAfter = {};
+      vanOutAfter     = {};
+    }
+    final afterDate = merge(invoiceOutAfter, vanOutAfter);
+
+    // Stock-in (movements) + van-in ON the selected date → Stock In
+    final movIn        = await ref.read(stockMovementRepositoryProvider).sumInForDate(date);
+    final vanInOnDate  = await sumVan('in', dayStart, dayEnd);
+    final stockIn      = merge(movIn, vanInOnDate);
+
+    // Stock-in + van-in AFTER the selected date
+    final Map<String, int> movInAfter;
+    final Map<String, int> vanInAfter;
+    if (dayEnd.isBefore(nowEnd)) {
+      movInAfter  = await ref.read(stockMovementRepositoryProvider).sumInForRange(dayEnd, nowEnd);
+      vanInAfter  = await sumVan('in', dayEnd, nowEnd);
+    } else {
+      movInAfter = {};
+      vanInAfter = {};
+    }
+    final stockInAfter = merge(movInAfter, vanInAfter);
 
     // Reconstruct ending and beginning by working backwards from current stock.
-    // ending   = current + sold_after  - stockIn_after   (undo post-date changes)
-    // beginning = ending  + sold_on_date - stockIn_on_date (undo same-day changes)
-    final ending = <String, int>{};
+    // ending   = current + (sold+vanOut)_after  - (movIn+vanIn)_after
+    // beginning = ending  + (sold+vanOut)_on_date - (movIn+vanIn)_on_date
+    final ending   = <String, int>{};
     final beginning = <String, int>{};
     for (final p in products) {
       final end = (currentInv[p.id] ?? 0)

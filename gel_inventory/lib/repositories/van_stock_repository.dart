@@ -60,6 +60,37 @@ class VanStockRepository extends BaseRepository {
         .toList();
   }
 
+  Future<List<VanStock>> getForRange(DateTime from, DateTime to) async {
+    if (isOnline) {
+      try {
+        final data = await Supabase.instance.client
+            .from('van_stocks')
+            .select()
+            .gte('date', from.toIso8601String())
+            .lt('date', to.toIso8601String())
+            .order('date', ascending: false);
+        return (data as List).map((j) => VanStock.fromJson(j)).toList();
+      } catch (_) {}
+    }
+    final rows = await (db.select(db.vanStocks)
+          ..where((t) =>
+              t.date.isBiggerOrEqualValue(from) &
+              t.date.isSmallerThanValue(to))
+          ..orderBy([(t) => drift.OrderingTerm.desc(t.date)]))
+        .get();
+    return rows
+        .map((r) => VanStock(
+              id: r.id,
+              productId: r.productId,
+              type: r.type,
+              quantityPieces: r.quantityPieces,
+              date: r.date,
+              notes: r.notes,
+              areaId: r.areaId,
+            ))
+        .toList();
+  }
+
   /// Returns a map of productId → total loaded pieces for [areaId] on the
   /// latest loading date strictly before [beforeDate].  Also returns that date.
   Future<(Map<String, int>, DateTime?)> getLatestLoadedProducts({

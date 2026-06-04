@@ -496,3 +496,407 @@ Future<void> printOrderSummary({
   await File('$home\\Desktop\\layout_$tag.pdf').writeAsBytes(bytes);
 }
 
+// ── Van Stock History PDF ─────────────────────────────────────────────────────
+
+class VanStockHistoryRow {
+  final String productName;
+  final String supplierName;
+  final String type;       // 'out' | 'in'
+  final int quantityPieces;
+  final int piecesPerBox;
+  final String? notes;
+  final DateTime date;
+
+  const VanStockHistoryRow({
+    required this.productName,
+    required this.supplierName,
+    required this.type,
+    required this.quantityPieces,
+    required this.piecesPerBox,
+    required this.date,
+    this.notes,
+  });
+
+  int get boxes => quantityPieces ~/ piecesPerBox;
+  int get pcs   => quantityPieces % piecesPerBox;
+  bool get isOut => type == 'out';
+}
+
+Future<void> printVanStockHistory({
+  required DateTime date,
+  required List<VanStockHistoryRow> rows,
+}) async {
+  final doc     = pw.Document();
+  final dateFmt = DateFormat('MMMM dd, yyyy');
+  final timeFmt = DateFormat('HH:mm');
+
+  final pageFormat = PdfPageFormat.letter.copyWith(
+    marginTop: 40, marginBottom: 40,
+    marginLeft: 40, marginRight: 40,
+  );
+  final usableW = pageFormat.availableWidth;
+  final supW  = usableW * 0.18;
+  final prodW = usableW * 0.30;
+  final typeW = usableW * 0.10;
+  final qtyW  = usableW * 0.16;
+  final timeW = usableW * 0.12;
+  final noteW = usableW * 0.14;
+
+  final font     = pw.Font.helvetica();
+  final fontBold = pw.Font.helveticaBold();
+  const double fs = 10.0;
+
+  pw.TextStyle ts({bool bold = false}) =>
+      pw.TextStyle(font: bold ? fontBold : font, fontSize: fs);
+
+  pw.Widget cell(String text, double width,
+          {bool bold = false, bool right = false}) =>
+      pw.SizedBox(
+        width: width,
+        child: pw.Text(text,
+            style: ts(bold: bold),
+            textAlign: right ? pw.TextAlign.right : pw.TextAlign.left),
+      );
+
+  doc.addPage(pw.MultiPage(
+    pageFormat: pageFormat,
+    build: (ctx) => [
+      pw.Text('Van Stock History — ${dateFmt.format(date)}',
+          style: ts(bold: true)),
+      pw.SizedBox(height: 10),
+
+      // Column headers
+      pw.Row(children: [
+        cell('Supplier', supW, bold: true),
+        cell('Product',  prodW, bold: true),
+        cell('Type',     typeW, bold: true),
+        cell('Qty',      qtyW,  bold: true, right: true),
+        cell('Time',     timeW, bold: true, right: true),
+        cell('Notes',    noteW, bold: true),
+      ]),
+      pw.Divider(height: 6, thickness: 0.5),
+
+      // Data rows
+      for (int i = 0; i < rows.length; i++) ...[
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 3),
+          child: pw.Row(children: [
+            cell(rows[i].supplierName, supW),
+            cell(rows[i].productName,  prodW),
+            cell(rows[i].isOut ? 'OUT' : 'IN', typeW,
+                bold: true),
+            cell(
+              rows[i].boxes > 0
+                  ? '${rows[i].boxes} box + ${rows[i].pcs} pcs'
+                  : '${rows[i].pcs} pcs',
+              qtyW, right: true),
+            cell(timeFmt.format(rows[i].date), timeW, right: true),
+            cell(rows[i].notes ?? '', noteW),
+          ]),
+        ),
+        if (i < rows.length - 1) pw.Divider(height: 1, thickness: 0.3),
+      ],
+    ],
+  ));
+
+  final bytes = await doc.save();
+  final home  = Platform.environment['USERPROFILE'] ??
+      Platform.environment['HOME'] ?? '.';
+  final tag   = DateFormat('yyyyMMdd').format(date);
+  await File('$home\\Desktop\\van_history_$tag.pdf').writeAsBytes(bytes);
+}
+
+// ── Loading Report PDF ────────────────────────────────────────────────────────
+
+class LoadingReportRow {
+  final String productName;
+  final int piecesPerBox;
+  final int loadedPieces;
+  final int returnedPieces;
+
+  const LoadingReportRow({
+    required this.productName,
+    required this.piecesPerBox,
+    required this.loadedPieces,
+    required this.returnedPieces,
+  });
+
+  int get soldPieces => (loadedPieces - returnedPieces).clamp(0, 999999);
+
+  String _fmt(int pcs) {
+    final b = pcs ~/ piecesPerBox;
+    final p = pcs % piecesPerBox;
+    return '${b > 0 ? '$b box${b == 1 ? '' : 'es'}' : ''}'
+        '${b > 0 && p > 0 ? ' + ' : ''}${p > 0 ? '$p pcs' : ''}'
+        .trim()
+        .let((s) => s.isEmpty ? '0' : s);
+  }
+
+  String get loadedFmt   => _fmt(loadedPieces);
+  String get returnedFmt => _fmt(returnedPieces);
+  String get soldFmt     => _fmt(soldPieces);
+}
+
+extension _StringExt on String {
+  String let(String Function(String) fn) => fn(this);
+}
+
+Future<void> printLoadingReport({
+  required String   areaName,
+  required DateTime loadingDate,
+  required DateTime returnDate,
+  required List<LoadingReportRow> rows,
+}) async {
+  final doc     = pw.Document();
+  final dateFmt = DateFormat('MMMM dd, yyyy');
+
+  final pageFormat = PdfPageFormat.letter.copyWith(
+    marginTop: 36, marginBottom: 36,
+    marginLeft: 40, marginRight: 40,
+  );
+  final usableW = pageFormat.availableWidth;
+  final itemW = usableW * 0.40;
+  final colW  = usableW * 0.20;
+
+  final font     = pw.Font.helvetica();
+  final fontBold = pw.Font.helveticaBold();
+  const double fs = 10.5;
+
+  pw.TextStyle ts({bool bold = false}) =>
+      pw.TextStyle(font: bold ? fontBold : font, fontSize: fs);
+
+  pw.Widget col(String text, double width,
+          {bool bold = false, pw.TextAlign align = pw.TextAlign.left}) =>
+      pw.SizedBox(
+        width: width,
+        child: pw.Text(text,
+            style: ts(bold: bold), textAlign: align),
+      );
+
+  // Total sold pieces across all products
+  int totalSoldPieces = 0;
+  for (final r in rows) { totalSoldPieces += r.soldPieces; }
+
+  // Build a combined sold display using average ppb (all pieces, no box format for total)
+  String totalSoldLabel = '$totalSoldPieces pcs';
+
+  doc.addPage(pw.Page(
+    pageFormat: pageFormat,
+    build: (ctx) => pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        // Report header
+        pw.Text('Loading Report', style: ts(bold: true)),
+        pw.SizedBox(height: 6),
+        pw.Text('Area:          $areaName',   style: ts()),
+        pw.Text('Loading Date:  ${dateFmt.format(loadingDate)}', style: ts()),
+        pw.Text('Return Date:   ${dateFmt.format(returnDate)}',  style: ts()),
+        pw.SizedBox(height: 12),
+
+        // Column headers
+        pw.Row(children: [
+          col('ITEM',    itemW, bold: true),
+          col('Loading', colW,  bold: true, align: pw.TextAlign.center),
+          col('Return',  colW,  bold: true, align: pw.TextAlign.center),
+          col('Sold',    colW,  bold: true, align: pw.TextAlign.center),
+        ]),
+        pw.Divider(height: 6, thickness: 0.5),
+
+        // Data rows
+        for (int i = 0; i < rows.length; i++) ...[
+          pw.Padding(
+            padding: const pw.EdgeInsets.symmetric(vertical: 4),
+            child: pw.Row(children: [
+              col(rows[i].productName, itemW),
+              col(rows[i].loadedFmt,   colW, align: pw.TextAlign.center),
+              col(rows[i].returnedFmt, colW, align: pw.TextAlign.center),
+              col(rows[i].soldFmt,     colW, align: pw.TextAlign.center),
+            ]),
+          ),
+          if (i < rows.length - 1) pw.Divider(height: 1, thickness: 0.2),
+        ],
+
+        // Grand total
+        pw.Divider(height: 8, thickness: 0.5),
+        pw.Row(children: [
+          col('Grand Total', itemW, bold: true),
+          col('', colW),
+          col('', colW),
+          col(totalSoldLabel, colW, bold: true, align: pw.TextAlign.center),
+        ]),
+      ],
+    ),
+  ));
+
+  final bytes = await doc.save();
+  final home  = Platform.environment['USERPROFILE'] ??
+      Platform.environment['HOME'] ?? '.';
+  final tag   = DateFormat('yyyyMMdd').format(returnDate);
+  await File('$home\\Desktop\\loading_report_$tag.pdf').writeAsBytes(bytes);
+}
+
+// ── Van Loading / Stocks Return PDF ──────────────────────────────────────────
+
+class VanTransactionPrintRow {
+  final String productName;
+  final String areaId;
+  final String areaName;
+  final int quantityPieces;
+  final int piecesPerBox;
+  final double sellingPrice;
+
+  const VanTransactionPrintRow({
+    required this.productName,
+    required this.areaId,
+    required this.areaName,
+    required this.quantityPieces,
+    required this.piecesPerBox,
+    required this.sellingPrice,
+  });
+
+  int get boxes => quantityPieces ~/ piecesPerBox;
+  int get pcs   => quantityPieces % piecesPerBox;
+  double get amount => quantityPieces * sellingPrice;
+}
+
+Future<void> printVanTransactions({
+  required DateTime date,
+  required String title,
+  required List<VanTransactionPrintRow> rows,
+}) async {
+  final doc     = pw.Document();
+  final dateFmt = DateFormat('MMMM dd, yyyy');
+  final numFmt  = NumberFormat('#,##0.00');
+
+  final pageFormat = PdfPageFormat.letter.copyWith(
+    marginTop: 36, marginBottom: 36,
+    marginLeft: 40, marginRight: 40,
+  );
+  final usableW = pageFormat.availableWidth;
+  final prodW   = usableW * 0.52;
+  final boxW    = usableW * 0.16;
+  final pcsW    = usableW * 0.16;
+  final amtW    = usableW * 0.16;
+
+  final font     = pw.Font.helvetica();
+  final fontBold = pw.Font.helveticaBold();
+  const double fs = 10.0;
+
+  pw.TextStyle ts({bool bold = false}) =>
+      pw.TextStyle(font: bold ? fontBold : font, fontSize: fs);
+
+  pw.Widget col(String text, double width,
+          {bool bold = false, bool right = false}) =>
+      pw.SizedBox(
+        width: width,
+        child: pw.Text(text,
+            style: ts(bold: bold),
+            textAlign: right ? pw.TextAlign.right : pw.TextAlign.left),
+      );
+
+  String php(double v) => 'Php ${numFmt.format(v)}';
+
+  // Group by areaId preserving insertion order
+  final grouped = <String, List<VanTransactionPrintRow>>{};
+  for (final r in rows) {
+    grouped.putIfAbsent(r.areaId, () => []).add(r);
+  }
+
+  // First area shown in document header (multi-area prints label each group separately)
+  final firstAreaName = grouped.entries.first.value.first.areaName;
+
+  final widgets = <pw.Widget>[
+    pw.Text('$title - ${dateFmt.format(date)}', style: ts(bold: true)),
+    pw.SizedBox(height: 10),
+
+    // Area line (document-level, above crew lines)
+    pw.Text(
+      'Area: ${grouped.length == 1 ? firstAreaName : "Multiple Areas"}',
+      style: ts(bold: true),
+    ),
+    pw.SizedBox(height: 12),
+
+    // Crew lines with spacing
+    pw.Text('Driver:  ___________________________________', style: ts()),
+    pw.SizedBox(height: 8),
+    pw.Text('Agent:   ___________________________________', style: ts()),
+    pw.SizedBox(height: 8),
+    pw.Text('Junior:  ___________________________________', style: ts()),
+    pw.SizedBox(height: 16),
+  ];
+
+  double grandTotal = 0;
+
+  for (final entry in grouped.entries) {
+    final areaName = entry.value.first.areaName;
+    final areaRows = entry.value;
+    final subtotal = areaRows.fold(0.0, (s, r) => s + r.amount);
+    grandTotal += subtotal;
+
+    // Per-group area header — only when multiple areas are present
+    if (grouped.length > 1) {
+      widgets.add(pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text('Area: $areaName', style: ts(bold: true)),
+          pw.Text('Date: ${dateFmt.format(date)}', style: ts()),
+        ],
+      ));
+    }
+    widgets.add(pw.Divider(height: 4, thickness: 0.5));
+
+    // Column headers
+    widgets.add(pw.Row(children: [
+      col('Product', prodW, bold: true),
+      col('Boxes',   boxW,  bold: true, right: true),
+      col('Pcs',     pcsW,  bold: true, right: true),
+      col('Amount',  amtW,  bold: true, right: true),
+    ]));
+    widgets.add(pw.Divider(height: 3, thickness: 0.3));
+    widgets.add(pw.SizedBox(height: 6));
+
+    // Rows
+    for (int i = 0; i < areaRows.length; i++) {
+      final r = areaRows[i];
+      widgets.add(pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(vertical: 2),
+        child: pw.Row(children: [
+          col(r.productName, prodW),
+          col(r.boxes > 0 ? '${r.boxes}' : '', boxW, right: true),
+          col(r.pcs   > 0 ? '${r.pcs}'   : '', pcsW, right: true),
+          col(numFmt.format(r.amount),          amtW, right: true),
+        ]),
+      ));
+      if (i < areaRows.length - 1) {
+        widgets.add(pw.Divider(height: 1, thickness: 0.2));
+      }
+    }
+
+    // Subtotal — only shown when multiple area groups are printed
+    widgets.add(pw.Divider(height: 4, thickness: 0.5));
+    if (grouped.length > 1) {
+      widgets.add(pw.Align(
+        alignment: pw.Alignment.centerRight,
+        child: pw.Text('Subtotal: ${php(subtotal)}', style: ts(bold: true)),
+      ));
+    }
+    widgets.add(pw.SizedBox(height: 14));
+  }
+
+  // Grand total
+  widgets.add(pw.Align(
+    alignment: pw.Alignment.centerRight,
+    child: pw.Text('Grand Total: ${php(grandTotal)}',
+        style: pw.TextStyle(font: fontBold, fontSize: fs + 2)),
+  ));
+
+  doc.addPage(pw.MultiPage(pageFormat: pageFormat, build: (_) => widgets));
+
+  final bytes = await doc.save();
+  final home  = Platform.environment['USERPROFILE'] ??
+      Platform.environment['HOME'] ?? '.';
+  final tag   = DateFormat('yyyyMMdd').format(date);
+  final label = title.toLowerCase().replaceAll(' ', '_');
+  await File('$home\\Desktop\\${label}_$tag.pdf').writeAsBytes(bytes);
+}
+

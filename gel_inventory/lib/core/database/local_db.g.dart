@@ -4367,6 +4367,208 @@ class BadOrderItemsCompanion extends UpdateCompanion<BadOrderItem> {
   }
 }
 
+class $VanAreasTable extends VanAreas with TableInfo<$VanAreasTable, VanArea> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $VanAreasTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, name];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'van_areas';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<VanArea> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  VanArea map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return VanArea(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+    );
+  }
+
+  @override
+  $VanAreasTable createAlias(String alias) {
+    return $VanAreasTable(attachedDatabase, alias);
+  }
+}
+
+class VanArea extends DataClass implements Insertable<VanArea> {
+  final String id;
+  final String name;
+  const VanArea({required this.id, required this.name});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['name'] = Variable<String>(name);
+    return map;
+  }
+
+  VanAreasCompanion toCompanion(bool nullToAbsent) {
+    return VanAreasCompanion(id: Value(id), name: Value(name));
+  }
+
+  factory VanArea.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return VanArea(
+      id: serializer.fromJson<String>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'name': serializer.toJson<String>(name),
+    };
+  }
+
+  VanArea copyWith({String? id, String? name}) =>
+      VanArea(id: id ?? this.id, name: name ?? this.name);
+  VanArea copyWithCompanion(VanAreasCompanion data) {
+    return VanArea(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VanArea(')
+          ..write('id: $id, ')
+          ..write('name: $name')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is VanArea && other.id == this.id && other.name == this.name);
+}
+
+class VanAreasCompanion extends UpdateCompanion<VanArea> {
+  final Value<String> id;
+  final Value<String> name;
+  final Value<int> rowid;
+  const VanAreasCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  VanAreasCompanion.insert({
+    required String id,
+    required String name,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       name = Value(name);
+  static Insertable<VanArea> custom({
+    Expression<String>? id,
+    Expression<String>? name,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  VanAreasCompanion copyWith({
+    Value<String>? id,
+    Value<String>? name,
+    Value<int>? rowid,
+  }) {
+    return VanAreasCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VanAreasCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $VanStocksTable extends VanStocks
     with TableInfo<$VanStocksTable, VanStock> {
   @override
@@ -4435,6 +4637,15 @@ class $VanStocksTable extends VanStocks
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _areaIdMeta = const VerificationMeta('areaId');
+  @override
+  late final GeneratedColumn<String> areaId = GeneratedColumn<String>(
+    'area_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -4443,6 +4654,7 @@ class $VanStocksTable extends VanStocks
     quantityPieces,
     date,
     notes,
+    areaId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -4500,6 +4712,12 @@ class $VanStocksTable extends VanStocks
         notes.isAcceptableOrUnknown(data['notes']!, _notesMeta),
       );
     }
+    if (data.containsKey('area_id')) {
+      context.handle(
+        _areaIdMeta,
+        areaId.isAcceptableOrUnknown(data['area_id']!, _areaIdMeta),
+      );
+    }
     return context;
   }
 
@@ -4533,6 +4751,10 @@ class $VanStocksTable extends VanStocks
         DriftSqlType.string,
         data['${effectivePrefix}notes'],
       ),
+      areaId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}area_id'],
+      ),
     );
   }
 
@@ -4549,6 +4771,7 @@ class VanStock extends DataClass implements Insertable<VanStock> {
   final int quantityPieces;
   final DateTime date;
   final String? notes;
+  final String? areaId;
   const VanStock({
     required this.id,
     required this.productId,
@@ -4556,6 +4779,7 @@ class VanStock extends DataClass implements Insertable<VanStock> {
     required this.quantityPieces,
     required this.date,
     this.notes,
+    this.areaId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -4567,6 +4791,9 @@ class VanStock extends DataClass implements Insertable<VanStock> {
     map['date'] = Variable<DateTime>(date);
     if (!nullToAbsent || notes != null) {
       map['notes'] = Variable<String>(notes);
+    }
+    if (!nullToAbsent || areaId != null) {
+      map['area_id'] = Variable<String>(areaId);
     }
     return map;
   }
@@ -4581,6 +4808,9 @@ class VanStock extends DataClass implements Insertable<VanStock> {
       notes: notes == null && nullToAbsent
           ? const Value.absent()
           : Value(notes),
+      areaId: areaId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(areaId),
     );
   }
 
@@ -4596,6 +4826,7 @@ class VanStock extends DataClass implements Insertable<VanStock> {
       quantityPieces: serializer.fromJson<int>(json['quantityPieces']),
       date: serializer.fromJson<DateTime>(json['date']),
       notes: serializer.fromJson<String?>(json['notes']),
+      areaId: serializer.fromJson<String?>(json['areaId']),
     );
   }
   @override
@@ -4608,6 +4839,7 @@ class VanStock extends DataClass implements Insertable<VanStock> {
       'quantityPieces': serializer.toJson<int>(quantityPieces),
       'date': serializer.toJson<DateTime>(date),
       'notes': serializer.toJson<String?>(notes),
+      'areaId': serializer.toJson<String?>(areaId),
     };
   }
 
@@ -4618,6 +4850,7 @@ class VanStock extends DataClass implements Insertable<VanStock> {
     int? quantityPieces,
     DateTime? date,
     Value<String?> notes = const Value.absent(),
+    Value<String?> areaId = const Value.absent(),
   }) => VanStock(
     id: id ?? this.id,
     productId: productId ?? this.productId,
@@ -4625,6 +4858,7 @@ class VanStock extends DataClass implements Insertable<VanStock> {
     quantityPieces: quantityPieces ?? this.quantityPieces,
     date: date ?? this.date,
     notes: notes.present ? notes.value : this.notes,
+    areaId: areaId.present ? areaId.value : this.areaId,
   );
   VanStock copyWithCompanion(VanStocksCompanion data) {
     return VanStock(
@@ -4636,6 +4870,7 @@ class VanStock extends DataClass implements Insertable<VanStock> {
           : this.quantityPieces,
       date: data.date.present ? data.date.value : this.date,
       notes: data.notes.present ? data.notes.value : this.notes,
+      areaId: data.areaId.present ? data.areaId.value : this.areaId,
     );
   }
 
@@ -4647,14 +4882,15 @@ class VanStock extends DataClass implements Insertable<VanStock> {
           ..write('type: $type, ')
           ..write('quantityPieces: $quantityPieces, ')
           ..write('date: $date, ')
-          ..write('notes: $notes')
+          ..write('notes: $notes, ')
+          ..write('areaId: $areaId')
           ..write(')'))
         .toString();
   }
 
   @override
   int get hashCode =>
-      Object.hash(id, productId, type, quantityPieces, date, notes);
+      Object.hash(id, productId, type, quantityPieces, date, notes, areaId);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -4664,7 +4900,8 @@ class VanStock extends DataClass implements Insertable<VanStock> {
           other.type == this.type &&
           other.quantityPieces == this.quantityPieces &&
           other.date == this.date &&
-          other.notes == this.notes);
+          other.notes == this.notes &&
+          other.areaId == this.areaId);
 }
 
 class VanStocksCompanion extends UpdateCompanion<VanStock> {
@@ -4674,6 +4911,7 @@ class VanStocksCompanion extends UpdateCompanion<VanStock> {
   final Value<int> quantityPieces;
   final Value<DateTime> date;
   final Value<String?> notes;
+  final Value<String?> areaId;
   final Value<int> rowid;
   const VanStocksCompanion({
     this.id = const Value.absent(),
@@ -4682,6 +4920,7 @@ class VanStocksCompanion extends UpdateCompanion<VanStock> {
     this.quantityPieces = const Value.absent(),
     this.date = const Value.absent(),
     this.notes = const Value.absent(),
+    this.areaId = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   VanStocksCompanion.insert({
@@ -4691,6 +4930,7 @@ class VanStocksCompanion extends UpdateCompanion<VanStock> {
     required int quantityPieces,
     this.date = const Value.absent(),
     this.notes = const Value.absent(),
+    this.areaId = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        productId = Value(productId),
@@ -4703,6 +4943,7 @@ class VanStocksCompanion extends UpdateCompanion<VanStock> {
     Expression<int>? quantityPieces,
     Expression<DateTime>? date,
     Expression<String>? notes,
+    Expression<String>? areaId,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -4712,6 +4953,7 @@ class VanStocksCompanion extends UpdateCompanion<VanStock> {
       if (quantityPieces != null) 'quantity_pieces': quantityPieces,
       if (date != null) 'date': date,
       if (notes != null) 'notes': notes,
+      if (areaId != null) 'area_id': areaId,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -4723,6 +4965,7 @@ class VanStocksCompanion extends UpdateCompanion<VanStock> {
     Value<int>? quantityPieces,
     Value<DateTime>? date,
     Value<String?>? notes,
+    Value<String?>? areaId,
     Value<int>? rowid,
   }) {
     return VanStocksCompanion(
@@ -4732,6 +4975,7 @@ class VanStocksCompanion extends UpdateCompanion<VanStock> {
       quantityPieces: quantityPieces ?? this.quantityPieces,
       date: date ?? this.date,
       notes: notes ?? this.notes,
+      areaId: areaId ?? this.areaId,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -4757,6 +5001,9 @@ class VanStocksCompanion extends UpdateCompanion<VanStock> {
     if (notes.present) {
       map['notes'] = Variable<String>(notes.value);
     }
+    if (areaId.present) {
+      map['area_id'] = Variable<String>(areaId.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -4772,6 +5019,7 @@ class VanStocksCompanion extends UpdateCompanion<VanStock> {
           ..write('quantityPieces: $quantityPieces, ')
           ..write('date: $date, ')
           ..write('notes: $notes, ')
+          ..write('areaId: $areaId, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -6161,6 +6409,7 @@ abstract class _$LocalDatabase extends GeneratedDatabase {
   late final $InvoiceItemsTable invoiceItems = $InvoiceItemsTable(this);
   late final $BadOrdersTable badOrders = $BadOrdersTable(this);
   late final $BadOrderItemsTable badOrderItems = $BadOrderItemsTable(this);
+  late final $VanAreasTable vanAreas = $VanAreasTable(this);
   late final $VanStocksTable vanStocks = $VanStocksTable(this);
   late final $StockMovementsTable stockMovements = $StockMovementsTable(this);
   late final $InvoicePaymentsTable invoicePayments = $InvoicePaymentsTable(
@@ -6182,6 +6431,7 @@ abstract class _$LocalDatabase extends GeneratedDatabase {
     invoiceItems,
     badOrders,
     badOrderItems,
+    vanAreas,
     vanStocks,
     stockMovements,
     invoicePayments,
@@ -10892,6 +11142,135 @@ typedef $$BadOrderItemsTableProcessedTableManager =
       BadOrderItem,
       PrefetchHooks Function({bool badOrderId, bool productId})
     >;
+typedef $$VanAreasTableCreateCompanionBuilder =
+    VanAreasCompanion Function({
+      required String id,
+      required String name,
+      Value<int> rowid,
+    });
+typedef $$VanAreasTableUpdateCompanionBuilder =
+    VanAreasCompanion Function({
+      Value<String> id,
+      Value<String> name,
+      Value<int> rowid,
+    });
+
+class $$VanAreasTableFilterComposer
+    extends Composer<_$LocalDatabase, $VanAreasTable> {
+  $$VanAreasTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$VanAreasTableOrderingComposer
+    extends Composer<_$LocalDatabase, $VanAreasTable> {
+  $$VanAreasTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$VanAreasTableAnnotationComposer
+    extends Composer<_$LocalDatabase, $VanAreasTable> {
+  $$VanAreasTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+}
+
+class $$VanAreasTableTableManager
+    extends
+        RootTableManager<
+          _$LocalDatabase,
+          $VanAreasTable,
+          VanArea,
+          $$VanAreasTableFilterComposer,
+          $$VanAreasTableOrderingComposer,
+          $$VanAreasTableAnnotationComposer,
+          $$VanAreasTableCreateCompanionBuilder,
+          $$VanAreasTableUpdateCompanionBuilder,
+          (VanArea, BaseReferences<_$LocalDatabase, $VanAreasTable, VanArea>),
+          VanArea,
+          PrefetchHooks Function()
+        > {
+  $$VanAreasTableTableManager(_$LocalDatabase db, $VanAreasTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$VanAreasTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$VanAreasTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$VanAreasTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => VanAreasCompanion(id: id, name: name, rowid: rowid),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String name,
+                Value<int> rowid = const Value.absent(),
+              }) => VanAreasCompanion.insert(id: id, name: name, rowid: rowid),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$VanAreasTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LocalDatabase,
+      $VanAreasTable,
+      VanArea,
+      $$VanAreasTableFilterComposer,
+      $$VanAreasTableOrderingComposer,
+      $$VanAreasTableAnnotationComposer,
+      $$VanAreasTableCreateCompanionBuilder,
+      $$VanAreasTableUpdateCompanionBuilder,
+      (VanArea, BaseReferences<_$LocalDatabase, $VanAreasTable, VanArea>),
+      VanArea,
+      PrefetchHooks Function()
+    >;
 typedef $$VanStocksTableCreateCompanionBuilder =
     VanStocksCompanion Function({
       required String id,
@@ -10900,6 +11279,7 @@ typedef $$VanStocksTableCreateCompanionBuilder =
       required int quantityPieces,
       Value<DateTime> date,
       Value<String?> notes,
+      Value<String?> areaId,
       Value<int> rowid,
     });
 typedef $$VanStocksTableUpdateCompanionBuilder =
@@ -10910,6 +11290,7 @@ typedef $$VanStocksTableUpdateCompanionBuilder =
       Value<int> quantityPieces,
       Value<DateTime> date,
       Value<String?> notes,
+      Value<String?> areaId,
       Value<int> rowid,
     });
 
@@ -10971,6 +11352,11 @@ class $$VanStocksTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get areaId => $composableBuilder(
+    column: $table.areaId,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$ProductsTableFilterComposer get productId {
     final $$ProductsTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -11029,6 +11415,11 @@ class $$VanStocksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get areaId => $composableBuilder(
+    column: $table.areaId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$ProductsTableOrderingComposer get productId {
     final $$ProductsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -11078,6 +11469,9 @@ class $$VanStocksTableAnnotationComposer
 
   GeneratedColumn<String> get notes =>
       $composableBuilder(column: $table.notes, builder: (column) => column);
+
+  GeneratedColumn<String> get areaId =>
+      $composableBuilder(column: $table.areaId, builder: (column) => column);
 
   $$ProductsTableAnnotationComposer get productId {
     final $$ProductsTableAnnotationComposer composer = $composerBuilder(
@@ -11137,6 +11531,7 @@ class $$VanStocksTableTableManager
                 Value<int> quantityPieces = const Value.absent(),
                 Value<DateTime> date = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
+                Value<String?> areaId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => VanStocksCompanion(
                 id: id,
@@ -11145,6 +11540,7 @@ class $$VanStocksTableTableManager
                 quantityPieces: quantityPieces,
                 date: date,
                 notes: notes,
+                areaId: areaId,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -11155,6 +11551,7 @@ class $$VanStocksTableTableManager
                 required int quantityPieces,
                 Value<DateTime> date = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
+                Value<String?> areaId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => VanStocksCompanion.insert(
                 id: id,
@@ -11163,6 +11560,7 @@ class $$VanStocksTableTableManager
                 quantityPieces: quantityPieces,
                 date: date,
                 notes: notes,
+                areaId: areaId,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -12218,6 +12616,8 @@ class $LocalDatabaseManager {
       $$BadOrdersTableTableManager(_db, _db.badOrders);
   $$BadOrderItemsTableTableManager get badOrderItems =>
       $$BadOrderItemsTableTableManager(_db, _db.badOrderItems);
+  $$VanAreasTableTableManager get vanAreas =>
+      $$VanAreasTableTableManager(_db, _db.vanAreas);
   $$VanStocksTableTableManager get vanStocks =>
       $$VanStocksTableTableManager(_db, _db.vanStocks);
   $$StockMovementsTableTableManager get stockMovements =>

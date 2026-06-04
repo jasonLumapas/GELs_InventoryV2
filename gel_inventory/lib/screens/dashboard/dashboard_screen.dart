@@ -58,7 +58,7 @@ class DashboardScreen extends StatelessWidget {
           ),
           _NavCard(
             icon: Icons.local_shipping,
-            label: 'Van Selling',
+            label: 'Off-site Loading',
             route: '/van-selling',
           ),
           _NavCard(

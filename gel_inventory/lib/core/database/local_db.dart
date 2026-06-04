@@ -150,6 +150,15 @@ class BadOrderItems extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Delivery areas for van selling.
+class VanAreas extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// Van selling stock transactions.
 class VanStocks extends Table {
   TextColumn get id => text()();
@@ -159,6 +168,7 @@ class VanStocks extends Table {
   IntColumn get quantityPieces => integer()();
   DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
   TextColumn get notes => text().nullable()();
+  TextColumn get areaId => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -222,6 +232,7 @@ class SyncQueue extends Table {
   InvoiceItems,
   BadOrders,
   BadOrderItems,
+  VanAreas,
   VanStocks,
   StockMovements,
   InvoicePayments,
@@ -231,7 +242,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -286,6 +297,11 @@ class LocalDatabase extends _$LocalDatabase {
           }
           if (from < 11) {
             await m.createTable(invoicePayments);
+          }
+          if (from < 12) {
+            await m.createTable(vanAreas);
+            await _addColumnIfMissing(
+                m.database, 'van_stocks', 'area_id', 'TEXT');
           }
         },
       );

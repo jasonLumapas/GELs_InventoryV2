@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../models/product.dart';
 import '../../repositories/invoice_repository.dart';
 import '../../repositories/product_repository.dart';
+import '../../repositories/supplier_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../utils/pdf_generator.dart';
 import '../../widgets/common/app_scaffold.dart';
@@ -13,6 +14,7 @@ import '../../widgets/common/app_scaffold.dart';
 class _Row {
   final String productId;
   final String productName;
+  final String supplierName;
   final int piecesPerBox;
   int totalPieces;
   double totalAmount;
@@ -20,6 +22,7 @@ class _Row {
   _Row({
     required this.productId,
     required this.productName,
+    required this.supplierName,
     required this.piecesPerBox,
     required this.totalPieces,
     required this.totalAmount,
@@ -63,16 +66,16 @@ class _OrderSummaryScreenState extends ConsumerState<OrderSummaryScreen> {
         .read(invoiceRepositoryProvider)
         .getAll(startDate: start, endDate: end);
 
-    final products = await ref.read(productRepositoryProvider).getAll();
-    final productsById = <String, Product>{
-      for (final p in products) p.id: p
-    };
+    final products  = await ref.read(productRepositoryProvider).getAll();
+    final suppliers = await ref.read(supplierRepositoryProvider).getAll();
+    final productsById  = <String, Product>{for (final p in products) p.id: p};
+    final suppliersById = <String, String>{for (final s in suppliers) s.id: s.name};
 
     final Map<String, _Row> rowMap = {};
 
     for (final inv in invoices) {
       if (inv.status == 'cancelled') continue;
-      if (!inv.isDelivery) continue; // Layout only shows delivery invoices
+      if (!inv.isDelivery) continue;
       final items =
           await ref.read(invoiceRepositoryProvider).getItems(inv.id);
       for (final item in items) {
@@ -85,6 +88,7 @@ class _OrderSummaryScreenState extends ConsumerState<OrderSummaryScreen> {
           rowMap[item.productId] = _Row(
             productId: item.productId,
             productName: product.name,
+            supplierName: suppliersById[product.supplierId] ?? 'Unknown',
             piecesPerBox: product.piecesPerBox,
             totalPieces: item.quantity,
             totalAmount: item.subtotal,
@@ -95,7 +99,10 @@ class _OrderSummaryScreenState extends ConsumerState<OrderSummaryScreen> {
 
     setState(() {
       _rows = rowMap.values.toList()
-        ..sort((a, b) => a.productName.compareTo(b.productName));
+        ..sort((a, b) {
+          final s = a.supplierName.compareTo(b.supplierName);
+          return s != 0 ? s : a.productName.compareTo(b.productName);
+        });
       _loading = false;
     });
   }
@@ -224,15 +231,54 @@ class _OrderSummaryScreenState extends ConsumerState<OrderSummaryScreen> {
                   // Header row
                   _TableHeader(),
 
-                  // Data rows
+                  // Data rows grouped by supplier
                   Expanded(
-                    child: ListView.separated(
-                      itemCount: _rows.length,
-                      separatorBuilder: (_, _) =>
-                          const Divider(height: 1),
-                      itemBuilder: (ctx, i) =>
-                          _TableDataRow(row: _rows[i]),
-                    ),
+                    child: Builder(builder: (ctx) {
+                      // Build a flat list: header String + _Row items
+                      final List<dynamic> listItems = [];
+                      String? lastSupplier;
+                      for (final row in _rows) {
+                        if (row.supplierName != lastSupplier) {
+                          listItems.add(row.supplierName);
+                          lastSupplier = row.supplierName;
+                        }
+                        listItems.add(row);
+                      }
+                      return ListView.separated(
+                        itemCount: listItems.length,
+                        separatorBuilder: (_, i) {
+                          // No divider before/after supplier headers
+                          if (listItems[i] is String) return const SizedBox();
+                          if (i + 1 < listItems.length &&
+                              listItems[i + 1] is String) {
+                            return const SizedBox();
+                          }
+                          return const Divider(height: 1);
+                        },
+                        itemBuilder: (ctx, i) {
+                          final item = listItems[i];
+                          if (item is String) {
+                            return Container(
+                              color: Theme.of(ctx)
+                                  .colorScheme
+                                  .surfaceContainerHighest,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 6),
+                              child: Text(item,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                    color: Theme.of(ctx)
+                                        .colorScheme
+                                        .primary,
+                                    letterSpacing: 0.5,
+                                  )),
+                            );
+                          }
+                          return _TableDataRow(row: item as _Row);
+                        },
+                      );
+                    }),
                   ),
 
                   const Divider(height: 1, thickness: 2),

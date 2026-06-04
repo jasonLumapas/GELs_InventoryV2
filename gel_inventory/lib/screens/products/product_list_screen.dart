@@ -15,6 +15,14 @@ class ProductListScreen extends ConsumerStatefulWidget {
 
 class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   String? _selectedSupplierId;
+  final _searchCtrl = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,6 +39,21 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
       ),
       body: Column(
         children: [
+          // ── Search ──────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+            child: TextField(
+              controller: _searchCtrl,
+              decoration: const InputDecoration(
+                hintText: 'Search product…',
+                prefixIcon: Icon(Icons.search),
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (v) => setState(() => _searchQuery = v.trim()),
+            ),
+          ),
+
           // ── Supplier filter ──────────────────────────────────────────
           if (suppliers.isNotEmpty)
             Padding(
@@ -67,11 +90,14 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                   const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(child: Text('Error: $e')),
               data: (allProducts) {
-                final products = _selectedSupplierId == null
-                    ? allProducts
-                    : allProducts
-                        .where((p) => p.supplierId == _selectedSupplierId)
-                        .toList();
+                final q = _searchQuery.toLowerCase();
+                final products = allProducts.where((p) {
+                  final matchesSupplier = _selectedSupplierId == null ||
+                      p.supplierId == _selectedSupplierId;
+                  final matchesSearch = q.isEmpty ||
+                      p.name.toLowerCase().contains(q);
+                  return matchesSupplier && matchesSearch;
+                }).toList();
 
                 if (products.isEmpty) {
                   return const Center(child: Text('No products found.'));

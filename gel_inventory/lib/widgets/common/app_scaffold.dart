@@ -65,7 +65,7 @@ class _AppDrawer extends StatelessWidget {
           _tile(context, Icons.summarize, 'Layout', '/layout'),
           _tile(context, Icons.remove_shopping_cart, 'Returns/Bad Orders', '/bad-orders'),
           _tile(context, Icons.local_shipping, 'Off-site Loading', '/van-selling'),
-          _tile(context, Icons.account_balance_wallet, 'Collectibles', '/collectibles'),
+          _tile(context, Icons.account_balance_wallet, 'Remittance', '/collectibles'),
         ],
       ),
     );

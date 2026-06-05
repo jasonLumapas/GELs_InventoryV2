@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
@@ -92,6 +93,9 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
   Client? _selectedClient;
   String _invoiceType  = 'delivery';
   String _paymentType  = 'cash';
+  DateTime _invoiceDate =
+      DateTime.now().add(const Duration(days: 1));
+  String? _invoiceNumber;
   final List<_LineItem> _lineItems = [];
   bool _loading = true;
   bool _saving = false;
@@ -105,11 +109,31 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
   Future<void> _loadData() async {
     final clients = await ref.read(clientRepositoryProvider).getAll();
     final products = await ref.read(productRepositoryProvider).getAll();
+    final invoiceNum = await ref
+        .read(invoiceRepositoryProvider)
+        .generateInvoiceNumber(_invoiceDate);
     setState(() {
       _clients = clients;
       _products = products;
+      _invoiceNumber = invoiceNum;
       _loading = false;
     });
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _invoiceDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
+      setState(() => _invoiceDate = picked);
+      final num = await ref
+          .read(invoiceRepositoryProvider)
+          .generateInvoiceNumber(picked);
+      if (mounted) setState(() => _invoiceNumber = num);
+    }
   }
 
   Future<void> _pickClient() async {
@@ -249,18 +273,16 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
   Future<void> _print() async {
     setState(() => _saving = true);
     final invoiceId = const Uuid().v4();
-    final today = DateTime.now();
-    final now   = DateTime(today.year, today.month, today.day + 1);
     final invoiceNumber = await ref
         .read(invoiceRepositoryProvider)
-        .generateInvoiceNumber(now);
+        .generateInvoiceNumber(_invoiceDate);
     final invoice = Invoice(
       id: invoiceId,
       clientId: _selectedClient!.id,
-      invoiceDate: now,
+      invoiceDate: _invoiceDate,
       totalAmount: _total,
       status: 'printed',
-      createdAt: now,
+      createdAt: DateTime.now(),
       invoiceNumber: invoiceNumber,
       invoiceType:  _invoiceType,
       paymentType:  _paymentType,
@@ -312,6 +334,22 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
+                // Invoice ID header
+                Container(
+                  width: double.infinity,
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 10),
+                  child: Text(
+                    'Invoice #: ${_invoiceNumber ?? '...'}',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+
                 // Invoice type + payment type
                 Padding(
                   padding:
@@ -349,6 +387,26 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                     ],
                   ),
                 ),
+
+                // Date selector
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: InkWell(
+                    onTap: _pickDate,
+                    borderRadius: BorderRadius.circular(4),
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Invoice Date',
+                        border: OutlineInputBorder(),
+                        suffixIcon: Icon(Icons.calendar_today, size: 18),
+                      ),
+                      child: Text(
+                        DateFormat('MMM dd, yyyy').format(_invoiceDate),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
 
                 // Client selector
                 Padding(

@@ -133,6 +133,14 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   bool _loading = true;
   bool _saving = false;
 
+  void _goBack() {
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go('/invoices');
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -152,7 +160,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     _invoice =
         invoices.where((i) => i.id == widget.invoiceId).firstOrNull;
     if (_invoice == null) {
-      if (mounted) context.go('/invoices');
+      if (mounted) _goBack();
       return;
     }
 
@@ -392,7 +400,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     ref.invalidate(filteredInvoicesProvider);
     ref.invalidate(inventoryListProvider);
 
-    if (mounted) context.go('/invoices');
+    if (mounted) _goBack();
   }
 
   Future<void> _saveAndPrint() async {
@@ -440,7 +448,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
       productsById: productsById,
     );
 
-    if (mounted) context.go('/invoices');
+    if (mounted) _goBack();
   }
 
   Future<void> _deleteInvoice() async {
@@ -458,7 +466,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
       ref.invalidate(invoicesListProvider);
       ref.invalidate(filteredInvoicesProvider);
       ref.invalidate(inventoryListProvider);
-      if (mounted) context.go('/invoices');
+      if (mounted) _goBack();
     }
   }
 
@@ -840,7 +848,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                           ),
                         ),
                         OutlinedButton(
-                          onPressed: () => context.go('/invoices'),
+                          onPressed: () => _goBack(),
                           child: const Text('Back'),
                         ),
                         const SizedBox(width: 8),

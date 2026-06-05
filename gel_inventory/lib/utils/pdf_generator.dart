@@ -892,3 +892,110 @@ Future<void> printVanTransactions({
   );
 }
 
+// ── Remittance Credit PDF ─────────────────────────────────────────────────────
+
+class RemittanceCreditItem {
+  final String invoiceNumber;
+  final String clientName;
+  final DateTime date;
+  final String paymentLabel;
+  final double outstanding;
+
+  const RemittanceCreditItem({
+    required this.invoiceNumber,
+    required this.clientName,
+    required this.date,
+    required this.paymentLabel,
+    required this.outstanding,
+  });
+}
+
+Future<void> printRemittanceCredit({
+  required String periodLabel,
+  required List<RemittanceCreditItem> items,
+}) async {
+  final doc     = pw.Document();
+  final numFmt  = NumberFormat('#,##0.00');
+  final dateFmt = DateFormat('MMM dd, yyyy');
+  final grandTotal = items.fold(0.0, (s, i) => s + i.outstanding);
+
+  final pageFormat = PdfPageFormat.a4.copyWith(
+    marginTop: 40, marginBottom: 40,
+    marginLeft: 40, marginRight: 40,
+  );
+  final usableW = pageFormat.availableWidth;
+  final invNoW  = usableW * 0.18;
+  final clientW = usableW * 0.35;
+  final dateW   = usableW * 0.20;
+  final typeW   = usableW * 0.12;
+  final amtW    = usableW * 0.15;
+
+  final font     = pw.Font.helvetica();
+  final fontBold = pw.Font.helveticaBold();
+  const double fs = 10.0;
+
+  pw.TextStyle ts({bool bold = false}) =>
+      pw.TextStyle(font: bold ? fontBold : font, fontSize: fs);
+  String php(double v) => 'Php ${numFmt.format(v)}';
+
+  doc.addPage(pw.MultiPage(
+    pageFormat: pageFormat,
+    build: (ctx) => [
+      pw.Text('Total Credits',
+          style: ts(bold: true)),
+      pw.Text(periodLabel, style: ts()),
+      pw.SizedBox(height: 10),
+
+      // Header row
+      pw.Row(children: [
+        pw.SizedBox(width: invNoW,
+            child: pw.Text('Invoice #', style: ts(bold: true))),
+        pw.SizedBox(width: clientW,
+            child: pw.Text('Store', style: ts(bold: true))),
+        pw.SizedBox(width: dateW,
+            child: pw.Text('Date', style: ts(bold: true))),
+        pw.SizedBox(width: typeW,
+            child: pw.Text('Type', style: ts(bold: true))),
+        pw.SizedBox(width: amtW,
+            child: pw.Text('Outstanding',
+                style: ts(bold: true), textAlign: pw.TextAlign.right)),
+      ]),
+      pw.Divider(height: 6, thickness: 0.5),
+
+      // Data rows
+      for (int i = 0; i < items.length; i++) ...[
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 3),
+          child: pw.Row(children: [
+            pw.SizedBox(width: invNoW,
+                child: pw.Text(items[i].invoiceNumber, style: ts())),
+            pw.SizedBox(width: clientW,
+                child: pw.Text(items[i].clientName, style: ts())),
+            pw.SizedBox(width: dateW,
+                child: pw.Text(dateFmt.format(items[i].date), style: ts())),
+            pw.SizedBox(width: typeW,
+                child: pw.Text(items[i].paymentLabel, style: ts())),
+            pw.SizedBox(width: amtW,
+                child: pw.Text(php(items[i].outstanding),
+                    style: ts(), textAlign: pw.TextAlign.right)),
+          ]),
+        ),
+        if (i < items.length - 1)
+          pw.Divider(height: 1, thickness: 0.2),
+      ],
+
+      pw.Divider(height: 8, thickness: 0.5),
+      pw.Align(
+        alignment: pw.Alignment.centerRight,
+        child: pw.Text('Total Outstanding: ${php(grandTotal)}',
+            style: pw.TextStyle(font: fontBold, fontSize: fs + 2)),
+      ),
+    ],
+  ));
+
+  await Printing.layoutPdf(
+    onLayout: (_) => doc.save(),
+    format: pageFormat,
+  );
+}
+

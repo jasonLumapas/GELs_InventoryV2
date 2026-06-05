@@ -63,7 +63,7 @@ class DashboardScreen extends StatelessWidget {
           ),
           _NavCard(
             icon: Icons.account_balance_wallet,
-            label: 'Collectibles',
+            label: 'Remittance',
             route: '/collectibles',
           ),
         ],

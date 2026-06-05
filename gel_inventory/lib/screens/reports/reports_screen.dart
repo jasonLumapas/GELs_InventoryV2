@@ -13,12 +13,16 @@ import '../../widgets/common/app_scaffold.dart';
 
 class _SummaryRow {
   final String productName;
+  final String supplierId;
+  final String supplierName;
   int totalPieces;
   double totalAmount;
   int piecesPerBox;
 
   _SummaryRow({
     required this.productName,
+    required this.supplierId,
+    required this.supplierName,
     required this.totalPieces,
     required this.totalAmount,
     required this.piecesPerBox,
@@ -40,6 +44,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
   late TabController _tabs;
   DateTime _selectedDate =
       DateTime.now().add(const Duration(days: 1));
+  String? _selectedSupplierId;
   bool _loading = false;
   List<_SummaryRow> _summary = [];
   double _grandTotal = 0;
@@ -71,8 +76,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
               _selectedDate.year, _selectedDate.month, _selectedDate.day + 1),
         );
 
-    final products = await ref.read(productRepositoryProvider).getAll();
-    final productsMap = {for (final p in products) p.id: p};
+    final products  = await ref.read(productRepositoryProvider).getAll();
+    final suppliers = await ref.read(supplierRepositoryProvider).getAll();
+    final productsMap   = {for (final p in products)  p.id: p};
+    final suppliersById = {for (final s in suppliers) s.id: s.name};
 
     final Map<String, _SummaryRow> rowMap = {};
     double total = 0;
@@ -90,6 +97,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
         } else {
           rowMap[item.productId] = _SummaryRow(
             productName: product.name,
+            supplierId: product.supplierId,
+            supplierName: suppliersById[product.supplierId] ?? 'Unknown',
             totalPieces: item.quantity,
             totalAmount: item.subtotal,
             piecesPerBox: product.piecesPerBox,
@@ -149,6 +158,13 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
 
   Widget _buildDailySummary(BuildContext context) {
     final dateFmt = DateFormat('MMMM dd, yyyy');
+    final filtered = _selectedSupplierId == null
+        ? _summary
+        : _summary
+            .where((r) => r.supplierId == _selectedSupplierId)
+            .toList();
+    final filteredTotal   = filtered.fold(0.0, (s, r) => s + r.totalAmount);
+
     return Column(
       children: [
         // Date picker row
@@ -180,11 +196,44 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
           ),
         ),
 
+        // Supplier filter
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+          child: ref.watch(suppliersListProvider).maybeWhen(
+                data: (suppliers) => Row(
+                  children: [
+                    const Text('Supplier:',
+                        style: TextStyle(fontSize: 13, color: Colors.grey)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: DropdownButton<String?>(
+                        value: _selectedSupplierId,
+                        isDense: true,
+                        isExpanded: true,
+                        underline: const SizedBox(),
+                        items: [
+                          const DropdownMenuItem(
+                              value: null, child: Text('All Suppliers')),
+                          ...suppliers.map((s) => DropdownMenuItem(
+                              value: s.id, child: Text(s.name))),
+                        ],
+                        onChanged: (v) =>
+                            setState(() => _selectedSupplierId = v),
+                      ),
+                    ),
+                  ],
+                ),
+                orElse: () => const SizedBox.shrink(),
+              ),
+        ),
+
+        const Divider(height: 1),
+
         // Table
         Expanded(
           child: _loading
               ? const Center(child: CircularProgressIndicator())
-              : _summary.isEmpty
+              : filtered.isEmpty
                   ? const Center(
                       child: Text('No invoices for selected date.'))
                   : SingleChildScrollView(
@@ -207,7 +256,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
                                 'Pieces',
                                 'Amount'
                               ]),
-                              ..._summary.map(
+                              ...filtered.map(
                                 (row) => _tableRow([
                                   row.productName,
                                   row.totalBoxes > 0 ? '${row.totalBoxes}' : '',
@@ -218,15 +267,17 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
                             ],
                           ),
                           const Divider(height: 24),
-                          _summaryFooterRow('Grand Total', _grandTotal,
+                          _summaryFooterRow('Grand Total', filteredTotal,
                               bold: true),
-                          const SizedBox(height: 6),
-                          _summaryFooterRow('Capital', _capital),
-                          const SizedBox(height: 6),
-                          _summaryFooterRow('Profit', _profit,
-                              color: _profit >= 0
-                                  ? Colors.green.shade700
-                                  : Colors.red),
+                          if (_selectedSupplierId == null) ...[
+                            const SizedBox(height: 6),
+                            _summaryFooterRow('Capital', _capital),
+                            const SizedBox(height: 6),
+                            _summaryFooterRow('Profit', _profit,
+                                color: _profit >= 0
+                                    ? Colors.green.shade700
+                                    : Colors.red),
+                          ],
                         ],
                       ),
                     ),
@@ -551,7 +602,7 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                     Align(
                       alignment: Alignment.centerRight,
                       child: Text(
-                        'Ending Inventory Value: ${formatCurrency(data.totalEndingValue)}',
+                        'Ending Inventory Capital Value: ${formatCurrency(data.totalEndingValue)}',
                         style: const TextStyle(
                             fontSize: 15, fontWeight: FontWeight.bold),
                       ),

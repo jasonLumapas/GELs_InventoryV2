@@ -7,9 +7,10 @@ import '../../repositories/client_repository.dart';
 import '../../repositories/invoice_payment_repository.dart';
 import '../../repositories/invoice_repository.dart';
 import '../../utils/currency_format.dart';
+import '../../utils/pdf_generator.dart';
 import '../../widgets/common/app_scaffold.dart';
 
-enum _DateFilter { all, day, week, month }
+enum _DateFilter { day, week, month, year }
 
 class _CollectibleItem {
   final Invoice invoice;
@@ -34,14 +35,13 @@ class CollectiblesScreen extends ConsumerStatefulWidget {
 class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
   bool _loading = true;
   List<_CollectibleItem> _items = [];
-  String? _filterType; // null = all
+  String? _filterType = 'cash';
 
-  _DateFilter _dateFilter = _DateFilter.all;
+  _DateFilter _dateFilter = _DateFilter.day;
   DateTime _anchor = DateTime.now();
 
   DateTime get _startDate {
     switch (_dateFilter) {
-      case _DateFilter.all:  return DateTime(2000);
       case _DateFilter.day:
         return DateTime(_anchor.year, _anchor.month, _anchor.day);
       case _DateFilter.week:
@@ -49,22 +49,24 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
         return DateTime(mon.year, mon.month, mon.day);
       case _DateFilter.month:
         return DateTime(_anchor.year, _anchor.month);
+      case _DateFilter.year:
+        return DateTime(_anchor.year);
     }
   }
 
   DateTime get _endDate {
     switch (_dateFilter) {
-      case _DateFilter.all:  return DateTime(2100);
       case _DateFilter.day:  return _startDate.add(const Duration(days: 1));
       case _DateFilter.week: return _startDate.add(const Duration(days: 7));
       case _DateFilter.month:
         return DateTime(_anchor.year, _anchor.month + 1);
+      case _DateFilter.year:
+        return DateTime(_anchor.year + 1);
     }
   }
 
   String get _periodLabel {
     switch (_dateFilter) {
-      case _DateFilter.all: return 'All dates';
       case _DateFilter.day:
         return DateFormat('EEE, MMM d, y').format(_startDate);
       case _DateFilter.week:
@@ -72,36 +74,51 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
         final sameMonth =
             _startDate.month == e.month && _startDate.year == e.year;
         return sameMonth
-            ? '${DateFormat('MMM d').format(_startDate)} – ${DateFormat('d, y').format(e)}'
-            : '${DateFormat('MMM d').format(_startDate)} – ${DateFormat('MMM d, y').format(e)}';
+            ? '${DateFormat('MMM d').format(_startDate)} - ${DateFormat('d, y').format(e)}'
+            : '${DateFormat('MMM d').format(_startDate)} - ${DateFormat('MMM d, y').format(e)}';
       case _DateFilter.month:
         return DateFormat('MMMM y').format(_startDate);
+      case _DateFilter.year:
+        return _anchor.year.toString();
     }
   }
 
   void _prev() => setState(() {
         switch (_dateFilter) {
-          case _DateFilter.all: break;
           case _DateFilter.day:
             _anchor = _anchor.subtract(const Duration(days: 1));
           case _DateFilter.week:
             _anchor = _anchor.subtract(const Duration(days: 7));
           case _DateFilter.month:
             _anchor = DateTime(_anchor.year, _anchor.month - 1, _anchor.day);
+          case _DateFilter.year:
+            _anchor = DateTime(_anchor.year - 1, _anchor.month, _anchor.day);
         }
       });
 
   void _next() => setState(() {
         switch (_dateFilter) {
-          case _DateFilter.all: break;
           case _DateFilter.day:
             _anchor = _anchor.add(const Duration(days: 1));
           case _DateFilter.week:
             _anchor = _anchor.add(const Duration(days: 7));
           case _DateFilter.month:
             _anchor = DateTime(_anchor.year, _anchor.month + 1, _anchor.day);
+          case _DateFilter.year:
+            _anchor = DateTime(_anchor.year + 1, _anchor.month, _anchor.day);
         }
       });
+
+  Future<void> _print() async {
+    final items = _filtered.map((i) => RemittanceCreditItem(
+          invoiceNumber: i.invoice.displayNumber,
+          clientName: i.clientName,
+          date: i.invoice.invoiceDate,
+          paymentLabel: i.invoice.paymentLabel,
+          outstanding: i.outstanding,
+        )).toList();
+    await printRemittanceCredit(periodLabel: _periodLabel, items: items);
+  }
 
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
@@ -126,15 +143,17 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
     final clients  = await ref.read(clientRepositoryProvider).getAll();
     final clientMap = {for (final c in clients) c.id: c};
 
-    // Only non-cancelled, non-cash invoices
+    // Only non-cancelled invoices
     final nonCash = invoices.where(
-        (i) => i.status != 'cancelled' && i.paymentType != 'cash').toList();
+        (i) => i.status != 'cancelled').toList();
 
     // Compute outstanding for each
     final List<_CollectibleItem> items = [];
     for (final inv in nonCash) {
       double outstanding;
-      if (inv.paymentType == 'partial') {
+      if (inv.paymentType == 'cash') {
+        outstanding = inv.totalAmount; // show full amount as "collected"
+      } else if (inv.paymentType == 'partial') {
         final payments = await ref
             .read(invoicePaymentRepositoryProvider)
             .getForInvoice(inv.id);
@@ -146,7 +165,9 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
         outstanding = inv.totalAmount - paid;
       }
 
-      if (outstanding > 0.01) {
+      if (inv.paymentType == 'cash' ||
+          outstanding > 0.01 ||
+          (inv.paymentType == 'credit' || inv.paymentType == 'partial')) {
         items.add(_CollectibleItem(
           invoice: inv,
           clientName:
@@ -167,8 +188,23 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
   }
 
   List<_CollectibleItem> get _filtered => _items.where((i) {
-        if (_filterType != null && i.invoice.paymentType != _filterType) {
-          return false;
+        if (_filterType != null) {
+          final type = i.invoice.paymentType;
+          if (_filterType == 'paid_accounts') {
+            // Fully paid credit or partial invoices
+            if ((type != 'credit' && type != 'partial') ||
+                i.outstanding > 0.01) {
+              return false;
+            }
+          } else if (_filterType == 'credit') {
+            // Credit chip: credit invoices + partial with remaining balance
+            if (type != 'credit' &&
+                !(type == 'partial' && i.outstanding > 0.01)) {
+              return false;
+            }
+          } else if (type != _filterType) {
+            return false;
+          }
         }
         final d = i.invoice.invoiceDate;
         return !d.isBefore(_startDate) && d.isBefore(_endDate);
@@ -181,8 +217,14 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
     final totalOutstanding = filtered.fold(0.0, (s, i) => s + i.outstanding);
 
     return AppScaffold(
-      title: 'Collectibles',
+      title: 'Remittance',
       actions: [
+        if (_filterType == 'credit' && _filtered.isNotEmpty)
+          IconButton(
+            icon: const Icon(Icons.print),
+            tooltip: 'Print credit list',
+            onPressed: _print,
+          ),
         IconButton(
           icon: const Icon(Icons.refresh),
           onPressed: _load,
@@ -199,10 +241,10 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
               children: [
                 SegmentedButton<_DateFilter>(
                   segments: const [
-                    ButtonSegment(value: _DateFilter.all,   label: Text('All')),
                     ButtonSegment(value: _DateFilter.day,   label: Text('Day')),
                     ButtonSegment(value: _DateFilter.week,  label: Text('Week')),
                     ButtonSegment(value: _DateFilter.month, label: Text('Month')),
+                    ButtonSegment(value: _DateFilter.year,  label: Text('Year')),
                   ],
                   selected: {_dateFilter},
                   onSelectionChanged: (s) =>
@@ -213,36 +255,33 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
                   ),
                 ),
                 const SizedBox(width: 4),
-                if (_dateFilter != _DateFilter.all) ...[
-                  IconButton(
-                    icon: const Icon(Icons.chevron_left),
-                    onPressed: _prev,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: _pickDate,
-                      child: Text(
-                        _periodLabel,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
+                IconButton(
+                  icon: const Icon(Icons.chevron_left),
+                  onPressed: _prev,
+                  visualDensity: VisualDensity.compact,
+                ),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: _pickDate,
+                    child: Text(
+                      _periodLabel,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.chevron_right),
-                    onPressed: _next,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                  TextButton(
-                    onPressed: () =>
-                        setState(() => _anchor = DateTime.now()),
-                    style: TextButton.styleFrom(
-                        visualDensity: VisualDensity.compact),
-                    child: const Text('Today'),
-                  ),
-                ] else
-                  const Expanded(child: SizedBox()),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: _next,
+                  visualDensity: VisualDensity.compact,
+                ),
+                TextButton(
+                  onPressed: () =>
+                      setState(() => _anchor = DateTime.now()),
+                  style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact),
+                  child: const Text('Today'),
+                ),
               ],
             ),
           ),
@@ -255,13 +294,13 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
                 const Text('Type:',
                     style: TextStyle(fontSize: 13, color: Colors.grey)),
                 const SizedBox(width: 8),
-                _chip('All',     null),
+                _chip('Cash',    'cash'),
                 const SizedBox(width: 6),
                 _chip('Check',   'check'),
                 const SizedBox(width: 6),
                 _chip('Credit',  'credit'),
                 const SizedBox(width: 6),
-                _chip('Partial', 'partial'),
+                _chip('Paid Accounts', 'paid_accounts'),
               ],
             ),
           ),
@@ -289,13 +328,14 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
                                     child: Text(item.clientName,
                                         style: const TextStyle(
                                             fontWeight: FontWeight.w600))),
-                                Text(
-                                  formatCurrency(item.outstanding),
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.red.shade700,
+                                if (_filterType != 'paid_accounts')
+                                  Text(
+                                    formatCurrency(item.outstanding),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.red.shade700,
+                                    ),
                                   ),
-                                ),
                               ],
                             ),
                             subtitle: Text(
@@ -303,7 +343,10 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
                               '${dateFmt.format(inv.invoiceDate)}  •  '
                               '${inv.paymentLabel}',
                             ),
-                            onTap: () => context.go('/invoices/${inv.id}'),
+                            onTap: () async {
+                              await context.push('/invoices/${inv.id}');
+                              _load();
+                            },
                           );
                         },
                       ),
@@ -322,13 +365,14 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
                 children: [
                   Text('${filtered.length} invoice(s)',
                       style: const TextStyle(color: Colors.grey)),
-                  Text(
-                    'Total Outstanding: ${formatCurrency(totalOutstanding)}',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                        color: Colors.red.shade700),
-                  ),
+                  if (_filterType != 'paid_accounts')
+                    Text(
+                      '${_filterType == 'cash' ? 'Total Cash' : 'Total Outstanding'}: ${formatCurrency(totalOutstanding)}',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: Colors.red.shade700),
+                    ),
                 ],
               ),
             ),

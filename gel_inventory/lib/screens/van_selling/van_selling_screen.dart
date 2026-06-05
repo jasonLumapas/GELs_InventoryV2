@@ -15,6 +15,17 @@ import '../../utils/pdf_generator.dart';
 import '../../widgets/common/app_scaffold.dart';
 import '../../widgets/common/search_picker.dart';
 
+class _VanLineItem {
+  final Product product;
+  String unitType = 'box';
+  int quantity = 0;
+
+  _VanLineItem(this.product);
+
+  int get pieces =>
+      unitType == 'box' ? quantity * product.piecesPerBox : quantity;
+}
+
 class _ReportRow {
   final String productName;
   final int piecesPerBox;
@@ -281,46 +292,112 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
   }
 
   Future<void> _showTransactionDialog({required bool isOut}) async {
-    Product? selectedProduct;
-    // Pre-select last used area for Loading
-    String? selectedAreaId = isOut ? _lastOutAreaId : null;
-    final qtyCtrl   = TextEditingController();
-    final notesCtrl = TextEditingController();
-    String unitType  = 'box';
-    // Initialise from persisted date so the same date carries over between adds
-    DateTime txDate  = isOut ? _outTxDate : _inTxDate;
-
-    // For Stocks Return: products loaded for the selected area on the latest
-    // loading date strictly before the return date.
     if (!mounted) return;
 
-    // Loaded quantities for Stocks Return (productId → pieces loaded)
-    Map<String, int> loadedQty = {};
+    String? selectedAreaId = isOut ? _lastOutAreaId : null;
+    DateTime txDate = isOut ? _outTxDate : _inTxDate;
+    final lineItems = <_VanLineItem>[];
+    var loadedQty   = <String, int>{};
+    var loadedLabel = '';
 
-    // Helper: available pieces for selected product
-    int availablePieces() =>
-        isOut ? (_inventoryQty[selectedProduct?.id] ?? 0) : 999999;
-    int maxReturnPieces() =>
-        isOut ? 999999 : (loadedQty[selectedProduct?.id] ?? 0);
-    int requestedPieces() {
-      final p = selectedProduct;
-      if (p == null) return 0;
-      final qty = int.tryParse(qtyCtrl.text) ?? 0;
-      return unitType == 'box' ? qty * p.piecesPerBox : qty;
-    }
-
-    await showDialog(
+    await showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setD) => AlertDialog(
-          title: Text(isOut ? 'Loading' : 'Stocks Return'),
-          content: SizedBox(
-            width: 360,
-            child: SingleChildScrollView(
+        builder: (ctx, setD) {
+          int availFor(_VanLineItem li) => isOut
+              ? (_inventoryQty[li.product.id] ?? 0)
+              : (loadedQty[li.product.id] ?? 0);
+
+          bool canSave() {
+            if (isOut && selectedAreaId == null) return false;
+            if (lineItems.isEmpty) return false;
+            return lineItems
+                .every((li) => li.quantity > 0 && li.pieces <= availFor(li));
+          }
+
+          Future<void> pickProducts() async {
+            List<Product> visibleProducts;
+            if (isOut) {
+              visibleProducts = _products;
+            } else if (selectedAreaId == null) {
+              if (ctx.mounted) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(content: Text('Select an area first.')));
+              }
+              return;
+            } else {
+              final (qtys, latestDay) = await ref
+                  .read(vanStockRepositoryProvider)
+                  .getLatestLoadedProducts(
+                    areaId: selectedAreaId!,
+                    beforeDate: txDate,
+                  );
+              loadedQty   = qtys;
+              loadedLabel = latestDay != null
+                  ? 'Loaded ${DateFormat('MMM dd, yyyy').format(latestDay)}'
+                  : '';
+              visibleProducts =
+                  _products.where((p) => qtys.containsKey(p.id)).toList();
+            }
+            if (!ctx.mounted) return;
+
+            // Build one chip per unique supplier present in visibleProducts
+            final supplierChips = <String, String>{};
+            for (final p in visibleProducts) {
+              final name = _supplierNames[p.id];
+              if (name != null) supplierChips[p.supplierId] = name;
+            }
+            final supplierFilters = (supplierChips.entries.toList()
+                  ..sort((a, b) => a.value.compareTo(b.value)))
+                .map((e) => SearchFilter<Product>(
+                      label: e.value,
+                      test: (p) => p.supplierId == e.key,
+                    ))
+                .toList();
+
+            await showSearchPicker<Product>(
+              context: ctx,
+              title: isOut ? 'Select Products' : 'Select Products to Return',
+              items: visibleProducts,
+              labelOf: (p) => p.name,
+              subtitleOf: (p) {
+                if (!isOut) {
+                  final ppb = p.piecesPerBox;
+                  final ld  = loadedQty[p.id] ?? 0;
+                  return '${loadedLabel.isNotEmpty ? "$loadedLabel  •  " : ""}'
+                      '${ld ~/ ppb} box(es) + ${ld % ppb} pcs';
+                }
+                final qty = _inventoryQty[p.id] ?? 0;
+                final ppb = p.piecesPerBox;
+                return 'Stock: ${qty ~/ ppb} box(es) + ${qty % ppb} pcs';
+              },
+              subtitleStyleOf: (p) => isOut
+                  ? TextStyle(
+                      color: (_inventoryQty[p.id] ?? 0) > 0
+                          ? Colors.green.shade700
+                          : Colors.red)
+                  : TextStyle(color: Colors.blue.shade700),
+              isDisabledOf:
+                  isOut ? (p) => (_inventoryQty[p.id] ?? 0) <= 0 : null,
+              onSelected: (p) {
+                if (lineItems.any((li) => li.product.id == p.id)) return;
+                setD(() => lineItems.add(_VanLineItem(p)));
+              },
+              filters: supplierFilters,
+            );
+          }
+
+          return AlertDialog(
+            title: Text(isOut ? 'Loading' : 'Stocks Return'),
+            contentPadding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            insetPadding: const EdgeInsets.symmetric(
+                horizontal: 24, vertical: 24),
+            content: SizedBox(
+              width: 700,
+              height: MediaQuery.of(ctx).size.height * 0.65,
               child: Column(
-                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // 1 ── Date
+                  // Date
                   InkWell(
                     onTap: () async {
                       final picked = await showDatePicker(
@@ -332,15 +409,12 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
                       if (picked != null) {
                         if (isOut) {
                           _outTxDate = picked;
-                          setD(() => txDate = picked);
                         } else {
                           _inTxDate = picked;
-                          // Clear product selection — eligibility re-checked when picker opens
-                          setD(() {
-                            txDate = picked;
-                            selectedProduct = null;
-                          });
+                          lineItems.clear();
+                          loadedQty = {};
                         }
+                        setD(() => txDate = picked);
                       }
                     },
                     child: InputDecorator(
@@ -354,13 +428,12 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
                     ),
                   ),
 
-                  // 2 ── Area
+                  // Area
                   if (_areas.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        const Text('Area:',
-                            style: TextStyle(fontSize: 13)),
+                        const Text('Area:', style: TextStyle(fontSize: 13)),
                         const SizedBox(width: 8),
                         Expanded(
                           child: DropdownButton<String?>(
@@ -374,8 +447,12 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
                                   value: a.id, child: Text(a.name))),
                             ],
                             onChanged: (v) {
-                              setD(() => selectedAreaId = v);
                               if (isOut) _lastOutAreaId = v;
+                              if (!isOut) {
+                                lineItems.clear();
+                                loadedQty = {};
+                              }
+                              setD(() => selectedAreaId = v);
                             },
                           ),
                         ),
@@ -383,183 +460,82 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
                     ),
                   ],
 
-                  // 3 ── Product
-                  const SizedBox(height: 8),
-                  InkWell(
-                    onTap: () async {
-                      List<Product> visibleProducts;
-                      String loadedLabel = '';
-
-                      if (isOut) {
-                        visibleProducts = _products;
-                      } else if (selectedAreaId == null) {
-                        visibleProducts = []; // area required first
-                      } else {
-                        final (qtys, latestDay) = await ref
-                            .read(vanStockRepositoryProvider)
-                            .getLatestLoadedProducts(
-                              areaId: selectedAreaId!,
-                              beforeDate: txDate,
-                            );
-                        loadedQty = qtys;
-                        visibleProducts = _products
-                            .where((p) => qtys.containsKey(p.id))
-                            .toList();
-                        if (latestDay != null) {
-                          loadedLabel =
-                              'Loaded ${DateFormat('MMM dd, yyyy').format(latestDay)}';
-                        }
-                      }
-
-                      final picked = await showSearchPicker<Product>(
-                        context: ctx,
-                        title: 'Select Product',
-                        items: visibleProducts,
-                        labelOf: (p) => p.name,
-                        subtitleOf: (p) {
-                          if (!isOut) {
-                            final ppb = p.piecesPerBox;
-                            final loaded = loadedQty[p.id] ?? 0;
-                            return '$loadedLabel  •  '
-                                '${loaded ~/ ppb} box(es) + ${loaded % ppb} pcs';
-                          }
-                          final qty = _inventoryQty[p.id] ?? 0;
-                          final ppb = p.piecesPerBox;
-                          return 'Stock: ${qty ~/ ppb} box(es) + ${qty % ppb} pcs';
-                        },
-                        subtitleStyleOf: (p) => isOut
-                            ? TextStyle(
-                                color: (_inventoryQty[p.id] ?? 0) > 0
-                                    ? Colors.green.shade700
-                                    : Colors.red)
-                            : TextStyle(color: Colors.blue.shade700),
-                        isDisabledOf: isOut
-                            ? (p) => (_inventoryQty[p.id] ?? 0) <= 0
-                            : null,
-                      );
-                      if (picked != null) setD(() => selectedProduct = picked);
-                    },
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Product',
-                        suffixIcon: Icon(Icons.search),
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      child: Text(
-                        selectedProduct?.name ?? 'Tap to search…',
-                        style: TextStyle(
-                            color: selectedProduct == null
-                                ? Colors.grey
-                                : null),
-                      ),
-                    ),
-                  ),
-                  // Stock indicator (out only)
-                  if (isOut && selectedProduct != null)
-                    Builder(builder: (_) {
-                      final avail = availablePieces();
-                      final ppb   = selectedProduct!.piecesPerBox;
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          'In stock: ${avail ~/ ppb} box(es) + ${avail % ppb} pcs  (${formatNumber(avail)} pcs)',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: avail > 0
-                                  ? Colors.green.shade700
-                                  : Colors.red),
+                  // Add Product button + item count
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      children: [
+                        TextButton.icon(
+                          icon: const Icon(Icons.add),
+                          label: const Text('Add Product'),
+                          onPressed: pickProducts,
                         ),
-                      );
-                    }),
-
-                  // 4 ── Unit type (Boxes default)
-                  const SizedBox(height: 8),
-                  SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(value: 'piece', label: Text('Pieces')),
-                      ButtonSegment(value: 'box',   label: Text('Boxes')),
-                    ],
-                    selected: {unitType},
-                    onSelectionChanged: (s) => setD(() => unitType = s.first),
-                  ),
-
-                  // 5 ── Quantity
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: qtyCtrl,
-                    decoration: const InputDecoration(labelText: 'Quantity'),
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    onChanged: (_) => setD(() {}),
-                  ),
-                  if (isOut && selectedProduct != null &&
-                      requestedPieces() > availablePieces())
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text('Insufficient stock.',
-                          style: TextStyle(
-                              fontSize: 12, color: Colors.red.shade700)),
+                        const Spacer(),
+                        if (lineItems.isNotEmpty)
+                          Text('${lineItems.length} item(s)',
+                              style: const TextStyle(
+                                  color: Colors.grey, fontSize: 12)),
+                      ],
                     ),
-                  if (!isOut && selectedProduct != null &&
-                      requestedPieces() > maxReturnPieces())
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        'Exceeds loaded quantity '
-                        '(max ${maxReturnPieces()} pcs).',
-                        style: TextStyle(
-                            fontSize: 12, color: Colors.red.shade700)),
-                    ),
+                  ),
+                  const Divider(height: 1),
 
-                  // 6 ── Notes
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: notesCtrl,
-                    decoration: const InputDecoration(
-                        labelText: 'Notes (optional)'),
+                  // Line items
+                  Expanded(
+                    child: lineItems.isEmpty
+                        ? const Center(
+                            child: Text('Tap "Add Product" to add items',
+                                style: TextStyle(color: Colors.grey)))
+                        : ListView.builder(
+                            itemCount: lineItems.length,
+                            itemBuilder: (_, i) {
+                              final li = lineItems[i];
+                              final avail = availFor(li);
+                              return _VanLineItemCard(
+                                key: ValueKey(li.product.id),
+                                item: li,
+                                availPieces: avail,
+                                isOut: isOut,
+                                stockOk: li.quantity == 0 ||
+                                    li.pieces <= avail,
+                                onRemove: () =>
+                                    setD(() => lineItems.removeAt(i)),
+                                onChanged: () => setD(() {}),
+                              );
+                            },
+                          ),
                   ),
                 ],
               ),
             ),
-          ),
-          actions: [
-            TextButton(
+            actions: [
+              TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel')),
-            FilledButton(
-              onPressed: (selectedProduct != null &&
-                      (int.tryParse(qtyCtrl.text) ?? 0) > 0 &&
-                      requestedPieces() <= availablePieces() &&
-                      (isOut || requestedPieces() <= maxReturnPieces()) &&
-                      (!isOut || selectedAreaId != null))
-                  ? () async {
-                final product = selectedProduct;
-                if (product == null) return;
-                final qty = int.tryParse(qtyCtrl.text) ?? 0;
-                if (qty <= 0) return;
-                final pieces = unitType == 'box'
-                    ? qty * product.piecesPerBox
-                    : qty;
-                await ref.read(vanStockRepositoryProvider).record(
-                      productId: product.id,
-                      type: isOut ? 'out' : 'in',
-                      quantityPieces: pieces,
-                      notes: notesCtrl.text.trim().isEmpty
-                          ? null
-                          : notesCtrl.text.trim(),
-                      date: txDate,
-                      areaId: selectedAreaId,
-                    );
-                if (ctx.mounted) Navigator.pop(ctx);
-                ref.invalidate(inventoryListProvider);
-                _load();
-              }
-                  : null,
-              child: const Text('Confirm'),
-            ),
-          ],
-        ),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: canSave()
+                    ? () async {
+                        for (final li in lineItems) {
+                          await ref.read(vanStockRepositoryProvider).record(
+                                productId: li.product.id,
+                                type: isOut ? 'out' : 'in',
+                                quantityPieces: li.pieces,
+                                notes: null,
+                                date: txDate,
+                                areaId: selectedAreaId,
+                              );
+                        }
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        ref.invalidate(inventoryListProvider);
+                        _load();
+                      }
+                    : null,
+                child: const Text('Save All'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1059,6 +1035,140 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
                         ),
         ),
       ],
+    );
+  }
+}
+
+// ── Van line-item card (used inside Loading / Stocks Return dialog) ────────────
+
+class _VanLineItemCard extends StatefulWidget {
+  final _VanLineItem item;
+  final int availPieces;
+  final bool isOut;
+  final bool stockOk;
+  final VoidCallback onRemove;
+  final VoidCallback onChanged;
+
+  const _VanLineItemCard({
+    super.key,
+    required this.item,
+    required this.availPieces,
+    required this.isOut,
+    required this.stockOk,
+    required this.onRemove,
+    required this.onChanged,
+  });
+
+  @override
+  State<_VanLineItemCard> createState() => _VanLineItemCardState();
+}
+
+class _VanLineItemCardState extends State<_VanLineItemCard> {
+  late final TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(
+      text: widget.item.quantity > 0 ? '${widget.item.quantity}' : '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  String _availLabel() {
+    final ppb   = widget.item.product.piecesPerBox;
+    final avail = widget.availPieces;
+    if (widget.isOut) {
+      if (avail <= 0) return 'No stock';
+      final b = avail ~/ ppb;
+      final p = avail % ppb;
+      if (b > 0 && p > 0) return 'Available: $b box(es) + $p pcs';
+      if (b > 0) return 'Available: $b box(es)';
+      return 'Available: $avail pcs';
+    } else {
+      final b = avail ~/ ppb;
+      final p = avail % ppb;
+      if (b > 0 && p > 0) return 'Loaded: $b box(es) + $p pcs';
+      if (b > 0) return 'Loaded: $b box(es)';
+      return 'Loaded: $avail pcs';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final item  = widget.item;
+    final avail = widget.availPieces;
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      color: widget.stockOk ? null : Colors.red.shade50,
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(item.product.name,
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text(
+                    _availLabel(),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: widget.isOut
+                          ? (avail > 0
+                              ? Colors.green.shade700
+                              : Colors.red)
+                          : Colors.blue.shade700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'piece', label: Text('Pcs')),
+                ButtonSegment(value: 'box',   label: Text('Box')),
+              ],
+              selected: {item.unitType},
+              onSelectionChanged: (s) {
+                setState(() => item.unitType = s.first);
+                widget.onChanged();
+              },
+              style: const ButtonStyle(
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 70,
+              child: TextField(
+                controller: _ctrl,
+                enabled: avail > 0,
+                decoration:
+                    const InputDecoration(labelText: 'Qty', isDense: true),
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                onChanged: (v) {
+                  item.quantity = int.tryParse(v) ?? 0;
+                  widget.onChanged();
+                },
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close, color: Colors.red),
+              onPressed: widget.onRemove,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

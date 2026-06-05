@@ -33,14 +33,14 @@ class InvoiceRepository extends BaseRepository {
       final data = await Supabase.instance.client
           .from('invoices')
           .select('id')
-          .gte('created_at', start.toIso8601String())
-          .lt('created_at', end.toIso8601String());
+          .gte('invoice_date', start.toIso8601String())
+          .lt('invoice_date', end.toIso8601String());
       count = (data as List).length + 1;
     } else {
       final rows = await (db.select(db.invoices)
             ..where((t) =>
-                t.createdAt.isBiggerOrEqualValue(start) &
-                t.createdAt.isSmallerThanValue(end)))
+                t.invoiceDate.isBiggerOrEqualValue(start) &
+                t.invoiceDate.isSmallerThanValue(end)))
           .get();
       count = rows.length + 1;
     }

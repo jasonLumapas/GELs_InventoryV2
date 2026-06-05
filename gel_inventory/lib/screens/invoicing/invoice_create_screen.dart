@@ -16,6 +16,7 @@ import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_repository.dart';
 import '../../repositories/product_discount_repository.dart';
 import '../../repositories/product_repository.dart';
+import '../../repositories/supplier_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../utils/pdf_generator.dart';
 import '../../widgets/common/app_scaffold.dart';
@@ -87,6 +88,7 @@ class InvoiceCreateScreen extends ConsumerStatefulWidget {
 class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
   List<Client> _clients = [];
   List<Product> _products = [];
+  Map<String, String> _supplierNames = {}; // productId → supplier name
   final Map<String, ProductPrice?> _priceCache = {};
   final Map<String, InventoryItem?> _inventoryCache = {};
   final Map<String, ProductDiscount?> _discountCache = {};
@@ -107,16 +109,19 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
   }
 
   Future<void> _loadData() async {
-    final clients = await ref.read(clientRepositoryProvider).getAll();
-    final products = await ref.read(productRepositoryProvider).getAll();
+    final clients   = await ref.read(clientRepositoryProvider).getAll();
+    final products  = await ref.read(productRepositoryProvider).getAll();
+    final suppliers = await ref.read(supplierRepositoryProvider).getAll();
     final invoiceNum = await ref
         .read(invoiceRepositoryProvider)
         .generateInvoiceNumber(_invoiceDate);
+    final suppMap = {for (final s in suppliers) s.id: s.name};
     setState(() {
-      _clients = clients;
+      _clients  = clients;
       _products = products;
+      _supplierNames = {for (final p in products) p.id: suppMap[p.supplierId] ?? ''};
       _invoiceNumber = invoiceNum;
-      _loading = false;
+      _loading  = false;
     });
   }
 
@@ -157,15 +162,29 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       return;
     }
 
-    for (final p in available) {
+    await Future.wait(available.map((p) async {
       if (!_inventoryCache.containsKey(p.id)) {
         _inventoryCache[p.id] = await ref
             .read(inventoryRepositoryProvider)
             .getByProductId(p.id);
       }
-    }
+    }));
 
     if (!mounted) return;
+
+    final supplierChips = <String, String>{};
+    for (final p in available) {
+      final name = _supplierNames[p.id];
+      if (name != null && name.isNotEmpty) supplierChips[p.supplierId] = name;
+    }
+    final supplierFilters = (supplierChips.entries.toList()
+          ..sort((a, b) => a.value.compareTo(b.value)))
+        .map((e) => SearchFilter<Product>(
+              label: e.value,
+              test: (p) => p.supplierId == e.key,
+            ))
+        .toList();
+
     await showSearchPicker<Product>(
       context: context,
       title: 'Select Product',
@@ -179,6 +198,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
             color: qty > 0 ? Colors.green.shade700 : Colors.red);
       },
       onSelected: (p) => _addProduct(p),
+      filters: supplierFilters,
     );
   }
 

@@ -1,5 +1,14 @@
 import 'package:flutter/material.dart';
 
+/// A named filter option for [showSearchPicker].
+/// When [filters] are provided the dialog shows a chip row that narrows
+/// the list to items matching [test].
+class SearchFilter<T> {
+  final String label;
+  final bool Function(T) test;
+  const SearchFilter({required this.label, required this.test});
+}
+
 /// Shows a dialog with a live-filter search field above a scrollable list.
 ///
 /// Single-pick mode (default): returns the selected [T] or null if dismissed.
@@ -17,6 +26,7 @@ Future<T?> showSearchPicker<T>({
   Widget? Function(T)? leadingOf,
   bool Function(T)? isDisabledOf,
   void Function(T)? onSelected, // multi-pick mode when provided
+  List<SearchFilter<T>>? filters,
 }) async {
   return showDialog<T>(
     context: context,
@@ -29,6 +39,7 @@ Future<T?> showSearchPicker<T>({
       leadingOf: leadingOf,
       isDisabledOf: isDisabledOf,
       onSelected: onSelected,
+      filters: filters,
     ),
   );
 }
@@ -42,6 +53,7 @@ class _SearchPickerDialog<T> extends StatefulWidget {
   final Widget? Function(T)? leadingOf;
   final bool Function(T)? isDisabledOf;
   final void Function(T)? onSelected;
+  final List<SearchFilter<T>>? filters;
 
   const _SearchPickerDialog({
     required this.title,
@@ -52,6 +64,7 @@ class _SearchPickerDialog<T> extends StatefulWidget {
     this.leadingOf,
     this.isDisabledOf,
     this.onSelected,
+    this.filters,
   });
 
   @override
@@ -62,6 +75,8 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
   final _ctrl = TextEditingController();
   late List<T> _remaining;
   List<T> _filtered = [];
+  final _selected = <T>{};
+  SearchFilter<T>? _activeFilter;
 
   bool get _multiPick => widget.onSelected != null;
 
@@ -82,15 +97,18 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
   void _onSearch() {
     final q = _ctrl.text.toLowerCase();
     setState(() {
-      _filtered = _remaining
-          .where((i) => widget.labelOf(i).toLowerCase().contains(q))
-          .toList();
+      _filtered = _remaining.where((i) {
+        if (!widget.labelOf(i).toLowerCase().contains(q)) return false;
+        if (_activeFilter != null && !_activeFilter!.test(i)) return false;
+        return true;
+      }).toList();
     });
   }
 
   void _onTap(T item) {
     if (_multiPick) {
       widget.onSelected!(item);
+      setState(() => _selected.add(item));
     } else {
       Navigator.pop(context, item);
     }
@@ -121,6 +139,38 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
                 ),
               ),
             ),
+            if (widget.filters != null && widget.filters!.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  children: [
+                    FilterChip(
+                      label: const Text('All'),
+                      selected: _activeFilter == null,
+                      onSelected: (_) {
+                        setState(() => _activeFilter = null);
+                        _onSearch();
+                      },
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    ...widget.filters!.map((f) => Padding(
+                          padding: const EdgeInsets.only(left: 6),
+                          child: FilterChip(
+                            label: Text(f.label),
+                            selected: _activeFilter == f,
+                            onSelected: (_) {
+                              setState(() => _activeFilter = f);
+                              _onSearch();
+                            },
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        )),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 8),
             Expanded(
               child: _filtered.isEmpty
@@ -135,12 +185,18 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
                         final leading = widget.leadingOf?.call(item);
                         final disabled =
                             widget.isDisabledOf?.call(item) ?? false;
+                        final checked =
+                            _multiPick && _selected.contains(item);
                         return ListTile(
                           enabled: !disabled,
                           leading: leading,
                           title: Text(widget.labelOf(item)),
                           subtitle: sub != null
                               ? Text(sub, style: subStyle)
+                              : null,
+                          trailing: checked
+                              ? Icon(Icons.check_circle,
+                                  color: Theme.of(context).colorScheme.primary)
                               : null,
                           onTap: disabled ? null : () => _onTap(item),
                         );

@@ -42,29 +42,29 @@ class DashboardScreen extends StatelessWidget {
             route: '/invoices',
           ),
           _NavCard(
-            icon: Icons.bar_chart,
-            label: 'Reports',
-            route: '/reports',
-          ),
-          _NavCard(
             icon: Icons.summarize,
             label: 'Layout',
             route: '/layout',
           ),
           _NavCard(
+            icon: Icons.account_balance_wallet,
+            label: 'Remittance',
+            route: '/collectibles',
+          ),
+          _NavCard(
             icon: Icons.remove_shopping_cart,
-            label: 'Bad Orders',
+            label: 'Returns/Bad Orders',
             route: '/bad-orders',
+          ),
+          _NavCard(
+            icon: Icons.bar_chart,
+            label: 'Reports',
+            route: '/reports',
           ),
           _NavCard(
             icon: Icons.local_shipping,
             label: 'Off-site Loading',
             route: '/van-selling',
-          ),
-          _NavCard(
-            icon: Icons.account_balance_wallet,
-            label: 'Remittance',
-            route: '/collectibles',
           ),
         ],
       ),

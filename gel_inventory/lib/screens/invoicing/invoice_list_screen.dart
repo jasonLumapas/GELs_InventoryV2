@@ -305,7 +305,11 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                                 ),
                               ],
                             ),
-                            onTap: () => context.go('/invoices/${inv.id}'),
+                            onTap: () async {
+                              await context.push('/invoices/${inv.id}');
+                              ref.invalidate(filteredInvoicesProvider);
+                              ref.invalidate(_financialsProvider);
+                            },
                           );
                         },
                       ),

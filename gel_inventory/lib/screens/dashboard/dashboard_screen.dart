@@ -71,6 +71,11 @@ class DashboardScreen extends StatelessWidget {
             label: 'Import CSV',
             route: '/import-csv',
           ),
+          _NavCard(
+            icon: Icons.print,
+            label: 'Printer Settings',
+            route: '/printer-settings',
+          ),
         ],
       ),
     );

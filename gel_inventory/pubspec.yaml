@@ -62,6 +62,9 @@ dependencies:
   # UUID generation for local records
   uuid: ^4.5.1
 
+  # Printer preference persistence
+  shared_preferences: ^2.3.2
+
   # Excel (.xlsx) file reading for data import
   excel: ^2.1.0
 

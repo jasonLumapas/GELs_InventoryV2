@@ -18,6 +18,7 @@ import 'screens/bad_orders/bad_order_form_screen.dart';
 import 'screens/van_selling/van_selling_screen.dart';
 import 'screens/invoicing/collectibles_screen.dart';
 import 'screens/admin/csv_import_screen.dart';
+import 'screens/admin/printer_settings_screen.dart';
 
 final _router = GoRouter(
   initialLocation: '/',
@@ -93,6 +94,11 @@ final _router = GoRouter(
     GoRoute(
         path: '/import-csv',
         builder: (ctx, s) => const CsvImportScreen()),
+
+    // Printer Settings
+    GoRoute(
+        path: '/printer-settings',
+        builder: (ctx, s) => const PrinterSettingsScreen()),
   ],
 );
 

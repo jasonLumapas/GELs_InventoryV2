@@ -4,10 +4,33 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import '../core/services/printer_settings_service.dart';
 import '../models/client.dart';
 import '../models/invoice.dart';
 import '../models/invoice_item.dart';
 import '../models/product.dart';
+
+// ── Printer routing helper ────────────────────────────────────────────────────
+// Sends [doc] to the printer saved for [slot].  Falls back to the system
+// print dialog when no printer has been configured for that slot.
+Future<void> _printWithSlot({
+  required pw.Document doc,
+  required PdfPageFormat format,
+  required String slot,
+}) async {
+  final printer = await PrinterSettingsService.load(slot);
+  if (printer != null) {
+    await Printing.directPrintPdf(
+      printer: printer,
+      onLayout: (_) => doc.save(),
+    );
+  } else {
+    await Printing.layoutPdf(
+      onLayout: (_) => doc.save(),
+      format: format,
+    );
+  }
+}
 
 final _rcptFmt = NumberFormat('#,##0.00');
 String _n(double v) => _rcptFmt.format(v);
@@ -267,10 +290,8 @@ Future<void> printInvoice({
     build: (ctx) => [...itemWidgets, ...totalWidgets],
   ));
 
-  await Printing.layoutPdf(
-    onLayout: (_) => doc.save(),
-    format: pageFormat,
-  );
+  await _printWithSlot(
+    doc: doc, format: pageFormat, slot: PrinterSettingsService.invoice);
 }
 
 // ── Invoice List PDF ─────────────────────────────────────────────────────────
@@ -372,10 +393,8 @@ Future<void> printInvoiceList({
     ],
   ));
 
-  await Printing.layoutPdf(
-    onLayout: (_) => doc.save(),
-    format: pageFormat,
-  );
+  await _printWithSlot(
+    doc: doc, format: pageFormat, slot: PrinterSettingsService.invoiceList);
 }
 
 // ── Layout / Order Summary PDF ────────────────────────────────────────────────
@@ -498,10 +517,8 @@ Future<void> printOrderSummary({
     ],
   ));
 
-  await Printing.layoutPdf(
-    onLayout: (_) => doc.save(),
-    format: pageFormat,
-  );
+  await _printWithSlot(
+    doc: doc, format: pageFormat, slot: PrinterSettingsService.layout);
 }
 
 // ── Van Stock History PDF ─────────────────────────────────────────────────────
@@ -733,10 +750,8 @@ Future<void> printLoadingReport({
     ],
   ));
 
-  await Printing.layoutPdf(
-    onLayout: (_) => doc.save(),
-    format: pageFormat,
-  );
+  await _printWithSlot(
+    doc: doc, format: pageFormat, slot: PrinterSettingsService.loading);
 }
 
 // ── Van Loading / Stocks Return PDF ──────────────────────────────────────────
@@ -896,10 +911,8 @@ Future<void> printVanTransactions({
 
   doc.addPage(pw.MultiPage(pageFormat: pageFormat, build: (_) => widgets));
 
-  await Printing.layoutPdf(
-    onLayout: (_) => doc.save(),
-    format: pageFormat,
-  );
+  await _printWithSlot(
+    doc: doc, format: pageFormat, slot: PrinterSettingsService.loading);
 }
 
 // ── Remittance Credit PDF ─────────────────────────────────────────────────────
@@ -1003,9 +1016,7 @@ Future<void> printRemittanceCredit({
     ],
   ));
 
-  await Printing.layoutPdf(
-    onLayout: (_) => doc.save(),
-    format: pageFormat,
-  );
+  await _printWithSlot(
+    doc: doc, format: pageFormat, slot: PrinterSettingsService.remittance);
 }
 

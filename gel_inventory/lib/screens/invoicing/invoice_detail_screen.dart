@@ -607,7 +607,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                       ),
                     ),
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
                       child: TextField(
                         controller: _checkRefCtrl,
                         decoration: const InputDecoration(
@@ -618,6 +618,167 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                         readOnly: isCancelled,
                       ),
                     ),
+
+                    // Add cash payment row
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _partialAmountCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Add Payment',
+                                prefixText: '₱ ',
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                              keyboardType: const TextInputType
+                                  .numberWithOptions(decimal: true),
+                              readOnly: isCancelled,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: InkWell(
+                              onTap: isCancelled ? null : () async {
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate:
+                                      _partialDate ?? DateTime.now(),
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime(2100),
+                                );
+                                if (picked != null) {
+                                  setState(() => _partialDate = picked);
+                                }
+                              },
+                              child: InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText: 'Date',
+                                  suffixIcon: Icon(
+                                      Icons.calendar_today, size: 18),
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                ),
+                                child: Text(
+                                  _partialDate == null
+                                      ? 'Select date'
+                                      : DateFormat('MMM dd, yyyy')
+                                          .format(_partialDate!),
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: _partialDate == null
+                                        ? Theme.of(context).hintColor
+                                        : null,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          FilledButton(
+                            onPressed:
+                                isCancelled ? null : _addPayment,
+                            style: FilledButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12)),
+                            child: const Text('Add'),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Payment history
+                    if (_payments.isNotEmpty) ...[
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(12, 4, 12, 2),
+                        child: Text('Payment History',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13)),
+                      ),
+                      ..._payments.map((p) => ListTile(
+                            dense: true,
+                            contentPadding:
+                                const EdgeInsets.symmetric(horizontal: 12),
+                            title: Text(formatCurrency(p.amount),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w500)),
+                            subtitle: p.paymentDate == null
+                                ? null
+                                : Text(DateFormat('MMM dd, yyyy')
+                                    .format(p.paymentDate!)),
+                            trailing: isCancelled
+                                ? null
+                                : IconButton(
+                                    icon: const Icon(
+                                        Icons.delete_outline,
+                                        color: Colors.red,
+                                        size: 18),
+                                    onPressed: () =>
+                                        _deletePayment(p.id),
+                                  ),
+                          )),
+                    ],
+
+                    // Balance summary
+                    Builder(builder: (_) {
+                      final checkAmt =
+                          double.tryParse(_checkAmountCtrl.text) ?? 0.0;
+                      final cashPaid =
+                          _payments.fold(0.0, (s, p) => s + p.amount);
+                      final balance =
+                          (_total - checkAmt - cashPaid)
+                              .clamp(0.0, double.infinity);
+                      return Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+                        child: Column(
+                          children: [
+                            const Divider(height: 8),
+                            Row(children: [
+                              const Text('Check Amount:',
+                                  style: TextStyle(fontSize: 13)),
+                              const SizedBox(width: 8),
+                              Text(formatCurrency(checkAmt),
+                                  style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500)),
+                            ]),
+                            if (cashPaid > 0) ...[
+                              const SizedBox(height: 2),
+                              Row(children: [
+                                const Text('Cash Payments:',
+                                    style: TextStyle(fontSize: 13)),
+                                const SizedBox(width: 8),
+                                Text(formatCurrency(cashPaid),
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w500)),
+                              ]),
+                            ],
+                            const SizedBox(height: 2),
+                            Row(children: [
+                              const Text('Balance:',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600)),
+                              const SizedBox(width: 8),
+                              Text(
+                                formatCurrency(balance),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: balance > 0
+                                      ? Colors.red.shade700
+                                      : Colors.green.shade700,
+                                ),
+                              ),
+                            ]),
+                          ],
+                        ),
+                      );
+                    }),
                   ],
 
                   // Partial payment — add form + history

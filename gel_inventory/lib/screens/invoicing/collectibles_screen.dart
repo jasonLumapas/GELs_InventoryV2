@@ -16,12 +16,16 @@ class _CollectibleItem {
   final Invoice invoice;
   final String clientName;
   final double outstanding;
+  // Overrides invoice.paymentType for chip routing (e.g. cash portion of a
+  // check invoice appears under the Cash chip).
+  final String displayPaymentType;
 
-  const _CollectibleItem({
+  _CollectibleItem({
     required this.invoice,
     required this.clientName,
     required this.outstanding,
-  });
+    String? displayPaymentType,
+  }) : displayPaymentType = displayPaymentType ?? invoice.paymentType;
 }
 
 class CollectiblesScreen extends ConsumerStatefulWidget {
@@ -159,15 +163,34 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
             .getForInvoice(inv.id);
         final paid = payments.fold(0.0, (s, p) => s + p.amount);
         outstanding = inv.totalAmount - paid;
+      } else if (inv.paymentType == 'check') {
+        final checkPaid = inv.checkAmount ?? 0.0;
+        final payments = await ref
+            .read(invoicePaymentRepositoryProvider)
+            .getForInvoice(inv.id);
+        final cashPaid = payments.fold(0.0, (s, p) => s + p.amount);
+        outstanding = inv.totalAmount - checkPaid - cashPaid;
+
+        // Cash payments on this check invoice appear under the Cash chip.
+        if (cashPaid > 0.01) {
+          items.add(_CollectibleItem(
+            invoice: inv,
+            clientName: clientMap[inv.clientId]?.name ?? inv.clientId,
+            outstanding: cashPaid,
+            displayPaymentType: 'cash',
+          ));
+        }
       } else {
-        // check / credit: check_amount as paid, otherwise full amount
+        // credit: check_amount field reused as paid amount
         final paid = inv.checkAmount ?? 0.0;
         outstanding = inv.totalAmount - paid;
       }
 
       if (inv.paymentType == 'cash' ||
           outstanding > 0.01 ||
-          (inv.paymentType == 'credit' || inv.paymentType == 'partial')) {
+          inv.paymentType == 'credit' ||
+          inv.paymentType == 'partial' ||
+          inv.paymentType == 'check') {
         items.add(_CollectibleItem(
           invoice: inv,
           clientName:
@@ -189,11 +212,16 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
 
   List<_CollectibleItem> get _filtered => _items.where((i) {
         if (_filterType != null) {
-          final type = i.invoice.paymentType;
+          final type = i.displayPaymentType;
           if (_filterType == 'paid_accounts') {
-            // Fully paid credit or partial invoices
-            if ((type != 'credit' && type != 'partial') ||
+            // Fully paid credit, partial, or check invoices
+            if ((type != 'credit' && type != 'partial' && type != 'check') ||
                 i.outstanding > 0.01) {
+              return false;
+            }
+          } else if (_filterType == 'check') {
+            // Check chip: only unpaid/partially-paid check invoices
+            if (type != 'check' || i.outstanding <= 0.01) {
               return false;
             }
           } else if (_filterType == 'credit') {
@@ -320,15 +348,22 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
                         itemBuilder: (ctx, i) {
                           final item = filtered[i];
                           final inv  = item.invoice;
+                          final isCheck =
+                              item.displayPaymentType == 'check';
+                          final isCashOfCheck =
+                              item.displayPaymentType == 'cash' &&
+                              inv.paymentType == 'check';
                           return ListTile(
-                            leading: _paymentIcon(inv.paymentType),
+                            leading: _paymentIcon(item.displayPaymentType),
                             title: Row(
                               children: [
                                 Expanded(
                                     child: Text(item.clientName,
                                         style: const TextStyle(
                                             fontWeight: FontWeight.w600))),
-                                if (_filterType != 'paid_accounts')
+                                // Check balance shown in subtitle;
+                                // other types show amount in title.
+                                if (_filterType != 'paid_accounts' && !isCheck)
                                   Text(
                                     formatCurrency(item.outstanding),
                                     style: TextStyle(
@@ -341,7 +376,10 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
                             subtitle: Text(
                               '${inv.displayNumber}  •  '
                               '${dateFmt.format(inv.invoiceDate)}  •  '
-                              '${inv.paymentLabel}',
+                              '${isCashOfCheck ? "Cash payment (Check)" : inv.paymentLabel}'
+                              '${isCheck && item.outstanding > 0.01
+                                  ? '  •  Balance: ${formatCurrency(item.outstanding)}'
+                                  : ''}',
                             ),
                             onTap: () async {
                               await context.push('/invoices/${inv.id}');

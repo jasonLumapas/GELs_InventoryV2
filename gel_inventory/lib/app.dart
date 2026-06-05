@@ -17,6 +17,7 @@ import 'screens/bad_orders/bad_order_list_screen.dart';
 import 'screens/bad_orders/bad_order_form_screen.dart';
 import 'screens/van_selling/van_selling_screen.dart';
 import 'screens/invoicing/collectibles_screen.dart';
+import 'screens/admin/csv_import_screen.dart';
 
 final _router = GoRouter(
   initialLocation: '/',
@@ -87,6 +88,11 @@ final _router = GoRouter(
     GoRoute(
         path: '/collectibles',
         builder: (ctx, s) => const CollectiblesScreen()),
+
+    // CSV Import
+    GoRoute(
+        path: '/import-csv',
+        builder: (ctx, s) => const CsvImportScreen()),
   ],
 );
 

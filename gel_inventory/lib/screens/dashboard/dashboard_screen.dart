@@ -66,6 +66,11 @@ class DashboardScreen extends StatelessWidget {
             label: 'Off-site Loading',
             route: '/van-selling',
           ),
+          _NavCard(
+            icon: Icons.upload_file,
+            label: 'Import CSV',
+            route: '/import-csv',
+          ),
         ],
       ),
     );

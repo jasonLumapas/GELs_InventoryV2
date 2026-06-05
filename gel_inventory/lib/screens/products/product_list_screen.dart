@@ -97,7 +97,9 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                   final matchesSearch = q.isEmpty ||
                       p.name.toLowerCase().contains(q);
                   return matchesSupplier && matchesSearch;
-                }).toList();
+                }).toList()
+                  ..sort((a, b) =>
+                      a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
                 if (products.isEmpty) {
                   return const Center(child: Text('No products found.'));

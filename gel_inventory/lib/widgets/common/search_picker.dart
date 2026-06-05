@@ -141,32 +141,33 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
             ),
             if (widget.filters != null && widget.filters!.isNotEmpty) ...[
               const SizedBox(height: 6),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
+              Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: Row(
                   children: [
-                    FilterChip(
-                      label: const Text('All'),
-                      selected: _activeFilter == null,
-                      onSelected: (_) {
-                        setState(() => _activeFilter = null);
-                        _onSearch();
-                      },
-                      visualDensity: VisualDensity.compact,
+                    const Text('Supplier:',
+                        style: TextStyle(fontSize: 13, color: Colors.grey)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: DropdownButton<SearchFilter<T>?>(
+                        value: _activeFilter,
+                        isDense: true,
+                        isExpanded: true,
+                        underline: const SizedBox(),
+                        items: [
+                          const DropdownMenuItem(
+                              value: null, child: Text('All Suppliers')),
+                          ...widget.filters!.map((f) => DropdownMenuItem(
+                                value: f,
+                                child: Text(f.label),
+                              )),
+                        ],
+                        onChanged: (f) {
+                          setState(() => _activeFilter = f);
+                          _onSearch();
+                        },
+                      ),
                     ),
-                    ...widget.filters!.map((f) => Padding(
-                          padding: const EdgeInsets.only(left: 6),
-                          child: FilterChip(
-                            label: Text(f.label),
-                            selected: _activeFilter == f,
-                            onSelected: (_) {
-                              setState(() => _activeFilter = f);
-                              _onSearch();
-                            },
-                            visualDensity: VisualDensity.compact,
-                          ),
-                        )),
                   ],
                 ),
               ),

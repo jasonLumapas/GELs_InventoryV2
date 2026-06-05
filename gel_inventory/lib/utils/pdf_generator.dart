@@ -413,81 +413,94 @@ Future<void> printOrderSummary({
     marginRight: 40,
   );
   final usableW = pageFormat.availableWidth;
-  final prodW  = usableW * 0.60;
-  final boxW   = usableW * 0.20;
-  final pcsW   = usableW * 0.20;
+  final prodW  = usableW * 0.46;
+  final boxW   = usableW * 0.14;
+  final pcsW   = usableW * 0.24;   // wider to fit "No. of pieces/packs"
 
-  final font     = pw.Font.helvetica();
-  final fontBold = pw.Font.helveticaBold();
-  const double fs = 11.0;
+  final font     = _loadFont('C:\\Windows\\Fonts\\arial.ttf')   ?? pw.Font.helvetica();
+  final fontBold = _loadFont('C:\\Windows\\Fonts\\arialbd.ttf') ?? pw.Font.helveticaBold();
+  const double fs     = 9.5;   // item font size
+  const double fsHead = 10.5;  // header / label font size
 
-  pw.TextStyle ts({bool bold = false}) =>
-      pw.TextStyle(font: bold ? fontBold : font, fontSize: fs);
+  pw.TextStyle ts({bool bold = false, double? size}) =>
+      pw.TextStyle(font: bold ? fontBold : font, fontSize: size ?? fs);
 
   pw.Widget col(String text, double width,
-          {bool bold = false, bool right = false}) =>
+          {bool bold = false,
+           pw.TextAlign align = pw.TextAlign.left,
+           double? size}) =>
       pw.SizedBox(
         width: width,
         child: pw.Text(
           text,
-          style: ts(bold: bold),
-          textAlign: right ? pw.TextAlign.right : pw.TextAlign.left,
+          style: ts(bold: bold, size: size),
+          textAlign: align,
         ),
       );
 
-  doc.addPage(pw.Page(
+  pw.Widget signLine(String label) => pw.Padding(
+        padding: const pw.EdgeInsets.only(bottom: 6),
+        child: pw.Text(label, style: ts(size: fsHead)),
+      );
+
+  doc.addPage(pw.MultiPage(
     pageFormat: pageFormat,
-    build: (ctx) => pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        // Date header
-        pw.Text('Date: ${dateFmt.format(date)}', style: ts()),
-        pw.SizedBox(height: 16),
+    build: (ctx) => [
+      // Layout date
+      pw.Text('Layout: ${dateFmt.format(date)}',
+          style: ts(bold: true, size: fsHead)),
+      pw.SizedBox(height: 10),
 
-        // Column headers
-        pw.Row(children: [
-          col('Products', prodW, bold: true),
-          col('Boxes',  boxW,  bold: true, right: true),
-          col('Pieces', pcsW,  bold: true, right: true),
-        ]),
-        pw.Divider(height: 6, thickness: 0.5),
+      // Crew signature lines
+      signLine('Driver:      _____________________________'),
+      signLine('Junior 1:  ___________________________'),
+      signLine('Junior 2:  ___________________________'),
+      pw.SizedBox(height: 10),
 
-        // Data rows with separators
-        for (int i = 0; i < rows.length; i++) ...[
-          pw.Padding(
-            padding: const pw.EdgeInsets.symmetric(vertical: 3),
-            child: pw.Row(children: [
-              col(rows[i].productName, prodW),
-              col(rows[i].boxes > 0 ? '${rows[i].boxes}' : '',
-                  boxW, right: true),
-              col(rows[i].remainingPieces > 0
-                      ? '${rows[i].remainingPieces}'
-                      : '',
-                  pcsW, right: true),
-            ]),
-          ),
-          if (i < rows.length - 1)
-            pw.Divider(height: 1, thickness: 0.3),
-        ],
+      // Column headers
+      pw.Row(children: [
+        col('Product Description', prodW, bold: true, size: fsHead),
+        col('No. of case',         boxW,  bold: true,
+            align: pw.TextAlign.center, size: fsHead),
+        col('No. of pieces/packs', pcsW,  bold: true,
+            align: pw.TextAlign.center, size: fsHead),
+      ]),
+      pw.Divider(height: 4, thickness: 0.5),
 
-        pw.Divider(height: 12, thickness: 0.5),
-        pw.SizedBox(height: 8),
-
-        // Grand total
-        pw.Align(
-          alignment: pw.Alignment.centerRight,
-          child: pw.Text(
-            'Grand Total: Php ${numFmt.format(grandTotal)}',
-            style: ts(bold: true),
-          ),
+      // Data rows — tighter vertical padding
+      for (int i = 0; i < rows.length; i++) ...[
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 1.5),
+          child: pw.Row(children: [
+            col(rows[i].productName, prodW),
+            col(rows[i].boxes > 0 ? '${rows[i].boxes}' : '',
+                boxW, align: pw.TextAlign.center),
+            col(rows[i].remainingPieces > 0
+                    ? '${rows[i].remainingPieces}'
+                    : '',
+                pcsW, align: pw.TextAlign.center),
+          ]),
         ),
+        if (i < rows.length - 1)
+          pw.Divider(height: 1, thickness: 0.2),
       ],
-    ),
+
+      pw.Divider(height: 8, thickness: 0.5),
+
+      // Grand total
+      pw.Align(
+        alignment: pw.Alignment.centerRight,
+        child: pw.Text(
+          'Grand Total: Php ${numFmt.format(grandTotal)}',
+          style: ts(bold: true, size: fsHead),
+        ),
+      ),
+    ],
   ));
 
   await Printing.layoutPdf(
     onLayout: (_) => doc.save(),
-    format: PdfPageFormat.a4.copyWith(marginTop: 36),
+    format: pageFormat,
   );
 }
 
@@ -675,52 +688,49 @@ Future<void> printLoadingReport({
   // Build a combined sold display using average ppb (all pieces, no box format for total)
   String totalSoldLabel = '$totalSoldPieces pcs';
 
-  doc.addPage(pw.Page(
+  doc.addPage(pw.MultiPage(
     pageFormat: pageFormat,
-    build: (ctx) => pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        // Report header
-        pw.Text('Loading Report', style: ts(bold: true)),
-        pw.SizedBox(height: 6),
-        pw.Text('Area:          $areaName',   style: ts()),
-        pw.Text('Loading Date:  ${dateFmt.format(loadingDate)}', style: ts()),
-        pw.Text('Return Date:   ${dateFmt.format(returnDate)}',  style: ts()),
-        pw.SizedBox(height: 12),
+    build: (ctx) => [
+      // Report header
+      pw.Text('Loading Report', style: ts(bold: true)),
+      pw.SizedBox(height: 6),
+      pw.Text('Area:          $areaName',   style: ts()),
+      pw.Text('Loading Date:  ${dateFmt.format(loadingDate)}', style: ts()),
+      pw.Text('Return Date:   ${dateFmt.format(returnDate)}',  style: ts()),
+      pw.SizedBox(height: 12),
 
-        // Column headers
-        pw.Row(children: [
-          col('ITEM',    itemW, bold: true),
-          col('Loading', colW,  bold: true, align: pw.TextAlign.center),
-          col('Return',  colW,  bold: true, align: pw.TextAlign.center),
-          col('Sold',    colW,  bold: true, align: pw.TextAlign.center),
-        ]),
-        pw.Divider(height: 6, thickness: 0.5),
+      // Column headers
+      pw.Row(children: [
+        col('ITEM',    itemW, bold: true),
+        col('Loading', colW,  bold: true, align: pw.TextAlign.center),
+        col('Return',  colW,  bold: true, align: pw.TextAlign.center),
+        col('Sold',    colW,  bold: true, align: pw.TextAlign.center),
+      ]),
+      pw.Divider(height: 6, thickness: 0.5),
 
-        // Data rows
-        for (int i = 0; i < rows.length; i++) ...[
-          pw.Padding(
-            padding: const pw.EdgeInsets.symmetric(vertical: 4),
-            child: pw.Row(children: [
-              col(rows[i].productName, itemW),
-              col(rows[i].loadedFmt,   colW, align: pw.TextAlign.center),
-              col(rows[i].returnedFmt, colW, align: pw.TextAlign.center),
-              col(rows[i].soldFmt,     colW, align: pw.TextAlign.center),
-            ]),
-          ),
-          if (i < rows.length - 1) pw.Divider(height: 1, thickness: 0.2),
-        ],
-
-        // Grand total
-        pw.Divider(height: 8, thickness: 0.5),
-        pw.Row(children: [
-          col('Grand Total', itemW, bold: true),
-          col('', colW),
-          col('', colW),
-          col(totalSoldLabel, colW, bold: true, align: pw.TextAlign.center),
-        ]),
+      // Data rows
+      for (int i = 0; i < rows.length; i++) ...[
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 4),
+          child: pw.Row(children: [
+            col(rows[i].productName, itemW),
+            col(rows[i].loadedFmt,   colW, align: pw.TextAlign.center),
+            col(rows[i].returnedFmt, colW, align: pw.TextAlign.center),
+            col(rows[i].soldFmt,     colW, align: pw.TextAlign.center),
+          ]),
+        ),
+        if (i < rows.length - 1) pw.Divider(height: 1, thickness: 0.2),
       ],
-    ),
+
+      // Grand total
+      pw.Divider(height: 8, thickness: 0.5),
+      pw.Row(children: [
+        col('Grand Total', itemW, bold: true),
+        col('', colW),
+        col('', colW),
+        col(totalSoldLabel, colW, bold: true, align: pw.TextAlign.center),
+      ]),
+    ],
   ));
 
   await Printing.layoutPdf(

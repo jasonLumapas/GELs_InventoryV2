@@ -64,6 +64,16 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
   List<String> _configuredIds = []; // additional supplier IDs (not RAM)
   late Future<_MonthData> _future;
 
+  final TextEditingController _targetCtrl  = TextEditingController(text: '0');
+  final TextEditingController _percentCtrl = TextEditingController(text: '90');
+
+  @override
+  void dispose() {
+    _targetCtrl.dispose();
+    _percentCtrl.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -500,6 +510,279 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
                     ]),
                   ],
                 ),
+                // ── Monthly Target ───────────────────────────────────────────
+                const SizedBox(height: 16),
+                _editableRow('Monthly Target', _targetCtrl),
+                const SizedBox(height: 8),
+                _editableRow(
+                  'Percent of the target for incentive eligibility',
+                  _percentCtrl,
+                  suffix: '%',
+                ),
+                const SizedBox(height: 4),
+                ListenableBuilder(
+                  listenable: Listenable.merge([_targetCtrl, _percentCtrl]),
+                  builder: (_, _) {
+                    final target  = double.tryParse(_targetCtrl.text) ?? 0.0;
+                    final percent = double.tryParse(_percentCtrl.text) ?? 90.0;
+                    return _summaryRow(
+                      'Target Amount',
+                      formatCurrency(target * percent / 100),
+                      bold: true,
+                    );
+                  },
+                ),
+                // ── BO Allowance ────────────────────────────────────────────
+                const SizedBox(height: 24),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 4),
+                            child: Text(
+                              'BO Allowance (1% of the monthly RAM sales)',
+                              style: TextStyle(fontSize: 13),
+                            ),
+                          ),
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 2),
+                            child: Text(
+                              'Total RAM BO for the month',
+                              style: TextStyle(fontSize: 13),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.only(top: 8),
+                            decoration: BoxDecoration(
+                              border: Border(
+                                  top: BorderSide(color: Colors.grey.shade300)),
+                            ),
+                            child: const Text(
+                              'Net BO Allowance',
+                              style: TextStyle(
+                                  fontSize: 13, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(width: 16),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Text(
+                              formatCurrency(data.totalRamSales * 0.01),
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 2),
+                            child: Text(
+                              formatCurrency(data.totalRamBoAmount),
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.only(top: 8),
+                            decoration: BoxDecoration(
+                              border: Border(
+                                  top: BorderSide(color: Colors.grey.shade300)),
+                            ),
+                            child: Text(
+                              formatCurrency(data.totalRamSales * 0.01 -
+                                  data.totalRamBoAmount),
+                              style: const TextStyle(
+                                  fontSize: 13, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                // ── Net Sales computation ────────────────────────────────────
+                const SizedBox(height: 24),
+                _summaryRow(
+                  'Total Gross Sales',
+                  formatCurrency(data.totalGrand),
+                  bold: true,
+                ),
+                const SizedBox(height: 4),
+                const Padding(
+                  padding: EdgeInsets.only(left: 4),
+                  child: Text('less:', style: TextStyle(fontSize: 13)),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(left: 24, right: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final c in data.additional)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(c.name,
+                                  style: const TextStyle(fontSize: 13)),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(width: 16),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final c in data.additional)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                formatCurrency(data.totalAdditionalSales(c.id)),
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 16, indent: 4, endIndent: 4),
+                Builder(builder: (_) {
+                  final netBo    = data.totalRamSales * 0.01 - data.totalRamBoAmount;
+                  final netSales = data.totalGrand -
+                      data.additional.fold(
+                          0.0, (s, c) => s + data.totalAdditionalSales(c.id));
+                  final eligible = netBo < 0 ? netSales + netBo : netSales;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text('Net Total',
+                                style: TextStyle(fontSize: 13)),
+                            if (netBo < 0) ...[
+                              const SizedBox(height: 2),
+                              const Text('Net BO Allowance',
+                                  style: TextStyle(fontSize: 13)),
+                            ],
+                            Container(
+                              padding: const EdgeInsets.only(top: 6),
+                              decoration: BoxDecoration(
+                                border: Border(
+                                    top: BorderSide(
+                                        color: Colors.grey.shade300)),
+                              ),
+                              child: const Text('Net Sales',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold)),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(width: 16),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(formatCurrency(netSales),
+                                style: const TextStyle(fontSize: 13)),
+                            if (netBo < 0) ...[
+                              const SizedBox(height: 2),
+                              Text(formatCurrency(netBo),
+                                  style: const TextStyle(fontSize: 13)),
+                            ],
+                            Container(
+                              padding: const EdgeInsets.only(top: 6),
+                              decoration: BoxDecoration(
+                                border: Border(
+                                    top: BorderSide(
+                                        color: Colors.grey.shade300)),
+                              ),
+                              child: Text(formatCurrency(eligible),
+                                  style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold)),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+                // ── Eligibility status ───────────────────────────────────────
+                const SizedBox(height: 16),
+                ListenableBuilder(
+                  listenable: Listenable.merge([_targetCtrl, _percentCtrl]),
+                  builder: (ctx, _) {
+                    final target  = double.tryParse(_targetCtrl.text) ?? 0.0;
+                    final percent = double.tryParse(_percentCtrl.text) ?? 90.0;
+                    final targetAmount = target * percent / 100;
+                    final netBo    = data.totalRamSales * 0.01 - data.totalRamBoAmount;
+                    final netSales = data.totalGrand -
+                        data.additional.fold(
+                            0.0, (s, c) => s + data.totalAdditionalSales(c.id));
+                    final eligibleAmt = netBo < 0 ? netSales + netBo : netSales;
+                    final isEligible  = eligibleAmt >= targetAmount;
+                    return Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 10, horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: isEligible
+                            ? Colors.green.shade50
+                            : Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isEligible
+                              ? Colors.green.shade300
+                              : Colors.red.shade300,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isEligible ? Icons.check_circle : Icons.cancel,
+                            color: isEligible
+                                ? Colors.green.shade700
+                                : Colors.red.shade700,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            isEligible
+                                ? 'Eligible for Incentive'
+                                : 'Not Eligible for Incentive',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: isEligible
+                                  ? Colors.green.shade700
+                                  : Colors.red.shade700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
               ],
             ),
           ),
@@ -520,6 +803,57 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
               fontWeight: bold ? FontWeight.bold : FontWeight.normal),
         ),
       );
+
+  Widget _editableRow(String label, TextEditingController ctrl,
+      {String? suffix}) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label, style: const TextStyle(fontSize: 13)),
+            const Text(': ', style: TextStyle(fontSize: 13)),
+            SizedBox(
+              width: 110,
+              child: TextField(
+                controller: ctrl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                style: const TextStyle(fontSize: 13),
+                decoration: InputDecoration(
+                  isDense: true,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                  border: const OutlineInputBorder(),
+                  suffixText: suffix,
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+          ],
+        ),
+      );
+
+  Widget _summaryRow(String label, String value,
+          {bool bold = false, double indent = 0, bool expand = false}) {
+    final style = TextStyle(
+        fontSize: 13,
+        fontWeight: bold ? FontWeight.bold : FontWeight.normal);
+    return Padding(
+      padding: EdgeInsets.only(left: 4 + indent, right: 4),
+      child: Row(
+        mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+        children: [
+          if (expand)
+            Expanded(child: Text(label, style: style))
+          else
+            Text(label, style: style),
+          if (!expand) Text(': ', style: style),
+          Text(value, style: style),
+        ],
+      ),
+    );
+  }
 }
 
 // ── Settings dialog ───────────────────────────────────────────────────────────

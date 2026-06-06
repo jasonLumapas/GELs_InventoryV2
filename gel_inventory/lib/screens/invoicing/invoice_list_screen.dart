@@ -193,30 +193,45 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                 const SizedBox(width: 8),
 
                 // Previous
-                IconButton(
-                  icon: const Icon(Icons.chevron_left),
-                  onPressed: _prev,
-                  visualDensity: VisualDensity.compact,
-                ),
+                // IconButton(
+                //   icon: const Icon(Icons.chevron_left),
+                //   onPressed: _prev,
+                //   visualDensity: VisualDensity.compact,
+                // ),
 
                 // Date label (tappable to pick a specific date)
                 Expanded(
-                  child: GestureDetector(
-                    onTap: _pickDate,
-                    child: Text(
-                      _periodLabel,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.chevron_left),
+                        onPressed: _prev,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      GestureDetector(
+                        onTap: _pickDate,
+                        child: Text(
+                          _periodLabel,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.chevron_right),
+                        onPressed: _next,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ],
                   ),
                 ),
 
                 // Next
-                IconButton(
-                  icon: const Icon(Icons.chevron_right),
-                  onPressed: _next,
-                  visualDensity: VisualDensity.compact,
-                ),
+                // IconButton(
+                //   icon: const Icon(Icons.chevron_right),
+                //   onPressed: _next,
+                //   visualDensity: VisualDensity.compact,
+                // ),
 
                 // Today shortcut
                 TextButton(

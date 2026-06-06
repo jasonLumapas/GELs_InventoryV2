@@ -458,157 +458,189 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                 return Center(child: Text('Error: ${snapshot.error}'));
               }
               final data = snapshot.data!;
-              // Column flex: product=4, each pair=3 (1.5+1.5), total=13
-              return SingleChildScrollView(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  children: [
-                    // ── Group header row (Row widget for true centering) ──
-                    Container(
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade400),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            flex: 4,
-                            child: Container(
-                              color: Colors.grey.shade300,
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 8, horizontal: 8),
-                              child: const Text(''),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 3,
-                            child: Container(
-                              color: _begDark,
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              child: const Text('Beginning',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(fontWeight: FontWeight.bold)),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 3,
-                            child: Container(
-                              color: _inDark,
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              child: const Text('Stock In',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(fontWeight: FontWeight.bold)),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 3,
-                            child: Container(
-                              color: _outDark,
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              child: const Text('Stock Out',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(fontWeight: FontWeight.bold)),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 3,
-                            child: Container(
-                              color: _endDark,
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              child: const Text('Ending',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(fontWeight: FontWeight.bold)),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // ── Column labels + data rows (Table) ──
-                    Table(
-                      border: TableBorder.all(color: Colors.grey.shade400),
-                      columnWidths: const {
-                        0: FlexColumnWidth(4),
-                        1: FlexColumnWidth(1.5),
-                        2: FlexColumnWidth(1.5),
-                        3: FlexColumnWidth(1.5),
-                        4: FlexColumnWidth(1.5),
-                        5: FlexColumnWidth(1.5),
-                        6: FlexColumnWidth(1.5),
-                        7: FlexColumnWidth(1.5),
-                        8: FlexColumnWidth(1.5),
-                      },
+              const colWidths = {
+                0: FlexColumnWidth(4),
+                1: FlexColumnWidth(1.5),
+                2: FlexColumnWidth(1.5),
+                3: FlexColumnWidth(1.5),
+                4: FlexColumnWidth(1.5),
+                5: FlexColumnWidth(1.5),
+                6: FlexColumnWidth(1.5),
+                7: FlexColumnWidth(1.5),
+                8: FlexColumnWidth(1.5),
+              };
+              final headerBorder = TableBorder(
+                left: BorderSide(color: Colors.grey.shade400),
+                right: BorderSide(color: Colors.grey.shade400),
+                bottom: BorderSide(color: Colors.grey.shade400),
+                verticalInside: BorderSide(color: Colors.grey.shade400),
+              );
+              final dataBorder = TableBorder(
+                left: BorderSide(color: Colors.grey.shade400),
+                right: BorderSide(color: Colors.grey.shade400),
+                bottom: BorderSide(color: Colors.grey.shade400),
+                horizontalInside: BorderSide(color: Colors.grey.shade400),
+                verticalInside: BorderSide(color: Colors.grey.shade400),
+              );
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // ── Sticky headers ──────────────────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // Column label row (medium shades)
-                        TableRow(children: [
-                          _cell('Product', Colors.grey.shade200, bold: true),
-                          _cell('Boxes', _begMid, bold: true, center: true),
-                          _cell('Pcs',   _begMid, bold: true, center: true),
-                          _cell('Boxes', _inMid,  bold: true, center: true),
-                          _cell('Pcs',   _inMid,  bold: true, center: true),
-                          _cell('Boxes', _outMid, bold: true, center: true),
-                          _cell('Pcs',   _outMid, bold: true, center: true),
-                          _cell('Boxes', _endMid, bold: true, center: true),
-                          _cell('Pcs',   _endMid, bold: true, center: true),
-                        ]),
-                        // Data rows (light shades)
-                        ...data.products.map((p) {
-                          final beg = data.beginning[p.id] ?? 0;
-                          final inn = data.stockIn[p.id]  ?? 0;
-                          final out = data.stockOut[p.id] ?? 0;
-                          final end = data.ending[p.id]   ?? 0;
-                          return TableRow(children: [
-                            _cell(p.name, null),
-                            _cell(_fmt(beg ~/ p.piecesPerBox), _begLight, center: true),
-                            _cell(_fmt(beg % p.piecesPerBox),  _begLight, center: true),
-                            _cell(_fmt(inn ~/ p.piecesPerBox), _inLight,  center: true),
-                            _cell(_fmt(inn % p.piecesPerBox),  _inLight,  center: true),
-                            _cell(_fmt(out ~/ p.piecesPerBox), _outLight, center: true),
-                            _cell(_fmt(out % p.piecesPerBox),  _outLight, center: true),
-                            _cell(_fmt(end ~/ p.piecesPerBox), _endLight, center: true),
-                            _cell(_fmt(end % p.piecesPerBox),  _endLight, center: true),
-                          ]);
-                        }),
+                        // Group header row
+                        Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey.shade400),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 4,
+                                child: Container(
+                                  color: Colors.grey.shade300,
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 8, horizontal: 8),
+                                  child: const Text(''),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 3,
+                                child: Container(
+                                  color: _begDark,
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  child: const Text('Beginning',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(fontWeight: FontWeight.bold)),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 3,
+                                child: Container(
+                                  color: _inDark,
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  child: const Text('Stock In',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(fontWeight: FontWeight.bold)),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 3,
+                                child: Container(
+                                  color: _outDark,
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  child: const Text('Stock Out',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(fontWeight: FontWeight.bold)),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 3,
+                                child: Container(
+                                  color: _endDark,
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  child: const Text('Ending',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(fontWeight: FontWeight.bold)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Column labels row
+                        Table(
+                          border: headerBorder,
+                          columnWidths: colWidths,
+                          children: [
+                            TableRow(children: [
+                              _cell('Product', Colors.grey.shade200, bold: true),
+                              _cell('Boxes', _begMid, bold: true, center: true),
+                              _cell('Pcs',   _begMid, bold: true, center: true),
+                              _cell('Boxes', _inMid,  bold: true, center: true),
+                              _cell('Pcs',   _inMid,  bold: true, center: true),
+                              _cell('Boxes', _outMid, bold: true, center: true),
+                              _cell('Pcs',   _outMid, bold: true, center: true),
+                              _cell('Boxes', _endMid, bold: true, center: true),
+                              _cell('Pcs',   _endMid, bold: true, center: true),
+                            ]),
+                          ],
+                        ),
                       ],
                     ),
-
-                    // ── Stock-in value aligned under the Stock In group ──
-                    if (data.totalStockInValue > 0)
-                      Row(
+                  ),
+                  // ── Scrollable data rows + footer ───────────────────────
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Expanded(flex: 4, child: const SizedBox()),
-                          Expanded(flex: 3, child: const SizedBox()),
-                          Expanded(
-                            flex: 3,
-                            child: Container(
-                              color: _inLight,
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 4, horizontal: 6),
-                              child: Text(
-                                formatCurrency(data.totalStockInValue),
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12),
-                              ),
+                          Table(
+                            border: dataBorder,
+                            columnWidths: colWidths,
+                            children: [
+                              ...data.products.map((p) {
+                                final beg = data.beginning[p.id] ?? 0;
+                                final inn = data.stockIn[p.id]  ?? 0;
+                                final out = data.stockOut[p.id] ?? 0;
+                                final end = data.ending[p.id]   ?? 0;
+                                return TableRow(children: [
+                                  _cell(p.name, null),
+                                  _cell(_fmt(beg ~/ p.piecesPerBox), _begLight, center: true),
+                                  _cell(_fmt(beg % p.piecesPerBox),  _begLight, center: true),
+                                  _cell(_fmt(inn ~/ p.piecesPerBox), _inLight,  center: true),
+                                  _cell(_fmt(inn % p.piecesPerBox),  _inLight,  center: true),
+                                  _cell(_fmt(out ~/ p.piecesPerBox), _outLight, center: true),
+                                  _cell(_fmt(out % p.piecesPerBox),  _outLight, center: true),
+                                  _cell(_fmt(end ~/ p.piecesPerBox), _endLight, center: true),
+                                  _cell(_fmt(end % p.piecesPerBox),  _endLight, center: true),
+                                ]);
+                              }),
+                            ],
+                          ),
+                          // ── Stock-in value aligned under the Stock In group ──
+                          if (data.totalStockInValue > 0)
+                            Row(
+                              children: [
+                                Expanded(flex: 4, child: const SizedBox()),
+                                Expanded(flex: 3, child: const SizedBox()),
+                                Expanded(
+                                  flex: 3,
+                                  child: Container(
+                                    color: _inLight,
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 4, horizontal: 6),
+                                    child: Text(
+                                      formatCurrency(data.totalStockInValue),
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12),
+                                    ),
+                                  ),
+                                ),
+                                Expanded(flex: 3, child: const SizedBox()),
+                                Expanded(flex: 3, child: const SizedBox()),
+                              ],
+                            ),
+                          // ── Ending inventory total footer ──
+                          const SizedBox(height: 12),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              'Ending Inventory Capital Value: ${formatCurrency(data.totalEndingValue)}',
+                              style: const TextStyle(
+                                  fontSize: 15, fontWeight: FontWeight.bold),
                             ),
                           ),
-                          Expanded(flex: 3, child: const SizedBox()),
-                          Expanded(flex: 3, child: const SizedBox()),
                         ],
                       ),
-
-                    // ── Ending inventory total footer ──
-                    const SizedBox(height: 12),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        'Ending Inventory Capital Value: ${formatCurrency(data.totalEndingValue)}',
-                        style: const TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.bold),
-                      ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               );
             },
           ),

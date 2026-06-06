@@ -19,6 +19,7 @@ import 'screens/van_selling/van_selling_screen.dart';
 import 'screens/invoicing/collectibles_screen.dart';
 import 'screens/admin/csv_import_screen.dart';
 import 'screens/admin/printer_settings_screen.dart';
+import 'screens/incentives/incentives_screen.dart';
 
 final _router = GoRouter(
   initialLocation: '/',
@@ -99,6 +100,11 @@ final _router = GoRouter(
     GoRoute(
         path: '/printer-settings',
         builder: (ctx, s) => const PrinterSettingsScreen()),
+
+    // Incentives
+    GoRoute(
+        path: '/incentives',
+        builder: (ctx, s) => const IncentivesScreen()),
   ],
 );
 

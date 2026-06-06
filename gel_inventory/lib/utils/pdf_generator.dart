@@ -11,25 +11,16 @@ import '../models/invoice_item.dart';
 import '../models/product.dart';
 
 // ── Printer routing helper ────────────────────────────────────────────────────
-// Sends [doc] to the printer saved for [slot].  Falls back to the system
-// print dialog when no printer has been configured for that slot.
+// Shows the system print dialog so the user can confirm printer and page setup.
 Future<void> _printWithSlot({
   required pw.Document doc,
   required PdfPageFormat format,
   required String slot,
 }) async {
-  final printer = await PrinterSettingsService.load(slot);
-  if (printer != null) {
-    await Printing.directPrintPdf(
-      printer: printer,
-      onLayout: (_) => doc.save(),
-    );
-  } else {
-    await Printing.layoutPdf(
-      onLayout: (_) => doc.save(),
-      format: format,
-    );
-  }
+  await Printing.layoutPdf(
+    onLayout: (_) => doc.save(),
+    format: format,
+  );
 }
 
 final _rcptFmt = NumberFormat('#,##0.00');
@@ -44,7 +35,11 @@ pw.Font? _loadFont(String path) {
   }
 }
 
-// ── Delivery Receipt PDF (dot-matrix, 3.75" × 11" continuous) ────────────────
+// ── Delivery Receipt PDF (4" × 11" continuous, multi-page) ────────────────────
+// Non-last pages are full 11" sheets; the header repeats at the top of each and
+// a "Page n/N" indicator is placed inline right after the last item — no gap.
+// The last page is trimmed to its content height so the printer stops early
+// and doesn't feed blank paper after the signature block.
 
 Future<void> printInvoice({
   required Invoice invoice,
@@ -52,246 +47,311 @@ Future<void> printInvoice({
   required List<InvoiceItem> items,
   required Map<String, Product> productsById,
 }) async {
-  final doc = pw.Document();
+  final doc     = pw.Document();
   final dateFmt = DateFormat('MM/dd/yyyy');
-  final font            = _loadFont('C:\\Windows\\Fonts\\arial.ttf')    ?? pw.Font.helvetica();
-  final fontBold        = _loadFont('C:\\Windows\\Fonts\\arialbd.ttf')  ?? pw.Font.helveticaBold();
-  final fontNarrowBold    = _loadFont('C:\\Windows\\Fonts\\ARIALNB.TTF')  ??
-      _loadFont('C:\\Windows\\Fonts\\arialnb.ttf') ?? fontBold;
-  final fontTahoma        = _loadFont('C:\\Windows\\Fonts\\tahomabd.ttf') ?? fontBold;
-  const double fs         = 10.0; // general header text
-  const double fsBusiness = 14.0; // company name
-  const double cm = 28.35; // 1 cm in PDF points
 
-  final pageFormat = PdfPageFormat(
-    4.0 * PdfPageFormat.inch,
-    11.0 * PdfPageFormat.inch,
-    marginTop: 10,
-    marginBottom: 45,
-    marginLeft: 14,
-    marginRight: 8,
-  );
-  final usableW = pageFormat.availableWidth;
-  final descW  = usableW * 0.38;
-  final qtyW   = usableW * 0.20;
-  final priceW = usableW * 0.21;
-  final totalW = usableW * 0.21;
+  final font           = _loadFont('C:\\Windows\\Fonts\\arial.ttf')   ?? pw.Font.helvetica();
+  final fontBold       = _loadFont('C:\\Windows\\Fonts\\arialbd.ttf') ?? pw.Font.helveticaBold();
+  final fontNarrowBold = _loadFont('C:\\Windows\\Fonts\\ARIALNB.TTF') ??
+      _loadFont('C:\\Windows\\Fonts\\arialnb.ttf') ?? fontBold;
+  final fontTahoma     = _loadFont('C:\\Windows\\Fonts\\tahomabd.ttf') ?? fontBold;
+
+  const double fs         = 10.0;
+  const double fsBusiness = 14.0;
+  const double cm         = 28.35;
+
+  const double mTop   = 10.0;
+  const double mBot   = 20.0;
+  const double mLeft  = 14.0;
+  const double mRight = 8.0;
+  const double pageW  = 4.0 * PdfPageFormat.inch;
+
+  final double usableW = pageW - mLeft - mRight;
+  final double halfW   = usableW / 2;
+  final double descW   = usableW * 0.38;
+  final double qtyW    = usableW * 0.20;
+  final double priceW  = usableW * 0.21;
+  final double totalW  = usableW * 0.21;
 
   pw.TextStyle ts(bool bold) =>
       pw.TextStyle(font: bold ? fontBold : font, fontSize: fs);
-
-  final tsBusiness  = pw.TextStyle(font: fontBold,      fontSize: fsBusiness);
-  final tsBusinessAddress = pw.TextStyle(font: font,     fontSize: 12.0);
-  final tsDesc      = pw.TextStyle(font: fontNarrowBold, fontSize: 11.5);
-  final tsAmt       = pw.TextStyle(font: fontBold,      fontSize: 10.5);
-  final tsDelivered     = pw.TextStyle(font: font,     fontSize: 12.0);
-  final tsDeliveredBold = pw.TextStyle(font: fontBold, fontSize: 12.0);
-  final tsSmall     = pw.TextStyle(font: font,           fontSize: fs - 2);
+  final tsBusiness      = pw.TextStyle(font: fontBold,       fontSize: fsBusiness);
+  final tsBusinessAddr  = pw.TextStyle(font: font,           fontSize: 12.0);
+  final tsDesc          = pw.TextStyle(font: fontNarrowBold, fontSize: 11.5);
+  final tsAmt           = pw.TextStyle(font: fontBold,       fontSize: 10.5);
+  final tsDelivered     = pw.TextStyle(font: font,           fontSize: 12.0);
+  final tsDeliveredBold = pw.TextStyle(font: fontBold,       fontSize: 12.0);
+  final tsSmall         = pw.TextStyle(font: font,           fontSize: fs - 2);
+  final tsPage          = pw.TextStyle(font: font,           fontSize: fs);
 
   pw.Widget rAlign(String text, {bool bold = false}) => pw.Align(
         alignment: pw.Alignment.centerRight,
         child: pw.Text(text, style: ts(bold)),
       );
-
   pw.Widget rAlignAmt(String text) => pw.Align(
         alignment: pw.Alignment.centerRight,
         child: pw.Text(text, style: tsAmt),
       );
 
-  // Header repeated on every page
-  pw.Widget pageHeader(pw.Context ctx) => pw.Column(
+  // ── Header (called per page so each page gets a fresh widget instance) ───────
+  pw.Widget pageHeader() => pw.Column(
+    mainAxisSize: pw.MainAxisSize.min,
+    crossAxisAlignment: pw.CrossAxisAlignment.start,
+    children: [
+      pw.Text("GEL'S CONSUMER GOODS TRADING",          style: tsBusiness),
+      pw.Text("Purok Tambis, Curvada",                  style: tsBusinessAddr),
+      pw.Text("San Remigio, Cebu, Philippines 6011",    style: tsBusinessAddr),
+      pw.Text("Tel. (032) 316-7836 / 0936-9445027",    style: tsBusinessAddr),
+      pw.SizedBox(height: 1 * cm),
+      pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.Text("GEL'S CONSUMER GOODS TRADING", style: tsBusiness),
-          pw.Text("Purok Tambis, Curvada", style: tsBusinessAddress),
-          pw.Text("San Remigio, Cebu, Philippines 6011", style: tsBusinessAddress),
-          pw.Text("Tel. (032) 316-7836 / 0936-9445027", style: tsBusinessAddress),
-          pw.SizedBox(height: 1 * cm),
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
+          pw.Text("DELIVERY RECEIPT", style: ts(true)),
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.end,
             children: [
-              pw.Text("DELIVERY RECEIPT", style: ts(true)),
-              pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.end,
-                children: [
-                  pw.Text(invoice.displayNumber, style: tsDeliveredBold),
-                  pw.SizedBox(height: 0.4 * cm),
-                  pw.Text("Date: ${dateFmt.format(invoice.invoiceDate)}", style: tsDelivered),
-                ],
-              ),
+              pw.Text(invoice.displayNumber,                          style: tsDeliveredBold),
+              pw.SizedBox(height: 0.4 * cm),
+              pw.Text("Date: ${dateFmt.format(invoice.invoiceDate)}", style: tsDelivered),
             ],
           ),
-          pw.SizedBox(height: 1 * cm),
-          pw.RichText(text: pw.TextSpan(
-            text: "Delivered to: ", style: tsDelivered,
-            children: [pw.TextSpan(text: client.name, style: tsDeliveredBold)],
-          )),
-          if (client.address != null && client.address!.isNotEmpty)
-            pw.RichText(text: pw.TextSpan(
-              text: "Address: ", style: tsDelivered,
-              children: [pw.TextSpan(text: client.address!, style: tsDeliveredBold)],
-            )),
-          pw.Text("TERMS: __________", style: tsDelivered),
-          pw.SizedBox(height: 0.5 * cm),
-          pw.Row(
-            children: [
-              pw.SizedBox(
-                  width: descW,
-                  child: pw.Text("Description", style: ts(true))),
-              pw.SizedBox(width: qtyW, child: rAlign("Qty", bold: true)),
-              pw.SizedBox(width: priceW, child: rAlign("Price", bold: true)),
-              pw.SizedBox(width: totalW, child: rAlign("Total", bold: true)),
-            ],
-          ),
-          pw.Divider(height: 3, thickness: 0.5),
         ],
-      );
+      ),
+      pw.SizedBox(height: 1 * cm),
+      pw.RichText(text: pw.TextSpan(
+        text: "Delivered to: ", style: tsDelivered,
+        children: [pw.TextSpan(text: client.name, style: tsDeliveredBold)],
+      )),
+      if (client.address != null && client.address!.isNotEmpty)
+        pw.RichText(text: pw.TextSpan(
+          text: "Address: ", style: tsDelivered,
+          children: [pw.TextSpan(text: client.address!, style: tsDeliveredBold)],
+        )),
+      pw.Text("TERMS: __________", style: tsDelivered),
+      pw.SizedBox(height: 0.5 * cm),
+      pw.Row(children: [
+        pw.SizedBox(width: descW,  child: pw.Text("Description", style: ts(true))),
+        pw.SizedBox(width: qtyW,   child: rAlign("Qty",   bold: true)),
+        pw.SizedBox(width: priceW, child: rAlign("Price", bold: true)),
+        pw.SizedBox(width: totalW, child: rAlign("Total", bold: true)),
+      ]),
+      pw.Divider(height: 3, thickness: 0.5),
+    ],
+  );
 
-  // Item rows
+  // ── Item height estimator ────────────────────────────────────────────────────
+  // 22 pt = single-line row; 36 pt = two-line row (long name or discount).
+  double itemH(InvoiceItem item) {
+    final name = productsById[item.productId]?.name ?? '';
+    final orig = item.quantity * item.pricePerPiece;
+    final twoLine = name.length > 20 ||
+        (!item.isFree && (orig - item.subtotal) > 0.01);
+    return twoLine ? 36.0 : 22.0;
+  }
+
+  // ── Item widgets ─────────────────────────────────────────────────────────────
   final itemWidgets = <pw.Widget>[];
   for (final item in items) {
     final product = productsById[item.productId];
-    final ppb = product?.piecesPerBox ?? 1;
+    final ppb  = product?.piecesPerBox ?? 1;
     final name = product?.name ?? item.productId;
 
     final String qtyStr;
     final double unitPrice;
     if (item.unitType == 'box') {
       final boxes = item.quantity ~/ ppb;
-      qtyStr = '$boxes ${boxes == 1 ? "case" : "cases"}';
+      qtyStr    = '$boxes ${boxes == 1 ? "case" : "cases"}';
       unitPrice = item.pricePerPiece * ppb;
     } else {
-      qtyStr = '${item.quantity} pcs';
+      qtyStr    = '${item.quantity} pcs';
       unitPrice = item.pricePerPiece;
     }
 
-    final originalAmt = item.quantity * item.pricePerPiece;
-    final discountAmt = item.isFree ? 0.0 : (originalAmt - item.subtotal);
+    final originalAmt  = item.quantity * item.pricePerPiece;
+    final discountAmt  = item.isFree ? 0.0 : (originalAmt - item.subtotal);
     final showDiscount = !item.isFree && discountAmt > 0.01;
 
-    itemWidgets.add(
-      pw.Padding(
-        padding: const pw.EdgeInsets.only(bottom: 7),
-        child: pw.Row(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.SizedBox(
-                width: descW, child: pw.Text(name, style: tsDesc)),
-            pw.SizedBox(width: qtyW, child: rAlignAmt(qtyStr)),
-            // Free items: show FREE in price, blank total
-            pw.SizedBox(
-                width: priceW,
-                child: item.isFree
-                    ? pw.Align(
-                        alignment: pw.Alignment.centerRight,
-                        child: pw.Text('FREE', style: tsAmt))
-                    : rAlignAmt(_n(unitPrice))),
-            pw.SizedBox(
-              width: totalW,
-              child: item.isFree
-                  ? pw.SizedBox()
-                  : pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.end,
-                      children: [
-                        pw.Text(_n(originalAmt), style: tsAmt),
-                        if (showDiscount)
-                          pw.Text('(${_n(discountAmt)})', style: tsAmt),
-                      ],
-                    ),
-            ),
-          ],
-        ),
+    itemWidgets.add(pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 7),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.SizedBox(width: descW,  child: pw.Text(name, style: tsDesc)),
+          pw.SizedBox(width: qtyW,   child: rAlignAmt(qtyStr)),
+          pw.SizedBox(width: priceW, child: item.isFree
+              ? pw.Align(
+                  alignment: pw.Alignment.centerRight,
+                  child: pw.Text('FREE', style: tsAmt))
+              : rAlignAmt(_n(unitPrice))),
+          pw.SizedBox(width: totalW, child: item.isFree
+              ? pw.SizedBox()
+              : pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  children: [
+                    pw.Text(_n(originalAmt), style: tsAmt),
+                    if (showDiscount) pw.Text('(${_n(discountAmt)})', style: tsAmt),
+                  ],
+                )),
+        ],
       ),
-    );
+    ));
   }
 
-  // Total — appended inline after items
-  final halfW = usableW / 2;
-  final totalWidgets = <pw.Widget>[
-    pw.SizedBox(height: 4),
-    pw.Divider(height: 4, thickness: 0.5),
-    pw.Align(
-      alignment: pw.Alignment.centerRight,
-      child: pw.Text("Total = ${_n(invoice.totalAmount)}",
-          style: pw.TextStyle(font: fontTahoma, fontSize: 12.0)),
-    ),
-  ];
-
-  // Footer — signature just above page number on last page; page number only on others
-  final tsPage = pw.TextStyle(font: font, fontSize: 10.0);
-
-  pw.Widget pageFooter(pw.Context ctx) {
-    final pageNum = pw.Align(
-      alignment: pw.Alignment.center,
-      child: pw.Text(
-        "Page ${ctx.pageNumber}/${ctx.pagesCount}",
-        style: tsPage,
+  // ── Total section ────────────────────────────────────────────────────────────
+  final itemCountLabel = '${items.length} item${items.length == 1 ? '' : 's'}';
+  final totalSection = pw.Column(
+    mainAxisSize: pw.MainAxisSize.min,
+    crossAxisAlignment: pw.CrossAxisAlignment.start,
+    children: [
+      pw.Divider(height: 4, thickness: 0.5),
+      pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text(itemCountLabel, style: tsSmall),
+          pw.Text("Total = ${_n(invoice.totalAmount)}",
+              style: pw.TextStyle(font: fontTahoma, fontSize: 12.0)),
+        ],
       ),
-    );
+    ],
+  );
 
-    if (ctx.pageNumber < ctx.pagesCount) return pageNum;
-
-    return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.Align(
-          alignment: pw.Alignment.centerRight,
-          child: pw.Text(
-            "Received the above goods and services in good order and condition.",
-            style: tsSmall,
-            textAlign: pw.TextAlign.right,
-          ),
+  // ── Signature block ───────────────────────────────────────────────────────────
+  final signatureBlock = pw.Column(
+    mainAxisSize: pw.MainAxisSize.min,
+    crossAxisAlignment: pw.CrossAxisAlignment.start,
+    children: [
+      pw.SizedBox(height: 10),
+      pw.Align(
+        alignment: pw.Alignment.centerRight,
+        child: pw.Text(
+          "Received the above goods and\n services in good order and condition.",
+          style: tsSmall,
+          textAlign: pw.TextAlign.right,
         ),
-        pw.SizedBox(height: 4),
-        pw.Row(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.SizedBox(
-              width: halfW,
-              child: pw.Row(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text("By: ", style: tsSmall),
-                  pw.Expanded(
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.center,
-                      children: [
-                        pw.Text("_____________________", style: tsSmall),
-                        pw.Text("Authorized signature", style: tsSmall),
-                      ],
-                    ),
+      ),
+      pw.SizedBox(height: 6),
+      pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.SizedBox(
+            width: halfW,
+            child: pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text("By: ", style: tsSmall),
+                pw.Expanded(
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.center,
+                    children: [
+                      pw.Text("_____________________", style: tsSmall),
+                      pw.Text("Authorized signature",  style: tsSmall),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            pw.SizedBox(
-              width: halfW,
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.end,
-                children: [
-                  pw.Text("____________________________", style: tsSmall),
-                  pw.Text("Customer signature over printed name", style: tsSmall),
-                ],
-              ),
+          ),
+          pw.SizedBox(
+            width: halfW,
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.end,
+              children: [
+                pw.Text("____________________________",               style: tsSmall),
+                pw.Text("Customer signature over printed name", style: tsSmall),
+              ],
             ),
-          ],
-        ),
-        pw.SizedBox(height: 4),
-        pageNum,
-      ],
-    );
+          ),
+        ],
+      ),
+    ],
+  );
+
+  // ── Pagination ────────────────────────────────────────────────────────────────
+  // Budget constants (all in pt).
+  // kHeaderH: generous estimate so items never overflow on a real page.
+  // kPageIndH: space reserved for the inline "Page n/N" indicator.
+  // kTotalSigH: total row + signature block on the last page.
+  const double kHeaderH   = 250.0;
+  const double kPageIndH  = 20.0;
+  const double kTotalSigH = 85.0;
+
+  // stdFormat: page 1 keeps its top margin.
+  // nextFormat: pages 2+ use marginTop=0 because the LX-310 already advances
+  //   to the next top-of-form before printing — adding our own mTop on top of
+  //   that is what produces the large gap seen on subsequent pages.
+  final stdFormat = PdfPageFormat(
+    pageW, 11.0 * PdfPageFormat.inch,
+    marginTop: mTop, marginBottom: mBot,
+    marginLeft: mLeft, marginRight: mRight,
+  );
+  final double availH      = stdFormat.height - mTop - mBot; // 762 pt
+  final double kAvailItems = availH - kHeaderH - kPageIndH;  // 502 pt
+
+  // Split item widgets into per-page buckets.
+  final pageGroups = <List<pw.Widget>>[];
+  var bucket  = <pw.Widget>[];
+  double bucketH = 0.0;
+
+  for (var i = 0; i < itemWidgets.length; i++) {
+    final h = itemH(items[i]);
+    if (bucketH + h > kAvailItems && bucket.isNotEmpty) {
+      pageGroups.add(bucket);
+      bucket  = [];
+      bucketH = 0.0;
+    }
+    bucket.add(itemWidgets[i]);
+    bucketH += h;
   }
 
-  doc.addPage(pw.MultiPage(
-    pageFormat: pageFormat,
-    header: pageHeader,
-    footer: pageFooter,
-    build: (ctx) => [...itemWidgets, ...totalWidgets],
-  ));
+  final lastBucketH = bucketH;
+  pageGroups.add(bucket);
+  if (pageGroups.isEmpty) pageGroups.add([]);
 
-  await _printWithSlot(
-    doc: doc, format: pageFormat, slot: PrinterSettingsService.invoice);
+  // If the last bucket leaves no room for total+signature, overflow to new page.
+  final lastFitsAll = lastBucketH + kTotalSigH <= kAvailItems;
+  if (!lastFitsAll) pageGroups.add([]);
+
+  final totalPages = pageGroups.length;
+
+  // ── Render pages ──────────────────────────────────────────────────────────────
+  for (var i = 0; i < totalPages; i++) {
+    final pgNum  = i + 1;
+    final isLast = pgNum == totalPages;
+    final fmt    = stdFormat;
+
+    doc.addPage(pw.Page(
+      pageFormat: fmt,
+      build: (_) => pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pageHeader(),
+          ...pageGroups[i],
+          if (isLast) ...[
+            totalSection,
+            pw.Spacer(),   // pushes signature to the bottom of the page
+            signatureBlock,
+            if (totalPages > 1)
+              pw.Padding(
+                padding: const pw.EdgeInsets.only(top: 6),
+                child: pw.Center(
+                  child: pw.Text("Page $pgNum/$totalPages", style: tsPage),
+                ),
+              ),
+          ] else
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(top: 8),
+              child: pw.Center(
+                child: pw.Text("Page $pgNum/$totalPages", style: tsPage),
+              ),
+            ),
+        ],
+      ),
+    ));
+  }
+
+  // ── Print ─────────────────────────────────────────────────────────────────────
+  await _printWithSlot(doc: doc, format: stdFormat, slot: 'invoice');
 }
 
 // ── Invoice List PDF ─────────────────────────────────────────────────────────

@@ -169,33 +169,38 @@ class _OrderSummaryScreenState extends ConsumerState<OrderSummaryScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             child: Row(
               children: [
-                IconButton(
-                  icon: const Icon(Icons.chevron_left),
-                  onPressed: _prevDay,
-                  visualDensity: VisualDensity.compact,
-                ),
                 Expanded(
-                  child: GestureDetector(
-                    onTap: _pickDate,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.calendar_today,
-                            size: 16, color: Colors.grey),
-                        const SizedBox(width: 6),
-                        Text(
-                          dateFmt.format(_selectedDate),
-                          style: const TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w600),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.chevron_left),
+                        onPressed: _prevDay,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      GestureDetector(
+                        onTap: _pickDate,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.calendar_today,
+                                size: 16, color: Colors.grey),
+                            const SizedBox(width: 6),
+                            Text(
+                              dateFmt.format(_selectedDate),
+                              style: const TextStyle(
+                                  fontSize: 16, fontWeight: FontWeight.w600),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.chevron_right),
+                        onPressed: _nextDay,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ],
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.chevron_right),
-                  onPressed: _nextDay,
-                  visualDensity: VisualDensity.compact,
                 ),
                 TextButton(
                   onPressed: () {

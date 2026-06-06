@@ -957,9 +957,10 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                         horizontal: 12, vertical: 4),
                     child: Row(
                       children: [
-                        const Text('Items',
-                            style:
-                                TextStyle(fontWeight: FontWeight.bold)),
+                        Text(
+                          'Items (${_editItems.length})',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
                         const Spacer(),
                         TextButton.icon(
                           icon: const Icon(Icons.add),
@@ -1001,11 +1002,22 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                     child: Row(
                       children: [
                         Expanded(
-                          child: Text(
-                            'Total: ${formatCurrency(_total)}',
-                            style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '${_editItems.length} item${_editItems.length == 1 ? '' : 's'}',
+                                style: const TextStyle(
+                                    fontSize: 12, color: Colors.grey),
+                              ),
+                              Text(
+                                'Total: ${formatCurrency(_total)}',
+                                style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                            ],
                           ),
                         ),
                         OutlinedButton(

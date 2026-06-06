@@ -250,6 +250,11 @@ class InvoiceRepository extends BaseRepository {
           .from('invoice_items')
           .delete()
           .eq('invoice_id', invoice.id);
+      // invoice_payments has a FK to invoices — must be removed before the invoice row
+      await Supabase.instance.client
+          .from('invoice_payments')
+          .delete()
+          .eq('invoice_id', invoice.id);
     }
     await (db.delete(db.invoiceItems)
           ..where((t) => t.invoiceId.equals(invoice.id)))

@@ -67,6 +67,11 @@ class DashboardScreen extends StatelessWidget {
             route: '/van-selling',
           ),
           _NavCard(
+            icon: Icons.star_rate,
+            label: 'Incentives',
+            route: '/incentives',
+          ),
+          _NavCard(
             icon: Icons.upload_file,
             label: 'Import CSV',
             route: '/import-csv',

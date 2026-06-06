@@ -3,10 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../models/bad_order.dart';
+import '../../models/bad_order_item.dart';
 import '../../models/client.dart';
+import '../../models/product.dart';
 import '../../repositories/bad_order_repository.dart';
 import '../../repositories/client_repository.dart';
 import '../../repositories/product_repository.dart';
+import '../../utils/currency_format.dart';
 import '../../widgets/common/app_scaffold.dart';
 import '../../widgets/common/confirm_dialog.dart';
 
@@ -77,6 +80,53 @@ class BadOrderListScreen extends ConsumerWidget {
   }
 }
 
+// ── Detail data ───────────────────────────────────────────────────────────────
+
+class _DetailData {
+  final List<BadOrderItem> items;
+  final Map<String, Product> productsById;
+  final Map<String, double> amounts; // item.id → selling amount
+  final double grandTotal;
+
+  const _DetailData({
+    required this.items,
+    required this.productsById,
+    required this.amounts,
+    required this.grandTotal,
+  });
+}
+
+Future<_DetailData> _loadDetailData(WidgetRef ref, BadOrder order) async {
+  final items = await ref.read(badOrderRepositoryProvider).getItems(order.id);
+  final products = await ref.read(productRepositoryProvider).getAll();
+  final productsById = <String, Product>{for (final p in products) p.id: p};
+
+  final amounts = <String, double>{};
+  double total = 0;
+
+  for (final item in items) {
+    final product = productsById[item.productId];
+    if (product == null) continue;
+    final pieces = item.unitType == 'box'
+        ? item.quantity * product.piecesPerBox
+        : item.quantity;
+    final price =
+        await ref.read(productRepositoryProvider).getCurrentPrice(item.productId);
+    final amount = pieces * (price?.sellingPrice ?? 0.0);
+    amounts[item.id] = amount;
+    total += amount;
+  }
+
+  return _DetailData(
+    items: items,
+    productsById: productsById,
+    amounts: amounts,
+    grandTotal: total,
+  );
+}
+
+// ── Detail sheet ──────────────────────────────────────────────────────────────
+
 void _showDetail(
   BuildContext context,
   WidgetRef ref,
@@ -84,6 +134,8 @@ void _showDetail(
   Client? client,
 ) {
   final dateFmt = DateFormat('MMM dd, yyyy');
+  // Create the future once so FutureBuilder won't re-fire on rebuilds.
+  final detailFuture = _loadDetailData(ref, order);
 
   showModalBottomSheet(
     context: context,
@@ -91,16 +143,16 @@ void _showDetail(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
     ),
-    builder: (ctx) => Consumer(
-      builder: (ctx, ref, _) {
-        final productsAsync = ref.watch(productsListProvider);
-
-        return DraggableScrollableSheet(
-          initialChildSize: 0.5,
-          maxChildSize: 0.85,
-          minChildSize: 0.3,
-          expand: false,
-          builder: (ctx, scrollCtrl) => Column(
+    builder: (ctx) => DraggableScrollableSheet(
+      initialChildSize: 0.5,
+      maxChildSize: 0.85,
+      minChildSize: 0.3,
+      expand: false,
+      builder: (ctx, scrollCtrl) => FutureBuilder<_DetailData>(
+        future: detailFuture,
+        builder: (ctx, snap) {
+          final data = snap.data;
+          return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Handle
@@ -160,53 +212,76 @@ void _showDetail(
               ),
               const SizedBox(height: 4),
 
-              // Items list
-              Expanded(
-                child: FutureBuilder(
-                  future:
-                      ref.read(badOrderRepositoryProvider).getItems(order.id),
-                  builder: (ctx, snap) {
-                    if (snap.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    final items = snap.data ?? [];
-                    final productsById = {
-                      for (final p in productsAsync.valueOrNull ?? [])
-                        p.id: p
-                    };
-                    if (items.isEmpty) {
-                      return const Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Text('No items.'),
+              // Items list or loading/error
+              if (snap.connectionState == ConnectionState.waiting)
+                const Expanded(
+                    child: Center(child: CircularProgressIndicator()))
+              else if (snap.hasError)
+                Expanded(
+                    child: Center(child: Text('Error: ${snap.error}')))
+              else if (data == null || data.items.isEmpty)
+                const Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('No items.'),
+                  ),
+                )
+              else ...[
+                Expanded(
+                  child: ListView.separated(
+                    controller: scrollCtrl,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: data.items.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (ctx, i) {
+                      final item = data.items[i];
+                      final product = data.productsById[item.productId];
+                      final qtyLabel = item.unitType == 'box'
+                          ? '${item.quantity} box(es)'
+                          : '${item.quantity} pcs';
+                      final amount = data.amounts[item.id] ?? 0.0;
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(product?.name ?? item.productId),
+                        subtitle: Text(qtyLabel,
+                            style: const TextStyle(fontSize: 12)),
+                        trailing: Text(
+                          formatCurrency(amount),
+                          style: const TextStyle(fontWeight: FontWeight.w500),
+                        ),
                       );
-                    }
-                    return ListView.separated(
-                      controller: scrollCtrl,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: items.length,
-                      separatorBuilder: (_, _) => const Divider(height: 1),
-                      itemBuilder: (ctx, i) {
-                        final item = items[i];
-                        final product = productsById[item.productId];
-                        final qtyLabel = item.unitType == 'box'
-                            ? '${item.quantity} box(es)'
-                            : '${item.quantity} pcs';
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(product?.name ?? item.productId),
-                          trailing: Text(qtyLabel,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w500)),
-                        );
-                      },
-                    );
-                  },
+                    },
+                  ),
                 ),
-              ),
+
+                // Grand total footer
+                Container(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  decoration: BoxDecoration(
+                    border: Border(
+                        top: BorderSide(color: Colors.grey.shade300)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      const Text(
+                        'Grand Total: ',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 15),
+                      ),
+                      Text(
+                        formatCurrency(data.grandTotal),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 15),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
-          ),
-        );
-      },
+          );
+        },
+      ),
     ),
   );
 }

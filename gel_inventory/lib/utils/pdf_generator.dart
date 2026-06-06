@@ -269,24 +269,30 @@ Future<void> printInvoice({
 
   // ── Pagination ────────────────────────────────────────────────────────────────
   // Budget constants (all in pt).
-  // kHeaderH: generous estimate so items never overflow on a real page.
-  // kPageIndH: space reserved for the inline "Page n/N" indicator.
-  // kTotalSigH: total row + signature block on the last page.
-  const double kHeaderH   = 250.0;
-  const double kPageIndH  = 20.0;
-  const double kTotalSigH = 85.0;
+  // kHeaderH:    conservative upper bound for the rendered header height.
+  //              Keeps it above worst-case (long name + address that wraps).
+  // kPageIndH:   space for the inline "Page n/N" on non-last pages.
+  // kTotalSigH:  pagination budget for totalSection + sig + indicator on last page.
+  // kSigFooterH: tighter estimate used when computing the push-down gap below.
+  const double kHeaderH    = 270.0;
+  const double kPageIndH   = 20.0;
+  const double kTotalSigH  = 105.0;
+  const double kSigFooterH = 95.0;  // totalSection~20 + sig~58 + indicator~16 + slack
 
-  // stdFormat: page 1 keeps its top margin.
-  // nextFormat: pages 2+ use marginTop=0 because the LX-310 already advances
-  //   to the next top-of-form before printing — adding our own mTop on top of
-  //   that is what produces the large gap seen on subsequent pages.
   final stdFormat = PdfPageFormat(
     pageW, 11.0 * PdfPageFormat.inch,
     marginTop: mTop, marginBottom: mBot,
     marginLeft: mLeft, marginRight: mRight,
   );
+  // Last page uses a smaller bottom margin so the signature + indicator
+  // never overflow even when the Spacer collapses to near-zero.
+  final lastFormat = PdfPageFormat(
+    pageW, 11.0 * PdfPageFormat.inch,
+    marginTop: mTop, marginBottom: 6.0,
+    marginLeft: mLeft, marginRight: mRight,
+  );
   final double availH      = stdFormat.height - mTop - mBot; // 762 pt
-  final double kAvailItems = availH - kHeaderH - kPageIndH;  // 502 pt
+  final double kAvailItems = availH - kHeaderH - kPageIndH;  // 492 pt
 
   // Split item widgets into per-page buckets.
   final pageGroups = <List<pw.Widget>>[];
@@ -315,13 +321,19 @@ Future<void> printInvoice({
   final totalPages = pageGroups.length;
 
   // ── Render pages ──────────────────────────────────────────────────────────────
+  // Pre-compute the push-down gap for the last page so the signature block
+  // lands near the bottom without relying on pw.Spacer (which doesn't receive
+  // tight height constraints from pw.Page in this pdf package version).
+  final double lastAvailH  = lastFormat.height - mTop - 6.0; // marginBottom=6
+  final double lastItemsH  = lastFitsAll ? lastBucketH : 0.0;
+  final double sigGapH     =
+      (lastAvailH - kHeaderH - lastItemsH - kSigFooterH).clamp(0.0, double.infinity);
+
   for (var i = 0; i < totalPages; i++) {
     final pgNum  = i + 1;
     final isLast = pgNum == totalPages;
-    final fmt    = stdFormat;
-
     doc.addPage(pw.Page(
-      pageFormat: fmt,
+      pageFormat: isLast ? lastFormat : stdFormat,
       build: (_) => pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
@@ -329,11 +341,11 @@ Future<void> printInvoice({
           ...pageGroups[i],
           if (isLast) ...[
             totalSection,
-            pw.Spacer(),   // pushes signature to the bottom of the page
+            pw.SizedBox(height: sigGapH),
             signatureBlock,
             if (totalPages > 1)
               pw.Padding(
-                padding: const pw.EdgeInsets.only(top: 6),
+                padding: const pw.EdgeInsets.only(top: 4),
                 child: pw.Center(
                   child: pw.Text("Page $pgNum/$totalPages", style: tsPage),
                 ),
@@ -350,7 +362,12 @@ Future<void> printInvoice({
     ));
   }
 
-  // ── Print ─────────────────────────────────────────────────────────────────────
+  // ── Save to desktop for inspection, then print ────────────────────────────────
+  final pdfBytes = await doc.save();
+  final desktop  = '${Platform.environment['USERPROFILE']}\\Desktop';
+  final safeNum  = invoice.displayNumber.replaceAll(RegExp(r'[\\/:*?"<>|]'), '-');
+  await File('$desktop\\invoice_$safeNum.pdf').writeAsBytes(pdfBytes);
+
   await _printWithSlot(doc: doc, format: stdFormat, slot: 'invoice');
 }
 

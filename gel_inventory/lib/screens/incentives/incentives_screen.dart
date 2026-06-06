@@ -413,7 +413,7 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
                         bold: true, center: true),
                     _cell('Sales', _ramMid.shade100,
                         bold: true, center: true),
-                    _cell('BO (pcs)', _ramMid.shade100,
+                    _cell('BO', _ramMid.shade100,
                         bold: true, center: true),
                     for (int i = 0; i < n; i++)
                       _cell('Sales', _addMid(i), bold: true, center: true),

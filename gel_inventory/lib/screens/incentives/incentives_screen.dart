@@ -1,6 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import '../../core/services/incentives_settings_service.dart';
 import '../../repositories/bad_order_repository.dart';
 import '../../repositories/invoice_repository.dart';
@@ -66,6 +71,7 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
 
   final TextEditingController _targetCtrl  = TextEditingController(text: '0');
   final TextEditingController _percentCtrl = TextEditingController(text: '90');
+  _MonthData? _lastData;
 
   @override
   void dispose() {
@@ -220,6 +226,12 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
     return AppScaffold(
       title: 'Incentives',
       actions: [
+        if (_lastData != null)
+          IconButton(
+            icon: const Icon(Icons.print),
+            tooltip: 'Print incentives report',
+            onPressed: () => _printIncentives(_lastData!),
+          ),
         IconButton(
           icon: const Icon(Icons.settings),
           tooltip: 'Configure additional supplier columns',
@@ -324,6 +336,13 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
   }
 
   Widget _buildTable(_MonthData data) {
+    final wasNull = _lastData == null;
+    _lastData = data;
+    if (wasNull) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() {});
+      });
+    }
     final dateFmt = DateFormat('MMM d');
     final n = data.additional.length;
     final colWidths = _buildColWidths(n);
@@ -610,121 +629,98 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
                   ),
                 ),
                 // ── Net Sales computation ────────────────────────────────────
-                const SizedBox(height: 24),
-                _summaryRow(
-                  'Total Gross Sales',
-                  formatCurrency(data.totalGrand),
-                  bold: true,
-                ),
-                const SizedBox(height: 4),
-                const Padding(
-                  padding: EdgeInsets.only(left: 4),
-                  child: Text('less:', style: TextStyle(fontSize: 13)),
-                ),
+                const SizedBox(height: 32),
                 Padding(
-                  padding: const EdgeInsets.only(left: 24, right: 4),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          for (final c in data.additional)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 2),
-                              child: Text(c.name,
-                                  style: const TextStyle(fontSize: 13)),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(width: 16),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          for (final c in data.additional)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 2),
-                              child: Text(
-                                formatCurrency(data.totalAdditionalSales(c.id)),
-                                style: const TextStyle(fontSize: 13),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 16, indent: 4, endIndent: 4),
-                Builder(builder: (_) {
-                  final netBo    = data.totalRamSales * 0.01 - data.totalRamBoAmount;
-                  final netSales = data.totalGrand -
-                      data.additional.fold(
-                          0.0, (s, c) => s + data.totalAdditionalSales(c.id));
-                  final eligible = netBo < 0 ? netSales + netBo : netSales;
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Row(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Builder(builder: (_) {
+                    final netBo    = data.totalRamSales * 0.01 - data.totalRamBoAmount;
+                    final netSales = data.totalGrand -
+                        data.additional.fold(
+                            0.0, (s, c) => s + data.totalAdditionalSales(c.id));
+                    final eligible = netBo < 0 ? netSales + netBo : netSales;
+                    const ts = TextStyle(fontSize: 13);
+                    const tsBold = TextStyle(fontSize: 13, fontWeight: FontWeight.bold);
+                    return Row(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // Labels
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Text('Net Total',
-                                style: TextStyle(fontSize: 13)),
+                            const Text('Total Gross Sales', style: tsBold),
+                            const SizedBox(height: 4),
+                            const Text('less:', style: ts),
+                            for (final c in data.additional) ...[
+                              const SizedBox(height: 2),
+                              Padding(
+                                padding: const EdgeInsets.only(left: 20),
+                                child: Text(c.name, style: ts),
+                              ),
+                            ],
+                            Container(
+                              padding: const EdgeInsets.only(top: 4),
+                              decoration: BoxDecoration(
+                                border: Border(top: BorderSide(
+                                    color: Colors.grey.shade300)),
+                              ),
+                              child: const Text('Net Total', style: ts),
+                            ),
                             if (netBo < 0) ...[
                               const SizedBox(height: 2),
-                              const Text('Net BO Allowance',
-                                  style: TextStyle(fontSize: 13)),
+                              const Text('Net BO Allowance', style: ts),
                             ],
                             Container(
                               padding: const EdgeInsets.only(top: 6),
                               decoration: BoxDecoration(
-                                border: Border(
-                                    top: BorderSide(
-                                        color: Colors.grey.shade300)),
+                                border: Border(top: BorderSide(
+                                    color: Colors.grey.shade300)),
                               ),
-                              child: const Text('Net Sales',
-                                  style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.bold)),
+                              child: const Text('Net Sales', style: tsBold),
                             ),
                           ],
                         ),
                         const SizedBox(width: 16),
+                        // Values
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(formatCurrency(netSales),
-                                style: const TextStyle(fontSize: 13)),
+                            Text(formatCurrency(data.totalGrand), style: tsBold),
+                            const SizedBox(height: 4),
+                            const Text('', style: ts),
+                            for (final c in data.additional) ...[
+                              const SizedBox(height: 2),
+                              Text(formatCurrency(
+                                  data.totalAdditionalSales(c.id)), style: ts),
+                            ],
+                            Container(
+                              padding: const EdgeInsets.only(top: 4),
+                              decoration: BoxDecoration(
+                                border: Border(top: BorderSide(
+                                    color: Colors.grey.shade300)),
+                              ),
+                              child: Text(formatCurrency(netSales), style: ts),
+                            ),
                             if (netBo < 0) ...[
                               const SizedBox(height: 2),
-                              Text(formatCurrency(netBo),
-                                  style: const TextStyle(fontSize: 13)),
+                              Text(formatCurrency(netBo), style: ts),
                             ],
                             Container(
                               padding: const EdgeInsets.only(top: 6),
                               decoration: BoxDecoration(
-                                border: Border(
-                                    top: BorderSide(
-                                        color: Colors.grey.shade300)),
+                                border: Border(top: BorderSide(
+                                    color: Colors.grey.shade300)),
                               ),
-                              child: Text(formatCurrency(eligible),
-                                  style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.bold)),
+                              child: Text(formatCurrency(eligible), style: tsBold),
                             ),
                           ],
                         ),
                       ],
-                    ),
-                  );
-                }),
+                    );
+                  }),
+                ),
                 // ── Eligibility status ───────────────────────────────────────
                 const SizedBox(height: 16),
                 ListenableBuilder(
@@ -803,6 +799,236 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
               fontWeight: bold ? FontWeight.bold : FontWeight.normal),
         ),
       );
+
+  // ── PDF / Print ─────────────────────────────────────────────────────────────
+
+  Future<void> _printIncentives(_MonthData data) async {
+    final target      = double.tryParse(_targetCtrl.text) ?? 0.0;
+    final percent     = double.tryParse(_percentCtrl.text) ?? 90.0;
+    final targetAmt   = target * percent / 100;
+    final netBo       = data.totalRamSales * 0.01 - data.totalRamBoAmount;
+    final netSales    = data.totalGrand -
+        data.additional.fold(0.0, (s, c) => s + data.totalAdditionalSales(c.id));
+    final eligible    = netBo < 0 ? netSales + netBo : netSales;
+    final isEligible  = eligible >= targetAmt;
+    final numFmt      = NumberFormat('#,##0.00');
+
+    pw.Font loadF(String path, pw.Font fallback) {
+      try {
+        return pw.Font.ttf(File(path).readAsBytesSync().buffer.asByteData());
+      } catch (_) {
+        return fallback;
+      }
+    }
+    final font     = loadF('C:\\Windows\\Fonts\\arial.ttf',   pw.Font.helvetica());
+    final fontBold = loadF('C:\\Windows\\Fonts\\arialbd.ttf', pw.Font.helveticaBold());
+
+    String fc(double v) => '₱${numFmt.format(v)}';
+    String fsign(double v) =>
+        v < 0 ? '-₱${numFmt.format(-v)}' : '₱${numFmt.format(v)}';
+
+    const double fs = 8.5;
+    pw.TextStyle ts({bool bold = false}) =>
+        pw.TextStyle(font: bold ? fontBold : font, fontSize: fs);
+
+    // ── Page format & column widths ──────────────────────────────────────────
+    final fmt   = PdfPageFormat.a4;
+    final marg  = const pw.EdgeInsets.symmetric(horizontal: 36, vertical: 28);
+    final usableW = fmt.width - marg.left - marg.right;
+
+    final n = data.additional.length;
+    const double dateW = 52, amtW = 72, ramSalesW = 72, ramBoW = 62;
+    final fixedW  = dateW + amtW + ramSalesW + ramBoW;
+    final addW    = n > 0 ? (usableW - fixedW) / n : 0.0;
+
+    Map<int, pw.TableColumnWidth> colWidths = {
+      0: const pw.FixedColumnWidth(dateW),
+      1: const pw.FixedColumnWidth(amtW),
+      2: const pw.FixedColumnWidth(ramSalesW),
+      3: const pw.FixedColumnWidth(ramBoW),
+      for (int i = 0; i < n; i++) 4 + i: pw.FixedColumnWidth(addW),
+    };
+
+    // ── Cell helpers ─────────────────────────────────────────────────────────
+    const hPad = pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3);
+
+    pw.Widget hCell(String t, {PdfColor? bg}) => pw.Container(
+          color: bg ?? PdfColors.grey300,
+          padding: hPad,
+          child: pw.Text(t,
+              style: ts(bold: true), textAlign: pw.TextAlign.center),
+        );
+
+    pw.Widget dCell(String t, {bool bold = false, PdfColor? bg}) =>
+        pw.Container(
+          color: bg,
+          padding: hPad,
+          child: pw.Text(t,
+              style: ts(bold: bold), textAlign: pw.TextAlign.right),
+        );
+
+    pw.Widget lCell(String t, {bool bold = false, PdfColor? bg}) =>
+        pw.Container(
+          color: bg,
+          padding: hPad,
+          child: pw.Text(t, style: ts(bold: bold)),
+        );
+
+    // ── Summary row helper — fixed-width columns so values align ────────────
+    const double labelW = 205, valW = 90;
+
+    pw.Widget sumRow(String label, String value,
+            {bool bold = false, double indent = 0}) =>
+        pw.Row(
+          children: [
+            pw.SizedBox(
+              width: labelW - indent,
+              child: pw.Padding(
+                padding: pw.EdgeInsets.only(left: indent),
+                child: pw.Text(label, style: ts(bold: bold)),
+              ),
+            ),
+            pw.SizedBox(
+              width: valW,
+              child: pw.Text(value,
+                  style: ts(bold: bold), textAlign: pw.TextAlign.right),
+            ),
+          ],
+        );
+
+    // ── Build document ───────────────────────────────────────────────────────
+    final doc        = pw.Document();
+    final monthLabel = DateFormat('MMMM yyyy').format(_selectedMonth);
+    final todayLabel = DateFormat('MMMM d, yyyy').format(DateTime.now());
+    final rowDateFmt = DateFormat('MM/dd');
+
+    doc.addPage(pw.MultiPage(
+      pageFormat: fmt,
+      margin: marg,
+      build: (ctx) => [
+        // Title
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text("GEL'S CONSUMER GOODS TRADING",
+                    style: pw.TextStyle(font: fontBold, fontSize: 13)),
+                pw.SizedBox(height: 2),
+                pw.Text('Incentives Report — $monthLabel',
+                    style: pw.TextStyle(font: fontBold, fontSize: 10)),
+              ],
+            ),
+            pw.Text('Date: $todayLabel', style: ts()),
+          ],
+        ),
+        pw.SizedBox(height: 10),
+
+        // Daily table
+        pw.Table(
+          border: pw.TableBorder.all(
+              width: 0.5, color: PdfColors.grey500),
+          columnWidths: colWidths,
+          children: [
+            // Header
+            pw.TableRow(children: [
+              hCell('Date'),
+              hCell('Amount'),
+              hCell('RAM Sales'),
+              hCell('RAM BO'),
+              for (final c in data.additional) hCell(c.name),
+            ]),
+            // Data rows
+            for (final d in data.days)
+              pw.TableRow(children: [
+                lCell(rowDateFmt.format(DateTime(
+                    _selectedMonth.year, _selectedMonth.month, d.day))),
+                dCell(d.grandTotal > 0 ? fc(d.grandTotal) : '—'),
+                dCell(d.ramSales > 0 ? fc(d.ramSales) : '—'),
+                dCell(d.ramBoAmount > 0 ? fc(d.ramBoAmount) : '—'),
+                for (final c in data.additional)
+                  dCell((d.additionalSales[c.id] ?? 0) > 0
+                      ? fc(d.additionalSales[c.id]!)
+                      : '—'),
+              ]),
+            // Totals
+            pw.TableRow(
+              decoration:
+                  const pw.BoxDecoration(color: PdfColors.grey200),
+              children: [
+                lCell('Total', bold: true),
+                dCell(fc(data.totalGrand), bold: true),
+                dCell(fc(data.totalRamSales), bold: true),
+                dCell(data.totalRamBoAmount > 0
+                    ? fc(data.totalRamBoAmount)
+                    : '—', bold: true),
+                for (final c in data.additional)
+                  dCell(fc(data.totalAdditionalSales(c.id)), bold: true),
+              ],
+            ),
+          ],
+        ),
+
+        pw.SizedBox(height: 14),
+        pw.Divider(thickness: 0.5),
+        pw.SizedBox(height: 8),
+
+        // Summary
+        sumRow('Monthly Target', fc(target)),
+        pw.SizedBox(height: 3),
+        sumRow('% for incentive eligibility',
+            '${percent.toStringAsFixed(0)}%'),
+        pw.SizedBox(height: 3),
+        sumRow('Target Amount', fc(targetAmt), bold: true),
+
+        pw.SizedBox(height: 10),
+        sumRow('BO Allowance (1% of RAM sales)',
+            fc(data.totalRamSales * 0.01)),
+        pw.SizedBox(height: 3),
+        sumRow('Total RAM BO for the month', fc(data.totalRamBoAmount)),
+        pw.SizedBox(height: 3),
+        sumRow('Net BO Allowance', fsign(netBo), bold: true),
+
+        pw.SizedBox(height: 10),
+        sumRow('Total Gross Sales', fc(data.totalGrand), bold: true),
+        pw.SizedBox(height: 3),
+        pw.Text('less:', style: ts()),
+        for (final c in data.additional) ...[
+          pw.SizedBox(height: 2),
+          sumRow(c.name, fc(data.totalAdditionalSales(c.id)), indent: 12),
+        ],
+        pw.SizedBox(height: 3),
+        sumRow('Net Total', fc(netSales)),
+        if (netBo < 0) ...[
+          pw.SizedBox(height: 3),
+          sumRow('Net BO Allowance', fsign(netBo)),
+        ],
+        pw.SizedBox(height: 3),
+        sumRow('Net Sales', fc(eligible), bold: true),
+
+        pw.SizedBox(height: 12),
+        pw.Text(
+          isEligible
+              ? 'ELIGIBLE FOR INCENTIVE'
+              : 'NOT ELIGIBLE FOR INCENTIVE',
+          style: pw.TextStyle(
+            font: fontBold,
+            fontSize: 11,
+            color: isEligible ? PdfColors.green800 : PdfColors.red800,
+          ),
+        ),
+      ],
+    ));
+
+    final bytes = await doc.save();
+
+    await Printing.layoutPdf(
+      onLayout: (_) => bytes,
+      format: fmt,
+    );
+  }
 
   Widget _editableRow(String label, TextEditingController ctrl,
       {String? suffix}) =>

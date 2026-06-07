@@ -67,6 +67,7 @@ class _AppDrawer extends StatelessWidget {
           _tile(context, Icons.bar_chart, 'Reports', '/reports'),
           _tile(context, Icons.local_shipping, 'Off-site Loading', '/van-selling'),
           _tile(context, Icons.star_rate, 'Incentives', '/incentives'),
+          _tile(context, Icons.star_rate, 'Import CSV', '/import-csv'),
           
         ],
       ),

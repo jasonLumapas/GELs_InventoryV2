@@ -64,6 +64,7 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
       title: 'Select Product',
       items: available,
       labelOf: (p) => p.name,
+      searchableOf: (p) => '${p.name} ${p.productCode ?? ''}',
     );
     if (picked != null) {
       setState(() => _items.add(_BoItem(

@@ -360,6 +360,7 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
               title: isOut ? 'Select Products' : 'Select Products to Return',
               items: visibleProducts,
               labelOf: (p) => p.name,
+              searchableOf: (p) => '${p.name} ${p.productCode ?? ''}',
               subtitleOf: (p) {
                 if (!isOut) {
                   final ppb = p.piecesPerBox;

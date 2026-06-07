@@ -95,7 +95,8 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                   final matchesSupplier = _selectedSupplierId == null ||
                       p.supplierId == _selectedSupplierId;
                   final matchesSearch = q.isEmpty ||
-                      p.name.toLowerCase().contains(q);
+                      p.name.toLowerCase().contains(q) ||
+                      (p.productCode?.toLowerCase().contains(q) ?? false);
                   return matchesSupplier && matchesSearch;
                 }).toList()
                   ..sort((a, b) =>
@@ -112,7 +113,9 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                     final supplier = suppliersMap[p.supplierId];
                     return ListTile(
                       leading: const Icon(Icons.inventory_2),
-                      title: Text(p.name),
+                      title: Text(p.productCode != null && p.productCode!.isNotEmpty
+                          ? '${p.name} (${p.productCode})'
+                          : p.name),
                       subtitle: Text(
                           '${supplier?.name ?? 'Unknown'} • ${p.piecesPerBox} pcs/box'),
                       trailing: Row(

@@ -161,6 +161,7 @@ class _CsvImportScreenState extends ConsumerState<CsvImportScreen> {
         final withdrawal   = _fieldDouble(row, 3);
         final selling      = _fieldDouble(row, 4);
         final totalPcs     = hasTotalPcs ? _fieldInt(row, 7) : 0;
+        final productCode  = _field(row, 8);
 
         // Log the first 5 rows to confirm H column is being read
         if (i < 5) {
@@ -203,6 +204,7 @@ class _CsvImportScreenState extends ConsumerState<CsvImportScreen> {
             await productRepo.upsertProduct(Product(
               id: productId,
               name: productName,
+              productCode: productCode.isEmpty ? null : productCode,
               supplierId: supplierId,
               piecesPerBox: piecesPerBox < 1 ? 1 : piecesPerBox,
               createdAt: DateTime.now(),
@@ -300,7 +302,8 @@ class _CsvImportScreenState extends ConsumerState<CsvImportScreen> {
             const SizedBox(height: 6),
             Text(
               'Expected columns: A=supplier  B=product  C=pieces_per_box  '
-              'D=withdrawal_price  E=selling_price  H=stock (total pcs)',
+              'D=withdrawal_price  E=selling_price  H=stock (total pcs)  '
+              'I=product_code',
               style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
             ),
             const SizedBox(height: 12),

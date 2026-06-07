@@ -32,6 +32,7 @@ class Clients extends Table {
 class Products extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
+  TextColumn get productCode => text().nullable()();
   TextColumn get supplierId => text().references(Suppliers, #id)();
   IntColumn get piecesPerBox => integer()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
@@ -242,7 +243,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 13;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -302,6 +303,10 @@ class LocalDatabase extends _$LocalDatabase {
             await m.createTable(vanAreas);
             await _addColumnIfMissing(
                 m.database, 'van_stocks', 'area_id', 'TEXT');
+          }
+          if (from < 13) {
+            await _addColumnIfMissing(
+                m.database, 'products', 'product_code', 'TEXT');
           }
         },
       );

@@ -190,6 +190,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       title: 'Select Product',
       items: available,
       labelOf: (p) => p.name,
+      searchableOf: (p) => '${p.name} ${p.productCode ?? ''}',
       leadingOf: (p) => _stockIndicator(_effectiveAvailable(p.id)),
       subtitleOf: (p) => _stockLabel(p, _effectiveAvailable(p.id)),
       subtitleStyleOf: (p) {

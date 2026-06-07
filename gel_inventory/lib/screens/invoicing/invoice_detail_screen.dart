@@ -285,6 +285,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
       title: 'Select Product',
       items: available,
       labelOf: (p) => p.name,
+      searchableOf: (p) => '${p.name} ${p.productCode ?? ''}',
       leadingOf: (p) => _stockIndicator(_inventoryCache[p.id]?.quantityPieces ?? 0),
       subtitleOf: (p) => _stockLabel(p, _inventoryCache[p.id]?.quantityPieces ?? 0),
       subtitleStyleOf: (p) {

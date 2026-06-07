@@ -21,6 +21,7 @@ Future<T?> showSearchPicker<T>({
   required String title,
   required List<T> items,
   required String Function(T) labelOf,
+  String Function(T)? searchableOf,
   String? Function(T)? subtitleOf,
   TextStyle? Function(T)? subtitleStyleOf,
   Widget? Function(T)? leadingOf,
@@ -34,6 +35,7 @@ Future<T?> showSearchPicker<T>({
       title: title,
       items: items,
       labelOf: labelOf,
+      searchableOf: searchableOf,
       subtitleOf: subtitleOf,
       subtitleStyleOf: subtitleStyleOf,
       leadingOf: leadingOf,
@@ -48,6 +50,7 @@ class _SearchPickerDialog<T> extends StatefulWidget {
   final String title;
   final List<T> items;
   final String Function(T) labelOf;
+  final String Function(T)? searchableOf;
   final String? Function(T)? subtitleOf;
   final TextStyle? Function(T)? subtitleStyleOf;
   final Widget? Function(T)? leadingOf;
@@ -59,6 +62,7 @@ class _SearchPickerDialog<T> extends StatefulWidget {
     required this.title,
     required this.items,
     required this.labelOf,
+    this.searchableOf,
     this.subtitleOf,
     this.subtitleStyleOf,
     this.leadingOf,
@@ -98,7 +102,9 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
     final q = _ctrl.text.toLowerCase();
     setState(() {
       _filtered = _remaining.where((i) {
-        if (!widget.labelOf(i).toLowerCase().contains(q)) return false;
+        final searchable =
+            (widget.searchableOf ?? widget.labelOf)(i).toLowerCase();
+        if (!searchable.contains(q)) return false;
         if (_activeFilter != null && !_activeFilter!.test(i)) return false;
         return true;
       }).toList();

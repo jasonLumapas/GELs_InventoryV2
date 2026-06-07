@@ -686,6 +686,17 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _productCodeMeta = const VerificationMeta(
+    'productCode',
+  );
+  @override
+  late final GeneratedColumn<String> productCode = GeneratedColumn<String>(
+    'product_code',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _supplierIdMeta = const VerificationMeta(
     'supplierId',
   );
@@ -742,6 +753,7 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
   List<GeneratedColumn> get $columns => [
     id,
     name,
+    productCode,
     supplierId,
     piecesPerBox,
     createdAt,
@@ -771,6 +783,15 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
       );
     } else if (isInserting) {
       context.missing(_nameMeta);
+    }
+    if (data.containsKey('product_code')) {
+      context.handle(
+        _productCodeMeta,
+        productCode.isAcceptableOrUnknown(
+          data['product_code']!,
+          _productCodeMeta,
+        ),
+      );
     }
     if (data.containsKey('supplier_id')) {
       context.handle(
@@ -820,6 +841,10 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
         DriftSqlType.string,
         data['${effectivePrefix}name'],
       )!,
+      productCode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}product_code'],
+      ),
       supplierId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}supplier_id'],
@@ -848,6 +873,7 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
 class Product extends DataClass implements Insertable<Product> {
   final String id;
   final String name;
+  final String? productCode;
   final String supplierId;
   final int piecesPerBox;
   final DateTime createdAt;
@@ -855,6 +881,7 @@ class Product extends DataClass implements Insertable<Product> {
   const Product({
     required this.id,
     required this.name,
+    this.productCode,
     required this.supplierId,
     required this.piecesPerBox,
     required this.createdAt,
@@ -865,6 +892,9 @@ class Product extends DataClass implements Insertable<Product> {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['name'] = Variable<String>(name);
+    if (!nullToAbsent || productCode != null) {
+      map['product_code'] = Variable<String>(productCode);
+    }
     map['supplier_id'] = Variable<String>(supplierId);
     map['pieces_per_box'] = Variable<int>(piecesPerBox);
     map['created_at'] = Variable<DateTime>(createdAt);
@@ -876,6 +906,9 @@ class Product extends DataClass implements Insertable<Product> {
     return ProductsCompanion(
       id: Value(id),
       name: Value(name),
+      productCode: productCode == null && nullToAbsent
+          ? const Value.absent()
+          : Value(productCode),
       supplierId: Value(supplierId),
       piecesPerBox: Value(piecesPerBox),
       createdAt: Value(createdAt),
@@ -891,6 +924,7 @@ class Product extends DataClass implements Insertable<Product> {
     return Product(
       id: serializer.fromJson<String>(json['id']),
       name: serializer.fromJson<String>(json['name']),
+      productCode: serializer.fromJson<String?>(json['productCode']),
       supplierId: serializer.fromJson<String>(json['supplierId']),
       piecesPerBox: serializer.fromJson<int>(json['piecesPerBox']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -903,6 +937,7 @@ class Product extends DataClass implements Insertable<Product> {
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'name': serializer.toJson<String>(name),
+      'productCode': serializer.toJson<String?>(productCode),
       'supplierId': serializer.toJson<String>(supplierId),
       'piecesPerBox': serializer.toJson<int>(piecesPerBox),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -913,6 +948,7 @@ class Product extends DataClass implements Insertable<Product> {
   Product copyWith({
     String? id,
     String? name,
+    Value<String?> productCode = const Value.absent(),
     String? supplierId,
     int? piecesPerBox,
     DateTime? createdAt,
@@ -920,6 +956,7 @@ class Product extends DataClass implements Insertable<Product> {
   }) => Product(
     id: id ?? this.id,
     name: name ?? this.name,
+    productCode: productCode.present ? productCode.value : this.productCode,
     supplierId: supplierId ?? this.supplierId,
     piecesPerBox: piecesPerBox ?? this.piecesPerBox,
     createdAt: createdAt ?? this.createdAt,
@@ -929,6 +966,9 @@ class Product extends DataClass implements Insertable<Product> {
     return Product(
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
+      productCode: data.productCode.present
+          ? data.productCode.value
+          : this.productCode,
       supplierId: data.supplierId.present
           ? data.supplierId.value
           : this.supplierId,
@@ -945,6 +985,7 @@ class Product extends DataClass implements Insertable<Product> {
     return (StringBuffer('Product(')
           ..write('id: $id, ')
           ..write('name: $name, ')
+          ..write('productCode: $productCode, ')
           ..write('supplierId: $supplierId, ')
           ..write('piecesPerBox: $piecesPerBox, ')
           ..write('createdAt: $createdAt, ')
@@ -954,14 +995,22 @@ class Product extends DataClass implements Insertable<Product> {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, supplierId, piecesPerBox, createdAt, isDeleted);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    productCode,
+    supplierId,
+    piecesPerBox,
+    createdAt,
+    isDeleted,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is Product &&
           other.id == this.id &&
           other.name == this.name &&
+          other.productCode == this.productCode &&
           other.supplierId == this.supplierId &&
           other.piecesPerBox == this.piecesPerBox &&
           other.createdAt == this.createdAt &&
@@ -971,6 +1020,7 @@ class Product extends DataClass implements Insertable<Product> {
 class ProductsCompanion extends UpdateCompanion<Product> {
   final Value<String> id;
   final Value<String> name;
+  final Value<String?> productCode;
   final Value<String> supplierId;
   final Value<int> piecesPerBox;
   final Value<DateTime> createdAt;
@@ -979,6 +1029,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
   const ProductsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
+    this.productCode = const Value.absent(),
     this.supplierId = const Value.absent(),
     this.piecesPerBox = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -988,6 +1039,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
   ProductsCompanion.insert({
     required String id,
     required String name,
+    this.productCode = const Value.absent(),
     required String supplierId,
     required int piecesPerBox,
     this.createdAt = const Value.absent(),
@@ -1000,6 +1052,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
   static Insertable<Product> custom({
     Expression<String>? id,
     Expression<String>? name,
+    Expression<String>? productCode,
     Expression<String>? supplierId,
     Expression<int>? piecesPerBox,
     Expression<DateTime>? createdAt,
@@ -1009,6 +1062,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (name != null) 'name': name,
+      if (productCode != null) 'product_code': productCode,
       if (supplierId != null) 'supplier_id': supplierId,
       if (piecesPerBox != null) 'pieces_per_box': piecesPerBox,
       if (createdAt != null) 'created_at': createdAt,
@@ -1020,6 +1074,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
   ProductsCompanion copyWith({
     Value<String>? id,
     Value<String>? name,
+    Value<String?>? productCode,
     Value<String>? supplierId,
     Value<int>? piecesPerBox,
     Value<DateTime>? createdAt,
@@ -1029,6 +1084,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     return ProductsCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
+      productCode: productCode ?? this.productCode,
       supplierId: supplierId ?? this.supplierId,
       piecesPerBox: piecesPerBox ?? this.piecesPerBox,
       createdAt: createdAt ?? this.createdAt,
@@ -1045,6 +1101,9 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     }
     if (name.present) {
       map['name'] = Variable<String>(name.value);
+    }
+    if (productCode.present) {
+      map['product_code'] = Variable<String>(productCode.value);
     }
     if (supplierId.present) {
       map['supplier_id'] = Variable<String>(supplierId.value);
@@ -1069,6 +1128,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     return (StringBuffer('ProductsCompanion(')
           ..write('id: $id, ')
           ..write('name: $name, ')
+          ..write('productCode: $productCode, ')
           ..write('supplierId: $supplierId, ')
           ..write('piecesPerBox: $piecesPerBox, ')
           ..write('createdAt: $createdAt, ')
@@ -7123,6 +7183,7 @@ typedef $$ProductsTableCreateCompanionBuilder =
     ProductsCompanion Function({
       required String id,
       required String name,
+      Value<String?> productCode,
       required String supplierId,
       required int piecesPerBox,
       Value<DateTime> createdAt,
@@ -7133,6 +7194,7 @@ typedef $$ProductsTableUpdateCompanionBuilder =
     ProductsCompanion Function({
       Value<String> id,
       Value<String> name,
+      Value<String?> productCode,
       Value<String> supplierId,
       Value<int> piecesPerBox,
       Value<DateTime> createdAt,
@@ -7315,6 +7377,11 @@ class $$ProductsTableFilterComposer
 
   ColumnFilters<String> get name => $composableBuilder(
     column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get productCode => $composableBuilder(
+    column: $table.productCode,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7551,6 +7618,11 @@ class $$ProductsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get productCode => $composableBuilder(
+    column: $table.productCode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get piecesPerBox => $composableBuilder(
     column: $table.piecesPerBox,
     builder: (column) => ColumnOrderings(column),
@@ -7604,6 +7676,11 @@ class $$ProductsTableAnnotationComposer
 
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get productCode => $composableBuilder(
+    column: $table.productCode,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<int> get piecesPerBox => $composableBuilder(
     column: $table.piecesPerBox,
@@ -7854,6 +7931,7 @@ class $$ProductsTableTableManager
               ({
                 Value<String> id = const Value.absent(),
                 Value<String> name = const Value.absent(),
+                Value<String?> productCode = const Value.absent(),
                 Value<String> supplierId = const Value.absent(),
                 Value<int> piecesPerBox = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -7862,6 +7940,7 @@ class $$ProductsTableTableManager
               }) => ProductsCompanion(
                 id: id,
                 name: name,
+                productCode: productCode,
                 supplierId: supplierId,
                 piecesPerBox: piecesPerBox,
                 createdAt: createdAt,
@@ -7872,6 +7951,7 @@ class $$ProductsTableTableManager
               ({
                 required String id,
                 required String name,
+                Value<String?> productCode = const Value.absent(),
                 required String supplierId,
                 required int piecesPerBox,
                 Value<DateTime> createdAt = const Value.absent(),
@@ -7880,6 +7960,7 @@ class $$ProductsTableTableManager
               }) => ProductsCompanion.insert(
                 id: id,
                 name: name,
+                productCode: productCode,
                 supplierId: supplierId,
                 piecesPerBox: piecesPerBox,
                 createdAt: createdAt,

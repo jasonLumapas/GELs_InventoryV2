@@ -36,6 +36,7 @@ class ProductRepository extends BaseRepository {
         .map((r) => Product(
               id: r.id,
               name: r.name,
+              productCode: r.productCode,
               supplierId: r.supplierId,
               piecesPerBox: r.piecesPerBox,
               createdAt: r.createdAt,
@@ -157,6 +158,7 @@ class ProductRepository extends BaseRepository {
     await db.into(db.products).insertOnConflictUpdate(ProductsCompanion(
           id: drift.Value(p.id),
           name: drift.Value(p.name),
+          productCode: drift.Value(p.productCode),
           supplierId: drift.Value(p.supplierId),
           piecesPerBox: drift.Value(p.piecesPerBox),
           createdAt: drift.Value(p.createdAt),

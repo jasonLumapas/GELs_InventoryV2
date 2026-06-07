@@ -26,6 +26,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
     with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
+  final _productCodeCtrl = TextEditingController();
   final _piecesCtrl = TextEditingController();
   final _withdrawalCtrl = TextEditingController();
   final _sellingCtrl = TextEditingController();
@@ -68,6 +69,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
       _existing = all.where((p) => p.id == widget.productId).firstOrNull;
       if (_existing != null) {
         _nameCtrl.text = _existing!.name;
+        _productCodeCtrl.text = _existing!.productCode ?? '';
         _piecesCtrl.text = _existing!.piecesPerBox.toString();
         _selectedSupplierId = _existing!.supplierId;
         _priceHistory = await ref
@@ -103,6 +105,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
   @override
   void dispose() {
     _nameCtrl.dispose();
+    _productCodeCtrl.dispose();
     _piecesCtrl.dispose();
     _withdrawalCtrl.dispose();
     _sellingCtrl.dispose();
@@ -121,6 +124,8 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
     final product = Product(
       id: _existing?.id ?? const Uuid().v4(),
       name: _nameCtrl.text.trim(),
+      productCode:
+          _productCodeCtrl.text.trim().isEmpty ? null : _productCodeCtrl.text.trim(),
       supplierId: _selectedSupplierId!,
       piecesPerBox: int.parse(_piecesCtrl.text),
       createdAt: _existing?.createdAt ?? DateTime.now(),
@@ -233,6 +238,11 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
               decoration: const InputDecoration(labelText: 'Product Name *'),
               validator: (v) =>
                   v == null || v.trim().isEmpty ? 'Required' : null,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _productCodeCtrl,
+              decoration: const InputDecoration(labelText: 'Product Code'),
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(

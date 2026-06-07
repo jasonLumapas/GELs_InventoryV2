@@ -309,7 +309,7 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
               : (loadedQty[li.product.id] ?? 0);
 
           bool canSave() {
-            if (isOut && selectedAreaId == null) return false;
+            if (isOut && _areas.isNotEmpty && selectedAreaId == null) return false;
             if (lineItems.isEmpty) return false;
             return lineItems
                 .every((li) => li.quantity > 0 && li.pieces <= availFor(li));

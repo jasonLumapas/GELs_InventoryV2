@@ -32,6 +32,9 @@ class _LineItem {
   String unitType = 'piece';
   int quantity = 0;
   bool isFree = false;
+  // Whether the user has already been asked about the "buy X get Y free"
+  // promo for this line item (so we don't re-prompt on every keystroke).
+  bool freePromptHandled = false;
 
   _LineItem({
     required this.product,
@@ -99,6 +102,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       DateTime.now().add(const Duration(days: 1));
   String? _invoiceNumber;
   final List<_LineItem> _lineItems = [];
+  final _notesCtrl = TextEditingController();
   bool _loading = true;
   bool _saving = false;
 
@@ -258,6 +262,61 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
     });
   }
 
+  // Checks whether the entered quantity now satisfies a "buy X get Y free"
+  // promo for this line, and if so, asks the user whether to add the free
+  // item to the invoice. Only asks once per line item.
+  Future<void> _maybeOfferFreeItem(_LineItem item) async {
+    final discount = item.discount;
+    if (item.isFree || item.freePromptHandled) return;
+    if (discount == null || !discount.isBuyXGetY) return;
+    final freeQtyPieces = discount.freeQuantityPieces ?? 0;
+    if (freeQtyPieces <= 0) return;
+    if (item.quantityInPieces < discount.minQuantityPieces) return;
+
+    item.freePromptHandled = true;
+
+    final ppb = item.product.piecesPerBox;
+    final buyBoxes  = ppb > 0 ? discount.minQuantityPieces ~/ ppb : discount.minQuantityPieces;
+    final freeBoxes = ppb > 0 ? freeQtyPieces ~/ ppb : freeQtyPieces;
+
+    final add = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Free Item Available'),
+        content: Text(
+          '${item.product.name} qualifies for a "Buy $buyBoxes box(es) '
+          'get $freeBoxes box(es) free" promo.\n\n'
+          'Add $freeBoxes box(es) of ${item.product.name} to this invoice for free?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('No'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Yes'),
+          ),
+        ],
+      ),
+    );
+
+    if (add == true && mounted) {
+      setState(() {
+        _lineItems.add(_LineItem(
+          product: item.product,
+          price: item.price,
+          inventory: item.inventory,
+          discount: item.discount,
+        )
+          ..unitType = 'box'
+          ..quantity = freeBoxes
+          ..isFree = true
+          ..freePromptHandled = true);
+      });
+    }
+  }
+
   // Total pieces already committed to _lineItems for a product, optionally
   // excluding one index (used so a tile can check its own slot fairly).
   int _committedPieces(String productId, {int? excludeIndex}) {
@@ -291,8 +350,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
     return true;
   }
 
-  Future<void> _print() async {
-    setState(() => _saving = true);
+  Future<({Invoice invoice, List<InvoiceItem> items})> _persistInvoice() async {
     final invoiceId = const Uuid().v4();
     final invoiceNumber = await ref
         .read(invoiceRepositoryProvider)
@@ -307,6 +365,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       invoiceNumber: invoiceNumber,
       invoiceType:  _invoiceType,
       paymentType:  _paymentType,
+      notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
     );
 
     final items = _lineItems.map((li) {
@@ -334,17 +393,36 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
     ref.invalidate(filteredInvoicesProvider);
     ref.invalidate(inventoryListProvider);
 
+    return (invoice: invoice, items: items);
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    await _persistInvoice();
+    if (mounted) context.go('/invoices');
+  }
+
+  Future<void> _print() async {
+    setState(() => _saving = true);
+    final persisted = await _persistInvoice();
+
     final productsById = {
       for (final li in _lineItems) li.product.id: li.product
     };
     await printInvoice(
-      invoice: invoice,
+      invoice: persisted.invoice,
       client: _selectedClient!,
-      items: items,
+      items: persisted.items,
       productsById: productsById,
     );
 
     if (mounted) context.go('/invoices');
+  }
+
+  @override
+  void dispose() {
+    _notesCtrl.dispose();
+    super.dispose();
   }
 
   @override
@@ -452,6 +530,21 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 8),
+
+                // Notes (internal only — not printed on the invoice)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: TextField(
+                    controller: _notesCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Notes (not included when printing)',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    maxLines: 2,
+                  ),
+                ),
                 const SizedBox(height: 4),
 
                 // Add item row
@@ -487,6 +580,8 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                             onRemove: () =>
                                 setState(() => _lineItems.removeAt(i)),
                             onChanged: () => setState(() {}),
+                            onQuantityEntered: (item) =>
+                                _maybeOfferFreeItem(item),
                           ),
                         ),
                 ),
@@ -510,6 +605,18 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                       OutlinedButton(
                         onPressed: () => context.go('/invoices'),
                         child: const Text('Cancel'),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        icon: _saving
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.save_outlined),
+                        label: const Text('Save'),
+                        onPressed:
+                            _canPrint && !_saving ? _save : null,
                       ),
                       const SizedBox(width: 8),
                       FilledButton.icon(
@@ -541,12 +648,14 @@ class _LineItemTile extends StatefulWidget {
   final int effectiveAvailable;
   final VoidCallback onRemove;
   final VoidCallback onChanged;
+  final ValueChanged<_LineItem> onQuantityEntered;
 
   const _LineItemTile({
     required this.item,
     required this.effectiveAvailable,
     required this.onRemove,
     required this.onChanged,
+    required this.onQuantityEntered,
   });
 
   @override
@@ -559,7 +668,9 @@ class _LineItemTileState extends State<_LineItemTile> {
   @override
   void initState() {
     super.initState();
-    _qtyCtrl = TextEditingController(text: '');
+    _qtyCtrl = TextEditingController(
+      text: widget.item.quantity > 0 ? widget.item.quantity.toString() : '',
+    );
   }
 
   @override
@@ -676,6 +787,7 @@ class _LineItemTileState extends State<_LineItemTile> {
                 onChanged: (v) {
                   item.quantity = int.tryParse(v) ?? 0;
                   widget.onChanged();
+                  widget.onQuantityEntered(item);
                 },
               ),
             ),

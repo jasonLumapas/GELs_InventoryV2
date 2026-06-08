@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import '../../core/services/app_settings_service.dart';
 import '../../repositories/client_repository.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_repository.dart';
@@ -343,48 +344,56 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                           Text('${invoices.length} invoice(s)',
                               style: const TextStyle(color: Colors.grey)),
                           const Spacer(),
-                          ref
-                              .watch(_financialsProvider(
-                                  (_startDate, _endDate)))
-                              .when(
-                                loading: () => const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2)),
-                                error: (_, s) => Text(
-                                    'Total: ${formatCurrency(periodTotal)}',
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 15)),
-                                data: (fin) => Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.end,
-                                  children: [
-                                    Text(
-                                      'Total: ${formatCurrency(fin.grandTotal)}',
+                          () {
+                            final showCapitalProfit = ref
+                                    .watch(showCapitalProfitProvider)
+                                    .valueOrNull ??
+                                true;
+                            return ref
+                                .watch(_financialsProvider(
+                                    (_startDate, _endDate)))
+                                .when(
+                                  loading: () => const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2)),
+                                  error: (_, s) => Text(
+                                      'Total: ${formatCurrency(periodTotal)}',
                                       style: const TextStyle(
                                           fontWeight: FontWeight.bold,
-                                          fontSize: 15),
-                                    ),
-                                    Text(
-                                      'Capital: ${formatCurrency(fin.capital)}',
-                                      style: TextStyle(
-                                          fontSize: 13,
-                                          color: Colors.grey.shade700),
-                                    ),
-                                    Text(
-                                      'Profit: ${formatCurrency(fin.profit)}',
-                                      style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: fin.profit >= 0
-                                              ? Colors.green.shade700
-                                              : Colors.red),
-                                    ),
-                                  ],
-                                ),
-                              ),
+                                          fontSize: 15)),
+                                  data: (fin) => Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        'Total: ${formatCurrency(fin.grandTotal)}',
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 15),
+                                      ),
+                                      if (showCapitalProfit) ...[
+                                        Text(
+                                          'Capital: ${formatCurrency(fin.capital)}',
+                                          style: TextStyle(
+                                              fontSize: 13,
+                                              color: Colors.grey.shade700),
+                                        ),
+                                        Text(
+                                          'Profit: ${formatCurrency(fin.profit)}',
+                                          style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: fin.profit >= 0
+                                                  ? Colors.green.shade700
+                                                  : Colors.red),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                );
+                          }(),
                         ],
                       ),
                     ),

@@ -127,6 +127,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   final _partialAmountCtrl = TextEditingController();
   final _checkRefCtrl      = TextEditingController();
   final _checkAmountCtrl   = TextEditingController();
+  final _notesCtrl         = TextEditingController();
   DateTime? _checkDueDate;
   DateTime? _partialDate;
   List<InvoicePayment> _payments = [];
@@ -152,6 +153,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     _partialAmountCtrl.dispose();
     _checkRefCtrl.dispose();
     _checkAmountCtrl.dispose();
+    _notesCtrl.dispose();
     super.dispose();
   }
 
@@ -182,6 +184,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
         ? _invoice!.checkAmount!.toStringAsFixed(2)
         : '';
     _checkDueDate = _invoice!.checkDueDate;
+    _notesCtrl.text = _invoice!.notes ?? '';
     _payments = await ref
         .read(invoicePaymentRepositoryProvider)
         .getForInvoice(widget.invoiceId);
@@ -386,6 +389,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
           ? double.tryParse(_checkAmountCtrl.text)
           : null,
       checkDueDate: _paymentType == 'check' ? _checkDueDate : null,
+      notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
     );
     final newItems = _editItems
         .map((li) => li.toInvoiceItem(widget.invoiceId))
@@ -424,6 +428,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
           ? double.tryParse(_checkAmountCtrl.text)
           : null,
       checkDueDate: _paymentType == 'check' ? _checkDueDate : null,
+      notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
     );
     final newItems = _editItems
         .map((li) => li.toInvoiceItem(widget.invoiceId))
@@ -950,6 +955,21 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 8),
+
+                  // Notes (internal only — not printed on the invoice)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: TextField(
+                      controller: _notesCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Notes (not included when printing)',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      maxLines: 2,
+                    ),
+                  ),
                   const SizedBox(height: 4),
 
                   // Items header + add button
@@ -1102,6 +1122,11 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                 style: const TextStyle(
                     fontSize: 16, fontWeight: FontWeight.bold)),
           ),
+          if (_invoice?.notes != null && _invoice!.notes!.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text('Notes', style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text(_invoice!.notes!),
+          ],
         ],
       ),
     );

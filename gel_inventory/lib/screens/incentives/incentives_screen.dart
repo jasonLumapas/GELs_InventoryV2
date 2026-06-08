@@ -1116,6 +1116,18 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
         width: 340,
         child: ref.watch(suppliersListProvider).maybeWhen(
           data: (suppliers) {
+            // Drop configured IDs that no longer match any supplier
+            // (e.g. left over after the local database was reset).
+            final knownIds = {for (final s in suppliers) s.id};
+            final stale = _ids.where((id) => !knownIds.contains(id)).toList();
+            if (stale.isNotEmpty) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  setState(() => _ids.removeWhere((id) => !knownIds.contains(id)));
+                }
+              });
+            }
+
             // Exclude RAM (always shown) and already-configured suppliers
             final nonRam = suppliers
                 .where((s) => s.name.trim().toLowerCase() != 'ram')
@@ -1213,6 +1225,12 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
                   ),
                 ] else if (_ids.isNotEmpty)
                   Text('All non-RAM suppliers are already added.',
+                      style: TextStyle(
+                          fontSize: 13, color: Colors.grey.shade500))
+                else
+                  Text(
+                      'No suppliers found besides RAM. '
+                      'Add a supplier first to configure extra columns.',
                       style: TextStyle(
                           fontSize: 13, color: Colors.grey.shade500)),
               ],

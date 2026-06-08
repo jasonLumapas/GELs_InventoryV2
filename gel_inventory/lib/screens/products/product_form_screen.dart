@@ -43,9 +43,12 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
   final _percentValueCtrl  = TextEditingController();
   final _amountMinQtyCtrl  = TextEditingController();
   final _amountValueCtrl   = TextEditingController();
-  String _discountType = 'percent'; // 'percent' | 'amount'
-  bool _percentEnabled = false;
-  bool _amountEnabled  = false;
+  final _buyQtyCtrl  = TextEditingController();
+  final _freeQtyCtrl = TextEditingController();
+  String _discountType = 'percent'; // 'percent' | 'amount' | 'buy_x_get_y'
+  bool _percentEnabled  = false;
+  bool _amountEnabled   = false;
+  bool _buyXGetYEnabled = false;
 
   TextEditingController get _activeMinQtyCtrl =>
       _discountType == 'percent' ? _percentMinQtyCtrl : _amountMinQtyCtrl;
@@ -87,13 +90,22 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
         if (_existingDiscount != null) {
           final ppb = _existing!.piecesPerBox;
           _discountType = _existingDiscount!.discountType;
-          _percentEnabled = _discountType == 'percent';
-          _amountEnabled  = _discountType == 'amount';
-          // Populate only the matching type's controllers
-          _activeMinQtyCtrl.text =
-              (_existingDiscount!.minQuantityPieces ~/ ppb).toString();
-          _activeValueCtrl.text =
-              _existingDiscount!.discountValue.toStringAsFixed(1);
+          _percentEnabled  = _discountType == 'percent';
+          _amountEnabled   = _discountType == 'amount';
+          _buyXGetYEnabled = _discountType == 'buy_x_get_y';
+          if (_buyXGetYEnabled) {
+            _buyQtyCtrl.text =
+                (_existingDiscount!.minQuantityPieces ~/ ppb).toString();
+            _freeQtyCtrl.text =
+                ((_existingDiscount!.freeQuantityPieces ?? 0) ~/ ppb)
+                    .toString();
+          } else {
+            // Populate only the matching type's controllers
+            _activeMinQtyCtrl.text =
+                (_existingDiscount!.minQuantityPieces ~/ ppb).toString();
+            _activeValueCtrl.text =
+                _existingDiscount!.discountValue.toStringAsFixed(1);
+          }
         }
       }
     } else if (_suppliers.isNotEmpty) {
@@ -113,6 +125,8 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
     _percentValueCtrl.dispose();
     _amountMinQtyCtrl.dispose();
     _amountValueCtrl.dispose();
+    _buyQtyCtrl.dispose();
+    _freeQtyCtrl.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -162,12 +176,28 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
     final existing = _existing;
     if (existing == null) return;
 
-    final bool hasActive = _percentEnabled || _amountEnabled;
+    final bool hasActive = _percentEnabled || _amountEnabled || _buyXGetYEnabled;
     if (!hasActive) {
       await ref
           .read(productDiscountRepositoryProvider)
           .deleteForProduct(existing.id);
       setState(() => _existingDiscount = null);
+    } else if (_buyXGetYEnabled) {
+      final buyBoxes  = int.tryParse(_buyQtyCtrl.text);
+      final freeBoxes = int.tryParse(_freeQtyCtrl.text);
+      if (buyBoxes != null && buyBoxes > 0 &&
+          freeBoxes != null && freeBoxes > 0) {
+        final newDiscount = ProductDiscount(
+          id: _existingDiscount?.id ?? const Uuid().v4(),
+          productId: existing.id,
+          minQuantityPieces: buyBoxes * existing.piecesPerBox,
+          discountValue: 0,
+          discountType: 'buy_x_get_y',
+          freeQuantityPieces: freeBoxes * existing.piecesPerBox,
+        );
+        await ref.read(productDiscountRepositoryProvider).upsert(newDiscount);
+        setState(() => _existingDiscount = newDiscount);
+      }
     } else {
       final minBoxes = int.tryParse(_activeMinQtyCtrl.text);
       final discVal  = double.tryParse(_activeValueCtrl.text);
@@ -407,6 +437,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
               _percentEnabled = val ?? false;
               if (_percentEnabled) {
                 _amountEnabled = false;
+                _buyXGetYEnabled = false;
                 _discountType = 'percent';
               }
             }),
@@ -423,6 +454,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
               _amountEnabled = val ?? false;
               if (_amountEnabled) {
                 _percentEnabled = false;
+                _buyXGetYEnabled = false;
                 _discountType = 'amount';
               }
             }),
@@ -431,11 +463,77 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
             valueLabel: 'Discount Amount (₱)',
             prefixText: '₱ ',
           ),
+          Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              children: [
+                CheckboxListTile(
+                  value: _buyXGetYEnabled,
+                  onChanged: (val) => setState(() {
+                    _buyXGetYEnabled = val ?? false;
+                    if (_buyXGetYEnabled) {
+                      _percentEnabled = false;
+                      _amountEnabled = false;
+                      _discountType = 'buy_x_get_y';
+                    }
+                  }),
+                  title: const Row(
+                    children: [
+                      Icon(Icons.card_giftcard, size: 16),
+                      SizedBox(width: 6),
+                      Text('Buy X Get Y Free',
+                          style: TextStyle(fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                  controlAffinity: ListTileControlAffinity.leading,
+                ),
+                if (_buyXGetYEnabled)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    child: Column(
+                      children: [
+                        TextFormField(
+                          controller: _buyQtyCtrl,
+                          decoration: InputDecoration(
+                            labelText: 'Buy quantity (boxes)',
+                            helperText: ppb > 0
+                                ? '= ${(int.tryParse(_buyQtyCtrl.text) ?? 0) * ppb} pcs'
+                                : null,
+                          ),
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly
+                          ],
+                          onChanged: (_) => setState(() {}),
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _freeQtyCtrl,
+                          decoration: InputDecoration(
+                            labelText: 'Free quantity (boxes)',
+                            helperText: ppb > 0
+                                ? '= ${(int.tryParse(_freeQtyCtrl.text) ?? 0) * ppb} pcs'
+                                : null,
+                          ),
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly
+                          ],
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
           if (_existingDiscount != null) ...[
             Text(
-              _existingDiscount!.isPercent
-                  ? 'Active: ${_existingDiscount!.minQuantityPieces ~/ ppb} boxes → ${_existingDiscount!.discountValue.toStringAsFixed(1)}% off'
-                  : 'Active: ${_existingDiscount!.minQuantityPieces ~/ ppb} boxes → ₱${_existingDiscount!.discountValue.toStringAsFixed(2)} off',
+              _existingDiscount!.isBuyXGetY
+                  ? 'Active: Buy ${_existingDiscount!.minQuantityPieces ~/ ppb} box(es) → +${(_existingDiscount!.freeQuantityPieces ?? 0) ~/ ppb} box(es) free'
+                  : _existingDiscount!.isPercent
+                      ? 'Active: ${_existingDiscount!.minQuantityPieces ~/ ppb} boxes → ${_existingDiscount!.discountValue.toStringAsFixed(1)}% off'
+                      : 'Active: ${_existingDiscount!.minQuantityPieces ~/ ppb} boxes → ₱${_existingDiscount!.discountValue.toStringAsFixed(2)} off',
               style: TextStyle(color: Colors.green.shade700, fontSize: 13),
             ),
             const SizedBox(height: 8),

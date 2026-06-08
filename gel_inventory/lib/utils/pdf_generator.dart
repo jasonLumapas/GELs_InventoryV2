@@ -598,6 +598,163 @@ Future<void> printOrderSummary({
     doc: doc, format: pageFormat, slot: PrinterSettingsService.layout);
 }
 
+// ── Inventory Report PDF ──────────────────────────────────────────────────────
+
+class InventoryReportRow {
+  final String productName;
+  final int piecesPerBox;
+  final int beginning;
+  final int stockIn;
+  final int stockOut;
+  final int ending;
+
+  const InventoryReportRow({
+    required this.productName,
+    required this.piecesPerBox,
+    required this.beginning,
+    required this.stockIn,
+    required this.stockOut,
+    required this.ending,
+  });
+
+  int get begBoxes => beginning ~/ piecesPerBox;
+  int get begPcs   => beginning % piecesPerBox;
+  int get inBoxes  => stockIn ~/ piecesPerBox;
+  int get inPcs    => stockIn % piecesPerBox;
+  int get outBoxes => stockOut ~/ piecesPerBox;
+  int get outPcs   => stockOut % piecesPerBox;
+  int get endBoxes => ending ~/ piecesPerBox;
+  int get endPcs   => ending % piecesPerBox;
+}
+
+Future<void> printInventoryReport({
+  required DateTime date,
+  String? supplierName,
+  required List<InventoryReportRow> rows,
+  required double totalEndingValue,
+  required double totalStockInValue,
+}) async {
+  final doc     = pw.Document();
+  final dateFmt = DateFormat('MMMM dd, yyyy');
+
+  final pageFormat = PdfPageFormat.a4.copyWith(
+    marginTop: 40,
+    marginBottom: 40,
+    marginLeft: 40,
+    marginRight: 40,
+  );
+  final usableW = pageFormat.availableWidth;
+  final prodW = usableW * 0.28;
+  final numW  = (usableW - prodW) / 8;
+
+  final font     = pw.Font.helvetica();
+  final fontBold = pw.Font.helveticaBold();
+  const double fs     = 8.5;
+  const double fsHead = 11;
+
+  pw.TextStyle ts({bool bold = false, double? size}) =>
+      pw.TextStyle(font: bold ? fontBold : font, fontSize: size ?? fs);
+
+  pw.Widget col(String text, double width,
+          {bool bold = false,
+           pw.TextAlign align = pw.TextAlign.left,
+           double? size}) =>
+      pw.SizedBox(
+        width: width,
+        child: pw.Text(text, style: ts(bold: bold, size: size), textAlign: align),
+      );
+
+  pw.Widget groupHeader(String text, double width) => pw.Container(
+        width: width,
+        alignment: pw.Alignment.center,
+        padding: const pw.EdgeInsets.symmetric(vertical: 3),
+        decoration: const pw.BoxDecoration(
+          border: pw.Border(bottom: pw.BorderSide(width: 0.5)),
+        ),
+        child: pw.Text(text, style: ts(bold: true, size: fsHead - 1)),
+      );
+
+  String fmt(int v) => v > 0 ? '$v' : '';
+
+  doc.addPage(pw.MultiPage(
+    pageFormat: pageFormat,
+    build: (ctx) => [
+      pw.Text('Inventory Report', style: ts(bold: true, size: fsHead + 2)),
+      pw.SizedBox(height: 4),
+      pw.Text('Date: ${dateFmt.format(date)}', style: ts(size: fsHead)),
+      if (supplierName != null)
+        pw.Text('Supplier: $supplierName', style: ts(size: fsHead)),
+      pw.SizedBox(height: 10),
+
+      // Group header row
+      pw.Row(children: [
+        pw.SizedBox(width: prodW),
+        groupHeader('Beginning', numW * 2),
+        groupHeader('Stock In',  numW * 2),
+        groupHeader('Stock Out', numW * 2),
+        groupHeader('Ending',    numW * 2),
+      ]),
+      // Column header row
+      pw.Row(children: [
+        col('Product', prodW, bold: true, size: fsHead - 1),
+        col('Boxes', numW, bold: true, align: pw.TextAlign.center, size: fsHead - 1),
+        col('Pcs',   numW, bold: true, align: pw.TextAlign.center, size: fsHead - 1),
+        col('Boxes', numW, bold: true, align: pw.TextAlign.center, size: fsHead - 1),
+        col('Pcs',   numW, bold: true, align: pw.TextAlign.center, size: fsHead - 1),
+        col('Boxes', numW, bold: true, align: pw.TextAlign.center, size: fsHead - 1),
+        col('Pcs',   numW, bold: true, align: pw.TextAlign.center, size: fsHead - 1),
+        col('Boxes', numW, bold: true, align: pw.TextAlign.center, size: fsHead - 1),
+        col('Pcs',   numW, bold: true, align: pw.TextAlign.center, size: fsHead - 1),
+      ]),
+      pw.Divider(height: 4, thickness: 0.5),
+
+      // Data rows
+      for (int i = 0; i < rows.length; i++) ...[
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 1.5),
+          child: pw.Row(children: [
+            col(rows[i].productName, prodW),
+            col(fmt(rows[i].begBoxes), numW, align: pw.TextAlign.center),
+            col(fmt(rows[i].begPcs),   numW, align: pw.TextAlign.center),
+            col(fmt(rows[i].inBoxes),  numW, align: pw.TextAlign.center),
+            col(fmt(rows[i].inPcs),    numW, align: pw.TextAlign.center),
+            col(fmt(rows[i].outBoxes), numW, align: pw.TextAlign.center),
+            col(fmt(rows[i].outPcs),   numW, align: pw.TextAlign.center),
+            col(fmt(rows[i].endBoxes), numW, align: pw.TextAlign.center),
+            col(fmt(rows[i].endPcs),   numW, align: pw.TextAlign.center),
+          ]),
+        ),
+        if (i < rows.length - 1) pw.Divider(height: 1, thickness: 0.2),
+      ],
+
+      pw.Divider(height: 8, thickness: 0.5),
+      pw.SizedBox(height: 6),
+      if (totalStockInValue > 0)
+        pw.Align(
+          alignment: pw.Alignment.centerRight,
+          child: pw.Text(
+            'Stock-in Value: ${_n(totalStockInValue)}',
+            style: ts(bold: true, size: fsHead),
+          ),
+        ),
+      pw.Align(
+        alignment: pw.Alignment.centerRight,
+        child: pw.Text(
+          'Ending Inventory Capital Value: ${_n(totalEndingValue)}',
+          style: ts(bold: true, size: fsHead),
+        ),
+      ),
+    ],
+  ));
+
+  // ── Save to desktop for inspection — printing not yet wired up ────────────
+  final bytes = await doc.save();
+  final home  = Platform.environment['USERPROFILE'] ??
+      Platform.environment['HOME'] ?? '.';
+  final tag   = DateFormat('yyyyMMdd').format(date);
+  await File('$home\\Desktop\\inventory_report_$tag.pdf').writeAsBytes(bytes);
+}
+
 // ── Van Stock History PDF ─────────────────────────────────────────────────────
 
 class VanStockHistoryRow {

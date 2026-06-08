@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/bad_order.dart';
 import '../../models/bad_order_item.dart';
@@ -10,6 +11,7 @@ import '../../models/product.dart';
 import '../../repositories/bad_order_repository.dart';
 import '../../repositories/client_repository.dart';
 import '../../repositories/inventory_repository.dart';
+import '../../repositories/invoice_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../widgets/common/app_scaffold.dart';
 import '../../widgets/common/search_picker.dart';
@@ -27,9 +29,12 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
   List<Product> _products = [];
   Client? _selectedClient;
   String _type = 'bad_order'; // 'bad_order' | 'return'
+  DateTime _selectedDate = DateTime.now();
   final List<_BoItem> _items = [];
   bool _loading = true;
   bool _saving = false;
+  Set<String> _orderedProductIds = {};
+  bool _loadingOrderedProducts = false;
 
   @override
   void initState() {
@@ -43,6 +48,21 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
     setState(() => _loading = false);
   }
 
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null) return;
+    setState(() {
+      _selectedDate = picked;
+      _items.clear();
+    });
+    await _loadOrderedProducts();
+  }
+
   Future<void> _pickClient() async {
     final picked = await showSearchPicker<Client>(
       context: context,
@@ -51,14 +71,59 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
       labelOf: (c) => c.name,
       subtitleOf: (c) => c.address,
     );
-    if (picked != null) setState(() => _selectedClient = picked);
+    if (picked == null) return;
+    setState(() {
+      _selectedClient = picked;
+      _items.clear();
+    });
+    await _loadOrderedProducts();
+  }
+
+  /// Loads the set of product IDs ordered by the selected client on or
+  /// before the selected date — these are the only products returnable.
+  Future<void> _loadOrderedProducts() async {
+    final client = _selectedClient;
+    if (client == null) return;
+    setState(() {
+      _orderedProductIds = {};
+      _loadingOrderedProducts = true;
+    });
+    // Invoice dates are timestamps; include the entire selected day.
+    final cutoff = DateTime(
+        _selectedDate.year, _selectedDate.month, _selectedDate.day, 23, 59, 59);
+    final invoices = await ref.read(invoiceRepositoryProvider).getAll();
+    final ids = <String>{};
+    for (final inv in invoices.where(
+        (i) => i.clientId == client.id && !i.invoiceDate.isAfter(cutoff))) {
+      final items = await ref.read(invoiceRepositoryProvider).getItems(inv.id);
+      for (final item in items) {
+        ids.add(item.productId);
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _orderedProductIds = ids;
+      _loadingOrderedProducts = false;
+    });
   }
 
   Future<void> _pickProduct() async {
+    if (_selectedClient == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Select a client first.')));
+      return;
+    }
     final already = _items.map((i) => i.productId).toSet();
-    final available =
-        _products.where((p) => !already.contains(p.id)).toList();
-    if (available.isEmpty) return;
+    final available = _products
+        .where((p) =>
+            !already.contains(p.id) && _orderedProductIds.contains(p.id))
+        .toList();
+    if (available.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content:
+              Text('No previously ordered products found for this client.')));
+      return;
+    }
     final picked = await showSearchPicker<Product>(
       context: context,
       title: 'Select Product',
@@ -82,7 +147,7 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
     final order = BadOrder(
       id: const Uuid().v4(),
       clientId: _selectedClient!.id,
-      date: now,
+      date: _selectedDate,
       type: _type,
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
       createdAt: now,
@@ -166,6 +231,21 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                           ),
                         ),
                       const SizedBox(height: 8),
+                      // Date
+                      InkWell(
+                        onTap: _pickDate,
+                        borderRadius: BorderRadius.circular(4),
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'Date',
+                            border: OutlineInputBorder(),
+                            suffixIcon: Icon(Icons.calendar_today, size: 18),
+                          ),
+                          child: Text(
+                              DateFormat('MMM dd, yyyy').format(_selectedDate)),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
                       // Client
                       InkWell(
                         onTap: _pickClient,
@@ -205,17 +285,39 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                       const Text('Items',
                           style: TextStyle(fontWeight: FontWeight.bold)),
                       const Spacer(),
+                      if (_loadingOrderedProducts)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 12),
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
                       TextButton.icon(
                         icon: const Icon(Icons.add),
                         label: const Text('Add Product'),
-                        onPressed: _pickProduct,
+                        onPressed: _loadingOrderedProducts ? null : _pickProduct,
                       ),
                     ],
                   ),
                 ),
                 Expanded(
                   child: _items.isEmpty
-                      ? const Center(child: Text('Add at least one product.'))
+                      ? Center(
+                          child: Text(
+                            _selectedClient == null
+                                ? 'Select a client, then add at least one product.'
+                                : (!_loadingOrderedProducts &&
+                                        _orderedProductIds.isEmpty)
+                                    ? 'This client has no orders on or before '
+                                        '${DateFormat('MMM dd, yyyy').format(_selectedDate)} — '
+                                        'nothing available to add.'
+                                    : 'Add at least one product.',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.grey),
+                          ),
+                        )
                       : ListView.builder(
                           itemCount: _items.length,
                           itemBuilder: (_, i) => _BoItemTile(

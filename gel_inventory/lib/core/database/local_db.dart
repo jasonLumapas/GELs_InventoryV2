@@ -61,9 +61,12 @@ class ProductDiscounts extends Table {
   TextColumn get productId => text().references(Products, #id)();
   IntColumn get minQuantityPieces => integer()();
   RealColumn get discountPercent => real()(); // value: percent (0-100) or fixed amount
-  // discount_type: 'percent' | 'amount'
+  // discount_type: 'percent' | 'amount' | 'buy_x_get_y'
   TextColumn get discountType =>
       text().withDefault(const Constant('percent'))();
+  // Free quantity (in pieces) granted when min_quantity_pieces is reached.
+  // Only used when discount_type == 'buy_x_get_y'.
+  IntColumn get freeQuantityPieces => integer().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -102,6 +105,8 @@ class Invoices extends Table {
   TextColumn get checkReference => text().nullable()();
   RealColumn get checkAmount  => real().nullable()();
   DateTimeColumn get checkDueDate => dateTime().nullable()();
+  // Internal note — never included on the printed invoice.
+  TextColumn get notes => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -243,7 +248,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 15;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -307,6 +312,14 @@ class LocalDatabase extends _$LocalDatabase {
           if (from < 13) {
             await _addColumnIfMissing(
                 m.database, 'products', 'product_code', 'TEXT');
+          }
+          if (from < 14) {
+            await _addColumnIfMissing(
+                m.database, 'invoices', 'notes', 'TEXT');
+          }
+          if (from < 15) {
+            await _addColumnIfMissing(m.database, 'product_discounts',
+                'free_quantity_pieces', 'INTEGER');
           }
         },
       );

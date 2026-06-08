@@ -47,24 +47,24 @@ class StockMovementRepository extends BaseRepository {
         ));
   }
 
-  Future<Map<String, int>> sumInForDate(DateTime date) async {
+  Future<Map<String, int>> _sumForTypeAndDate(
+      String movementType, DateTime date) async {
     final dayStr = '${date.year}-'
         '${date.month.toString().padLeft(2, '0')}-'
         '${date.day.toString().padLeft(2, '0')}'; // 'YYYY-MM-DD'
     final totals = <String, int>{};
 
-    debugPrint('sumInForDate: filtering for date=$dayStr isOnline=$isOnline');
+    debugPrint('sumForTypeAndDate($movementType): filtering for date=$dayStr isOnline=$isOnline');
 
     if (isOnline) {
       try {
         final data = await Supabase.instance.client
             .from('stock_movements')
             .select('product_id, quantity_pieces, reference_date')
-            .eq('movement_type', 'in');
-        debugPrint('sumInForDate: Supabase returned ${(data as List).length} rows');
+            .eq('movement_type', movementType);
+        debugPrint('sumForTypeAndDate($movementType): Supabase returned ${(data as List).length} rows');
         for (final m in data) {
           final refStr = m['reference_date'] as String?;
-          debugPrint('  row: product=${m['product_id']} qty=${m['quantity_pieces']} ref=$refStr');
           if (refStr == null) continue;
           // Compare only the YYYY-MM-DD portion to avoid timezone shift issues.
           // Dart's toIso8601String() stores without tz; Supabase treats it as UTC,
@@ -74,12 +74,11 @@ class StockMovementRepository extends BaseRepository {
             final pid = m['product_id'] as String;
             final qty = (m['quantity_pieces'] as num).toInt();
             totals[pid] = (totals[pid] ?? 0) + qty;
-            debugPrint('  matched: pid=$pid qty=$qty');
           }
         }
         return totals;
       } catch (e) {
-        debugPrint('sumInForDate Supabase query failed: $e. Falling back to local.');
+        debugPrint('sumForTypeAndDate($movementType) Supabase query failed: $e. Falling back to local.');
       }
     }
 
@@ -87,12 +86,11 @@ class StockMovementRepository extends BaseRepository {
     final dayStart = DateTime(date.year, date.month, date.day);
     final dayEnd   = dayStart.add(const Duration(days: 1));
     final rows = await (db.select(db.stockMovements)
-          ..where((t) => t.movementType.equals('in')))
+          ..where((t) => t.movementType.equals(movementType)))
         .get();
-    debugPrint('sumInForDate: local SQLite returned ${rows.length} rows');
+    debugPrint('sumForTypeAndDate($movementType): local SQLite returned ${rows.length} rows');
     for (final r in rows) {
       final rd = r.referenceDate;
-      debugPrint('  local row: product=${r.productId} qty=${r.quantityPieces} ref=$rd');
       if (rd != null && !rd.isBefore(dayStart) && rd.isBefore(dayEnd)) {
         totals[r.productId] = (totals[r.productId] ?? 0) + r.quantityPieces;
       }
@@ -100,7 +98,8 @@ class StockMovementRepository extends BaseRepository {
     return totals;
   }
 
-  Future<Map<String, int>> sumInForRange(DateTime from, DateTime to) async {
+  Future<Map<String, int>> _sumForTypeAndRange(
+      String movementType, DateTime from, DateTime to) async {
     final fromStr = '${from.year}-'
         '${from.month.toString().padLeft(2, '0')}-'
         '${from.day.toString().padLeft(2, '0')}';
@@ -114,7 +113,7 @@ class StockMovementRepository extends BaseRepository {
         final data = await Supabase.instance.client
             .from('stock_movements')
             .select('product_id, quantity_pieces, reference_date')
-            .eq('movement_type', 'in');
+            .eq('movement_type', movementType);
         for (final m in data as List) {
           final refStr = m['reference_date'] as String?;
           if (refStr == null) continue;
@@ -127,12 +126,12 @@ class StockMovementRepository extends BaseRepository {
         }
         return totals;
       } catch (e) {
-        debugPrint('sumInForRange Supabase failed: $e');
+        debugPrint('sumForTypeAndRange($movementType) Supabase failed: $e');
       }
     }
 
     final rows = await (db.select(db.stockMovements)
-          ..where((t) => t.movementType.equals('in')))
+          ..where((t) => t.movementType.equals(movementType)))
         .get();
     for (final r in rows) {
       final rd = r.referenceDate;
@@ -142,6 +141,18 @@ class StockMovementRepository extends BaseRepository {
     }
     return totals;
   }
+
+  Future<Map<String, int>> sumInForDate(DateTime date) =>
+      _sumForTypeAndDate('in', date);
+
+  Future<Map<String, int>> sumInForRange(DateTime from, DateTime to) =>
+      _sumForTypeAndRange('in', from, to);
+
+  Future<Map<String, int>> sumOutForDate(DateTime date) =>
+      _sumForTypeAndDate('out', date);
+
+  Future<Map<String, int>> sumOutForRange(DateTime from, DateTime to) =>
+      _sumForTypeAndRange('out', from, to);
 
   Future<List<StockMovement>> getForProduct(String productId) async {
     if (isOnline) {

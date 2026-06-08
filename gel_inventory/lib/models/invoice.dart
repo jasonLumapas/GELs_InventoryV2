@@ -13,6 +13,7 @@ class Invoice {
   final String?   checkReference;
   final double?   checkAmount;
   final DateTime? checkDueDate;
+  final String?   notes; // internal note — never shown on the printed invoice
 
   const Invoice({
     required this.id,
@@ -29,6 +30,7 @@ class Invoice {
     this.checkReference,
     this.checkAmount,
     this.checkDueDate,
+    this.notes,
   });
 
   factory Invoice.fromJson(Map<String, dynamic> j) => Invoice(
@@ -50,6 +52,7 @@ class Invoice {
         checkDueDate:    j['check_due_date'] == null
             ? null
             : DateTime.parse(j['check_due_date'] as String),
+        notes: j['notes'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -67,6 +70,7 @@ class Invoice {
         'check_reference': checkReference,
         'check_amount':    checkAmount,
         'check_due_date':  checkDueDate?.toIso8601String(),
+        'notes': notes,
       };
 
   String get displayNumber =>
@@ -96,6 +100,7 @@ class Invoice {
     Object? checkReference = _sentinel,
     Object? checkAmount    = _sentinel,
     Object? checkDueDate   = _sentinel,
+    Object? notes          = _sentinel,
   }) =>
       Invoice(
         id: id,
@@ -122,6 +127,7 @@ class Invoice {
         checkDueDate: checkDueDate == _sentinel
             ? this.checkDueDate
             : checkDueDate as DateTime?,
+        notes: notes == _sentinel ? this.notes : notes as String?,
       );
 }
 

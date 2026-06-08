@@ -1582,6 +1582,16 @@ class $ProductDiscountsTable extends ProductDiscounts
     requiredDuringInsert: false,
     defaultValue: const Constant('percent'),
   );
+  static const VerificationMeta _freeQuantityPiecesMeta =
+      const VerificationMeta('freeQuantityPieces');
+  @override
+  late final GeneratedColumn<int> freeQuantityPieces = GeneratedColumn<int>(
+    'free_quantity_pieces',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1589,6 +1599,7 @@ class $ProductDiscountsTable extends ProductDiscounts
     minQuantityPieces,
     discountPercent,
     discountType,
+    freeQuantityPieces,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1646,6 +1657,15 @@ class $ProductDiscountsTable extends ProductDiscounts
         ),
       );
     }
+    if (data.containsKey('free_quantity_pieces')) {
+      context.handle(
+        _freeQuantityPiecesMeta,
+        freeQuantityPieces.isAcceptableOrUnknown(
+          data['free_quantity_pieces']!,
+          _freeQuantityPiecesMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1675,6 +1695,10 @@ class $ProductDiscountsTable extends ProductDiscounts
         DriftSqlType.string,
         data['${effectivePrefix}discount_type'],
       )!,
+      freeQuantityPieces: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}free_quantity_pieces'],
+      ),
     );
   }
 
@@ -1690,12 +1714,14 @@ class ProductDiscount extends DataClass implements Insertable<ProductDiscount> {
   final int minQuantityPieces;
   final double discountPercent;
   final String discountType;
+  final int? freeQuantityPieces;
   const ProductDiscount({
     required this.id,
     required this.productId,
     required this.minQuantityPieces,
     required this.discountPercent,
     required this.discountType,
+    this.freeQuantityPieces,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1705,6 +1731,9 @@ class ProductDiscount extends DataClass implements Insertable<ProductDiscount> {
     map['min_quantity_pieces'] = Variable<int>(minQuantityPieces);
     map['discount_percent'] = Variable<double>(discountPercent);
     map['discount_type'] = Variable<String>(discountType);
+    if (!nullToAbsent || freeQuantityPieces != null) {
+      map['free_quantity_pieces'] = Variable<int>(freeQuantityPieces);
+    }
     return map;
   }
 
@@ -1715,6 +1744,9 @@ class ProductDiscount extends DataClass implements Insertable<ProductDiscount> {
       minQuantityPieces: Value(minQuantityPieces),
       discountPercent: Value(discountPercent),
       discountType: Value(discountType),
+      freeQuantityPieces: freeQuantityPieces == null && nullToAbsent
+          ? const Value.absent()
+          : Value(freeQuantityPieces),
     );
   }
 
@@ -1729,6 +1761,7 @@ class ProductDiscount extends DataClass implements Insertable<ProductDiscount> {
       minQuantityPieces: serializer.fromJson<int>(json['minQuantityPieces']),
       discountPercent: serializer.fromJson<double>(json['discountPercent']),
       discountType: serializer.fromJson<String>(json['discountType']),
+      freeQuantityPieces: serializer.fromJson<int?>(json['freeQuantityPieces']),
     );
   }
   @override
@@ -1740,6 +1773,7 @@ class ProductDiscount extends DataClass implements Insertable<ProductDiscount> {
       'minQuantityPieces': serializer.toJson<int>(minQuantityPieces),
       'discountPercent': serializer.toJson<double>(discountPercent),
       'discountType': serializer.toJson<String>(discountType),
+      'freeQuantityPieces': serializer.toJson<int?>(freeQuantityPieces),
     };
   }
 
@@ -1749,12 +1783,16 @@ class ProductDiscount extends DataClass implements Insertable<ProductDiscount> {
     int? minQuantityPieces,
     double? discountPercent,
     String? discountType,
+    Value<int?> freeQuantityPieces = const Value.absent(),
   }) => ProductDiscount(
     id: id ?? this.id,
     productId: productId ?? this.productId,
     minQuantityPieces: minQuantityPieces ?? this.minQuantityPieces,
     discountPercent: discountPercent ?? this.discountPercent,
     discountType: discountType ?? this.discountType,
+    freeQuantityPieces: freeQuantityPieces.present
+        ? freeQuantityPieces.value
+        : this.freeQuantityPieces,
   );
   ProductDiscount copyWithCompanion(ProductDiscountsCompanion data) {
     return ProductDiscount(
@@ -1769,6 +1807,9 @@ class ProductDiscount extends DataClass implements Insertable<ProductDiscount> {
       discountType: data.discountType.present
           ? data.discountType.value
           : this.discountType,
+      freeQuantityPieces: data.freeQuantityPieces.present
+          ? data.freeQuantityPieces.value
+          : this.freeQuantityPieces,
     );
   }
 
@@ -1779,7 +1820,8 @@ class ProductDiscount extends DataClass implements Insertable<ProductDiscount> {
           ..write('productId: $productId, ')
           ..write('minQuantityPieces: $minQuantityPieces, ')
           ..write('discountPercent: $discountPercent, ')
-          ..write('discountType: $discountType')
+          ..write('discountType: $discountType, ')
+          ..write('freeQuantityPieces: $freeQuantityPieces')
           ..write(')'))
         .toString();
   }
@@ -1791,6 +1833,7 @@ class ProductDiscount extends DataClass implements Insertable<ProductDiscount> {
     minQuantityPieces,
     discountPercent,
     discountType,
+    freeQuantityPieces,
   );
   @override
   bool operator ==(Object other) =>
@@ -1800,7 +1843,8 @@ class ProductDiscount extends DataClass implements Insertable<ProductDiscount> {
           other.productId == this.productId &&
           other.minQuantityPieces == this.minQuantityPieces &&
           other.discountPercent == this.discountPercent &&
-          other.discountType == this.discountType);
+          other.discountType == this.discountType &&
+          other.freeQuantityPieces == this.freeQuantityPieces);
 }
 
 class ProductDiscountsCompanion extends UpdateCompanion<ProductDiscount> {
@@ -1809,6 +1853,7 @@ class ProductDiscountsCompanion extends UpdateCompanion<ProductDiscount> {
   final Value<int> minQuantityPieces;
   final Value<double> discountPercent;
   final Value<String> discountType;
+  final Value<int?> freeQuantityPieces;
   final Value<int> rowid;
   const ProductDiscountsCompanion({
     this.id = const Value.absent(),
@@ -1816,6 +1861,7 @@ class ProductDiscountsCompanion extends UpdateCompanion<ProductDiscount> {
     this.minQuantityPieces = const Value.absent(),
     this.discountPercent = const Value.absent(),
     this.discountType = const Value.absent(),
+    this.freeQuantityPieces = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ProductDiscountsCompanion.insert({
@@ -1824,6 +1870,7 @@ class ProductDiscountsCompanion extends UpdateCompanion<ProductDiscount> {
     required int minQuantityPieces,
     required double discountPercent,
     this.discountType = const Value.absent(),
+    this.freeQuantityPieces = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        productId = Value(productId),
@@ -1835,6 +1882,7 @@ class ProductDiscountsCompanion extends UpdateCompanion<ProductDiscount> {
     Expression<int>? minQuantityPieces,
     Expression<double>? discountPercent,
     Expression<String>? discountType,
+    Expression<int>? freeQuantityPieces,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1843,6 +1891,8 @@ class ProductDiscountsCompanion extends UpdateCompanion<ProductDiscount> {
       if (minQuantityPieces != null) 'min_quantity_pieces': minQuantityPieces,
       if (discountPercent != null) 'discount_percent': discountPercent,
       if (discountType != null) 'discount_type': discountType,
+      if (freeQuantityPieces != null)
+        'free_quantity_pieces': freeQuantityPieces,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1853,6 +1903,7 @@ class ProductDiscountsCompanion extends UpdateCompanion<ProductDiscount> {
     Value<int>? minQuantityPieces,
     Value<double>? discountPercent,
     Value<String>? discountType,
+    Value<int?>? freeQuantityPieces,
     Value<int>? rowid,
   }) {
     return ProductDiscountsCompanion(
@@ -1861,6 +1912,7 @@ class ProductDiscountsCompanion extends UpdateCompanion<ProductDiscount> {
       minQuantityPieces: minQuantityPieces ?? this.minQuantityPieces,
       discountPercent: discountPercent ?? this.discountPercent,
       discountType: discountType ?? this.discountType,
+      freeQuantityPieces: freeQuantityPieces ?? this.freeQuantityPieces,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1883,6 +1935,9 @@ class ProductDiscountsCompanion extends UpdateCompanion<ProductDiscount> {
     if (discountType.present) {
       map['discount_type'] = Variable<String>(discountType.value);
     }
+    if (freeQuantityPieces.present) {
+      map['free_quantity_pieces'] = Variable<int>(freeQuantityPieces.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1897,6 +1952,7 @@ class ProductDiscountsCompanion extends UpdateCompanion<ProductDiscount> {
           ..write('minQuantityPieces: $minQuantityPieces, ')
           ..write('discountPercent: $discountPercent, ')
           ..write('discountType: $discountType, ')
+          ..write('freeQuantityPieces: $freeQuantityPieces, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2391,6 +2447,15 @@ class $InvoicesTable extends Invoices with TableInfo<$InvoicesTable, Invoice> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _notesMeta = const VerificationMeta('notes');
+  @override
+  late final GeneratedColumn<String> notes = GeneratedColumn<String>(
+    'notes',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -2407,6 +2472,7 @@ class $InvoicesTable extends Invoices with TableInfo<$InvoicesTable, Invoice> {
     checkReference,
     checkAmount,
     checkDueDate,
+    notes,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2535,6 +2601,12 @@ class $InvoicesTable extends Invoices with TableInfo<$InvoicesTable, Invoice> {
         ),
       );
     }
+    if (data.containsKey('notes')) {
+      context.handle(
+        _notesMeta,
+        notes.isAcceptableOrUnknown(data['notes']!, _notesMeta),
+      );
+    }
     return context;
   }
 
@@ -2600,6 +2672,10 @@ class $InvoicesTable extends Invoices with TableInfo<$InvoicesTable, Invoice> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}check_due_date'],
       ),
+      notes: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}notes'],
+      ),
     );
   }
 
@@ -2624,6 +2700,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
   final String? checkReference;
   final double? checkAmount;
   final DateTime? checkDueDate;
+  final String? notes;
   const Invoice({
     required this.id,
     required this.clientId,
@@ -2639,6 +2716,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     this.checkReference,
     this.checkAmount,
     this.checkDueDate,
+    this.notes,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2668,6 +2746,9 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     }
     if (!nullToAbsent || checkDueDate != null) {
       map['check_due_date'] = Variable<DateTime>(checkDueDate);
+    }
+    if (!nullToAbsent || notes != null) {
+      map['notes'] = Variable<String>(notes);
     }
     return map;
   }
@@ -2700,6 +2781,9 @@ class Invoice extends DataClass implements Insertable<Invoice> {
       checkDueDate: checkDueDate == null && nullToAbsent
           ? const Value.absent()
           : Value(checkDueDate),
+      notes: notes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(notes),
     );
   }
 
@@ -2723,6 +2807,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
       checkReference: serializer.fromJson<String?>(json['checkReference']),
       checkAmount: serializer.fromJson<double?>(json['checkAmount']),
       checkDueDate: serializer.fromJson<DateTime?>(json['checkDueDate']),
+      notes: serializer.fromJson<String?>(json['notes']),
     );
   }
   @override
@@ -2743,6 +2828,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
       'checkReference': serializer.toJson<String?>(checkReference),
       'checkAmount': serializer.toJson<double?>(checkAmount),
       'checkDueDate': serializer.toJson<DateTime?>(checkDueDate),
+      'notes': serializer.toJson<String?>(notes),
     };
   }
 
@@ -2761,6 +2847,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     Value<String?> checkReference = const Value.absent(),
     Value<double?> checkAmount = const Value.absent(),
     Value<DateTime?> checkDueDate = const Value.absent(),
+    Value<String?> notes = const Value.absent(),
   }) => Invoice(
     id: id ?? this.id,
     clientId: clientId ?? this.clientId,
@@ -2782,6 +2869,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
         : this.checkReference,
     checkAmount: checkAmount.present ? checkAmount.value : this.checkAmount,
     checkDueDate: checkDueDate.present ? checkDueDate.value : this.checkDueDate,
+    notes: notes.present ? notes.value : this.notes,
   );
   Invoice copyWithCompanion(InvoicesCompanion data) {
     return Invoice(
@@ -2819,6 +2907,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
       checkDueDate: data.checkDueDate.present
           ? data.checkDueDate.value
           : this.checkDueDate,
+      notes: data.notes.present ? data.notes.value : this.notes,
     );
   }
 
@@ -2838,7 +2927,8 @@ class Invoice extends DataClass implements Insertable<Invoice> {
           ..write('partialDate: $partialDate, ')
           ..write('checkReference: $checkReference, ')
           ..write('checkAmount: $checkAmount, ')
-          ..write('checkDueDate: $checkDueDate')
+          ..write('checkDueDate: $checkDueDate, ')
+          ..write('notes: $notes')
           ..write(')'))
         .toString();
   }
@@ -2859,6 +2949,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     checkReference,
     checkAmount,
     checkDueDate,
+    notes,
   );
   @override
   bool operator ==(Object other) =>
@@ -2877,7 +2968,8 @@ class Invoice extends DataClass implements Insertable<Invoice> {
           other.partialDate == this.partialDate &&
           other.checkReference == this.checkReference &&
           other.checkAmount == this.checkAmount &&
-          other.checkDueDate == this.checkDueDate);
+          other.checkDueDate == this.checkDueDate &&
+          other.notes == this.notes);
 }
 
 class InvoicesCompanion extends UpdateCompanion<Invoice> {
@@ -2895,6 +2987,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
   final Value<String?> checkReference;
   final Value<double?> checkAmount;
   final Value<DateTime?> checkDueDate;
+  final Value<String?> notes;
   final Value<int> rowid;
   const InvoicesCompanion({
     this.id = const Value.absent(),
@@ -2911,6 +3004,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     this.checkReference = const Value.absent(),
     this.checkAmount = const Value.absent(),
     this.checkDueDate = const Value.absent(),
+    this.notes = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   InvoicesCompanion.insert({
@@ -2928,6 +3022,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     this.checkReference = const Value.absent(),
     this.checkAmount = const Value.absent(),
     this.checkDueDate = const Value.absent(),
+    this.notes = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        clientId = Value(clientId);
@@ -2946,6 +3041,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     Expression<String>? checkReference,
     Expression<double>? checkAmount,
     Expression<DateTime>? checkDueDate,
+    Expression<String>? notes,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -2963,6 +3059,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
       if (checkReference != null) 'check_reference': checkReference,
       if (checkAmount != null) 'check_amount': checkAmount,
       if (checkDueDate != null) 'check_due_date': checkDueDate,
+      if (notes != null) 'notes': notes,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -2982,6 +3079,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     Value<String?>? checkReference,
     Value<double?>? checkAmount,
     Value<DateTime?>? checkDueDate,
+    Value<String?>? notes,
     Value<int>? rowid,
   }) {
     return InvoicesCompanion(
@@ -2999,6 +3097,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
       checkReference: checkReference ?? this.checkReference,
       checkAmount: checkAmount ?? this.checkAmount,
       checkDueDate: checkDueDate ?? this.checkDueDate,
+      notes: notes ?? this.notes,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -3048,6 +3147,9 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     if (checkDueDate.present) {
       map['check_due_date'] = Variable<DateTime>(checkDueDate.value);
     }
+    if (notes.present) {
+      map['notes'] = Variable<String>(notes.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -3071,6 +3173,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
           ..write('checkReference: $checkReference, ')
           ..write('checkAmount: $checkAmount, ')
           ..write('checkDueDate: $checkDueDate, ')
+          ..write('notes: $notes, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -8547,6 +8650,7 @@ typedef $$ProductDiscountsTableCreateCompanionBuilder =
       required int minQuantityPieces,
       required double discountPercent,
       Value<String> discountType,
+      Value<int?> freeQuantityPieces,
       Value<int> rowid,
     });
 typedef $$ProductDiscountsTableUpdateCompanionBuilder =
@@ -8556,6 +8660,7 @@ typedef $$ProductDiscountsTableUpdateCompanionBuilder =
       Value<int> minQuantityPieces,
       Value<double> discountPercent,
       Value<String> discountType,
+      Value<int?> freeQuantityPieces,
       Value<int> rowid,
     });
 
@@ -8621,6 +8726,11 @@ class $$ProductDiscountsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<int> get freeQuantityPieces => $composableBuilder(
+    column: $table.freeQuantityPieces,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$ProductsTableFilterComposer get productId {
     final $$ProductsTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -8674,6 +8784,11 @@ class $$ProductDiscountsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get freeQuantityPieces => $composableBuilder(
+    column: $table.freeQuantityPieces,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$ProductsTableOrderingComposer get productId {
     final $$ProductsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -8722,6 +8837,11 @@ class $$ProductDiscountsTableAnnotationComposer
 
   GeneratedColumn<String> get discountType => $composableBuilder(
     column: $table.discountType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get freeQuantityPieces => $composableBuilder(
+    column: $table.freeQuantityPieces,
     builder: (column) => column,
   );
 
@@ -8784,6 +8904,7 @@ class $$ProductDiscountsTableTableManager
                 Value<int> minQuantityPieces = const Value.absent(),
                 Value<double> discountPercent = const Value.absent(),
                 Value<String> discountType = const Value.absent(),
+                Value<int?> freeQuantityPieces = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProductDiscountsCompanion(
                 id: id,
@@ -8791,6 +8912,7 @@ class $$ProductDiscountsTableTableManager
                 minQuantityPieces: minQuantityPieces,
                 discountPercent: discountPercent,
                 discountType: discountType,
+                freeQuantityPieces: freeQuantityPieces,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -8800,6 +8922,7 @@ class $$ProductDiscountsTableTableManager
                 required int minQuantityPieces,
                 required double discountPercent,
                 Value<String> discountType = const Value.absent(),
+                Value<int?> freeQuantityPieces = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProductDiscountsCompanion.insert(
                 id: id,
@@ -8807,6 +8930,7 @@ class $$ProductDiscountsTableTableManager
                 minQuantityPieces: minQuantityPieces,
                 discountPercent: discountPercent,
                 discountType: discountType,
+                freeQuantityPieces: freeQuantityPieces,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -9198,6 +9322,7 @@ typedef $$InvoicesTableCreateCompanionBuilder =
       Value<String?> checkReference,
       Value<double?> checkAmount,
       Value<DateTime?> checkDueDate,
+      Value<String?> notes,
       Value<int> rowid,
     });
 typedef $$InvoicesTableUpdateCompanionBuilder =
@@ -9216,6 +9341,7 @@ typedef $$InvoicesTableUpdateCompanionBuilder =
       Value<String?> checkReference,
       Value<double?> checkAmount,
       Value<DateTime?> checkDueDate,
+      Value<String?> notes,
       Value<int> rowid,
     });
 
@@ -9354,6 +9480,11 @@ class $$InvoicesTableFilterComposer
 
   ColumnFilters<DateTime> get checkDueDate => $composableBuilder(
     column: $table.checkDueDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get notes => $composableBuilder(
+    column: $table.notes,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9505,6 +9636,11 @@ class $$InvoicesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$ClientsTableOrderingComposer get clientId {
     final $$ClientsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -9596,6 +9732,9 @@ class $$InvoicesTableAnnotationComposer
     column: $table.checkDueDate,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get notes =>
+      $composableBuilder(column: $table.notes, builder: (column) => column);
 
   $$ClientsTableAnnotationComposer get clientId {
     final $$ClientsTableAnnotationComposer composer = $composerBuilder(
@@ -9717,6 +9856,7 @@ class $$InvoicesTableTableManager
                 Value<String?> checkReference = const Value.absent(),
                 Value<double?> checkAmount = const Value.absent(),
                 Value<DateTime?> checkDueDate = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => InvoicesCompanion(
                 id: id,
@@ -9733,6 +9873,7 @@ class $$InvoicesTableTableManager
                 checkReference: checkReference,
                 checkAmount: checkAmount,
                 checkDueDate: checkDueDate,
+                notes: notes,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -9751,6 +9892,7 @@ class $$InvoicesTableTableManager
                 Value<String?> checkReference = const Value.absent(),
                 Value<double?> checkAmount = const Value.absent(),
                 Value<DateTime?> checkDueDate = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => InvoicesCompanion.insert(
                 id: id,
@@ -9767,6 +9909,7 @@ class $$InvoicesTableTableManager
                 checkReference: checkReference,
                 checkAmount: checkAmount,
                 checkDueDate: checkDueDate,
+                notes: notes,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

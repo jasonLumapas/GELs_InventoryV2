@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/services/app_settings_service.dart';
 import '../../widgets/common/app_scaffold.dart';
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final showOffSiteLoading =
+        ref.watch(showOffSiteLoadingProvider).valueOrNull ?? true;
+    final showImportCsv =
+        ref.watch(showImportCsvProvider).valueOrNull ?? true;
+
     return AppScaffold(
       title: "GEL's Inventory",
       body: GridView.count(
@@ -61,25 +68,27 @@ class DashboardScreen extends StatelessWidget {
             label: 'Reports',
             route: '/reports',
           ),
-          _NavCard(
-            icon: Icons.local_shipping,
-            label: 'Off-site Loading',
-            route: '/van-selling',
-          ),
+          if (showOffSiteLoading)
+            _NavCard(
+              icon: Icons.local_shipping,
+              label: 'Off-site Loading',
+              route: '/van-selling',
+            ),
           _NavCard(
             icon: Icons.star_rate,
             label: 'Incentives',
             route: '/incentives',
           ),
+          if (showImportCsv)
+            _NavCard(
+              icon: Icons.upload_file,
+              label: 'Import CSV',
+              route: '/import-csv',
+            ),
           _NavCard(
-            icon: Icons.upload_file,
-            label: 'Import CSV',
-            route: '/import-csv',
-          ),
-          _NavCard(
-            icon: Icons.print,
-            label: 'Printer Settings',
-            route: '/printer-settings',
+            icon: Icons.settings,
+            label: 'Settings',
+            route: '/settings',
           ),
         ],
       ),

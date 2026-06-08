@@ -243,6 +243,8 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
     final dateFmt = DateFormat('MMM dd, yyyy');
     final filtered  = _filtered;
     final totalOutstanding = filtered.fold(0.0, (s, i) => s + i.outstanding);
+    final totalPaidAccounts =
+        filtered.fold(0.0, (s, i) => s + i.invoice.totalAmount);
 
     return AppScaffold(
       title: 'Remittance',
@@ -363,7 +365,15 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
                                             fontWeight: FontWeight.w600))),
                                 // Check balance shown in subtitle;
                                 // other types show amount in title.
-                                if (_filterType != 'paid_accounts' && !isCheck)
+                                if (_filterType == 'paid_accounts')
+                                  Text(
+                                    formatCurrency(inv.totalAmount),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green.shade700,
+                                    ),
+                                  )
+                                else if (!isCheck)
                                   Text(
                                     formatCurrency(item.outstanding),
                                     style: TextStyle(
@@ -403,7 +413,15 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
                 children: [
                   Text('${filtered.length} invoice(s)',
                       style: const TextStyle(color: Colors.grey)),
-                  if (_filterType != 'paid_accounts')
+                  if (_filterType == 'paid_accounts')
+                    Text(
+                      'Grand Total: ${formatCurrency(totalPaidAccounts)}',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: Colors.green.shade700),
+                    )
+                  else
                     Text(
                       '${_filterType == 'cash' ? 'Total Cash' : 'Total Outstanding'}: ${formatCurrency(totalOutstanding)}',
                       style: TextStyle(

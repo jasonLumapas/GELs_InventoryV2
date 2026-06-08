@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/services/app_settings_service.dart';
 import '../../core/services/connectivity_service.dart';
 
 class AppScaffold extends ConsumerWidget {
@@ -43,9 +44,14 @@ class AppScaffold extends ConsumerWidget {
   }
 }
 
-class _AppDrawer extends StatelessWidget {
+class _AppDrawer extends ConsumerWidget {
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final showOffSiteLoading =
+        ref.watch(showOffSiteLoadingProvider).valueOrNull ?? true;
+    final showImportCsv =
+        ref.watch(showImportCsvProvider).valueOrNull ?? true;
+
     return Drawer(
       child: ListView(
         children: [
@@ -65,10 +71,12 @@ class _AppDrawer extends StatelessWidget {
           _tile(context, Icons.account_balance_wallet, 'Remittance', '/collectibles'),
           _tile(context, Icons.remove_shopping_cart, 'Returns/Bad Orders', '/bad-orders'),
           _tile(context, Icons.bar_chart, 'Reports', '/reports'),
-          _tile(context, Icons.local_shipping, 'Off-site Loading', '/van-selling'),
+          if (showOffSiteLoading)
+            _tile(context, Icons.local_shipping, 'Off-site Loading', '/van-selling'),
           _tile(context, Icons.star_rate, 'Incentives', '/incentives'),
-          _tile(context, Icons.star_rate, 'Import CSV', '/import-csv'),
-          
+          if (showImportCsv)
+            _tile(context, Icons.star_rate, 'Import CSV', '/import-csv'),
+          _tile(context, Icons.settings, 'Settings', '/settings'),
         ],
       ),
     );

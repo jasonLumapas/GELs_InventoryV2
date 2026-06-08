@@ -322,24 +322,22 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 await ref
                     .read(inventoryRepositoryProvider)
                     .adjust(productId: product.id, deltaPieces: delta);
-                if (isAdd) {
-                  await ref
-                      .read(stockMovementRepositoryProvider)
-                      .save(StockMovement(
-                        id: const Uuid().v4(),
-                        productId: product.id,
-                        movementType: 'in',
-                        quantityPieces: pieces,
-                        referenceDate: refDate,
-                        invoiceNumber: invCtrl.text.trim().isEmpty
-                            ? null
-                            : invCtrl.text.trim(),
-                        comments: commentCtrl.text.trim().isEmpty
-                            ? null
-                            : commentCtrl.text.trim(),
-                        createdAt: DateTime.now(),
-                      ));
-                }
+                await ref
+                    .read(stockMovementRepositoryProvider)
+                    .save(StockMovement(
+                      id: const Uuid().v4(),
+                      productId: product.id,
+                      movementType: isAdd ? 'in' : 'out',
+                      quantityPieces: pieces,
+                      referenceDate: refDate,
+                      invoiceNumber: invCtrl.text.trim().isEmpty
+                          ? null
+                          : invCtrl.text.trim(),
+                      comments: commentCtrl.text.trim().isEmpty
+                          ? null
+                          : commentCtrl.text.trim(),
+                      createdAt: DateTime.now(),
+                    ));
                 if (ctx.mounted) Navigator.pop(ctx);
                 ref.invalidate(inventoryListProvider);
               },

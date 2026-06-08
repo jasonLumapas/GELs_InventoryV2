@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../../core/services/app_settings_service.dart';
 import '../../models/product.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_repository.dart';
@@ -9,6 +10,7 @@ import '../../repositories/stock_movement_repository.dart';
 import '../../repositories/supplier_repository.dart';
 import '../../repositories/van_stock_repository.dart';
 import '../../utils/currency_format.dart';
+import '../../utils/pdf_generator.dart';
 import '../../widgets/common/app_scaffold.dart';
 
 class _SummaryRow {
@@ -269,7 +271,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
                           const Divider(height: 24),
                           _summaryFooterRow('Grand Total', filteredTotal,
                               bold: true),
-                          if (_selectedSupplierId == null) ...[
+                          if (_selectedSupplierId == null &&
+                              (ref.watch(showCapitalProfitProvider).valueOrNull ??
+                                  true)) ...[
                             const SizedBox(height: 6),
                             _summaryFooterRow('Capital', _capital),
                             const SizedBox(height: 6),
@@ -335,6 +339,7 @@ class _InventoryReportTab extends ConsumerStatefulWidget {
 class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
   DateTime _selectedDate = DateTime.now();
   String? _selectedSupplierId; // null = all suppliers
+  bool? _endingSortAscending; // null = unsorted (original product order)
 
   late Future<_InvData> _future;
 
@@ -361,6 +366,43 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
       lastDate: DateTime(2100),
     );
     if (picked != null) _setDate(picked);
+  }
+
+  Future<void> _print(_InvData data) async {
+    String? supplierName;
+    if (_selectedSupplierId != null) {
+      final suppliers = ref.read(suppliersListProvider).valueOrNull ?? [];
+      supplierName = suppliers
+          .where((s) => s.id == _selectedSupplierId)
+          .map((s) => s.name)
+          .firstOrNull;
+    }
+
+    var products = data.products;
+    if (_endingSortAscending != null) {
+      products = List.of(data.products)
+        ..sort((a, b) {
+          final cmp = (data.ending[a.id] ?? 0).compareTo(data.ending[b.id] ?? 0);
+          return _endingSortAscending! ? cmp : -cmp;
+        });
+    }
+
+    await printInventoryReport(
+      date: _selectedDate,
+      supplierName: supplierName,
+      totalEndingValue: data.totalEndingValue,
+      totalStockInValue: data.totalStockInValue,
+      rows: products
+          .map((p) => InventoryReportRow(
+                productName: p.name,
+                piecesPerBox: p.piecesPerBox,
+                beginning: data.beginning[p.id] ?? 0,
+                stockIn: data.stockIn[p.id] ?? 0,
+                stockOut: data.stockOut[p.id] ?? 0,
+                ending: data.ending[p.id] ?? 0,
+              ))
+          .toList(),
+    );
   }
 
   @override
@@ -410,6 +452,15 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                     visualDensity: VisualDensity.compact),
                 child: const Text('Today'),
               ),
+              IconButton(
+                icon: const Icon(Icons.print),
+                tooltip: 'Print inventory report',
+                visualDensity: VisualDensity.compact,
+                onPressed: () async {
+                  final data = await _future;
+                  if (mounted) await _print(data);
+                },
+              ),
             ],
           ),
         ),
@@ -458,6 +509,15 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                 return Center(child: Text('Error: ${snapshot.error}'));
               }
               final data = snapshot.data!;
+              var sortedProducts = data.products;
+              if (_endingSortAscending != null) {
+                sortedProducts = List.of(data.products)
+                  ..sort((a, b) {
+                    final cmp = (data.ending[a.id] ?? 0)
+                        .compareTo(data.ending[b.id] ?? 0);
+                    return _endingSortAscending! ? cmp : -cmp;
+                  });
+              }
               const colWidths = {
                 0: FlexColumnWidth(4),
                 1: FlexColumnWidth(1.5),
@@ -539,12 +599,32 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                               ),
                               Expanded(
                                 flex: 3,
-                                child: Container(
-                                  color: _endDark,
-                                  padding: const EdgeInsets.symmetric(vertical: 8),
-                                  child: const Text('Ending',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(fontWeight: FontWeight.bold)),
+                                child: InkWell(
+                                  onTap: () => setState(() {
+                                    _endingSortAscending = _endingSortAscending == null
+                                        ? true
+                                        : (_endingSortAscending! ? false : null);
+                                  }),
+                                  child: Container(
+                                    color: _endDark,
+                                    padding: const EdgeInsets.symmetric(vertical: 8),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        const Text('Ending',
+                                            style: TextStyle(fontWeight: FontWeight.bold)),
+                                        const SizedBox(width: 4),
+                                        Icon(
+                                          _endingSortAscending == null
+                                              ? Icons.unfold_more
+                                              : (_endingSortAscending!
+                                                  ? Icons.arrow_upward
+                                                  : Icons.arrow_downward),
+                                          size: 16,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
                               ),
                             ],
@@ -582,7 +662,7 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                             border: dataBorder,
                             columnWidths: colWidths,
                             children: [
-                              ...data.products.map((p) {
+                              ...sortedProducts.map((p) {
                                 final beg = data.beginning[p.id] ?? 0;
                                 final inn = data.stockIn[p.id]  ?? 0;
                                 final out = data.stockOut[p.id] ?? 0;
@@ -722,22 +802,26 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
       return r;
     }
 
-    // Pieces sold + van-out ON the selected date → Stock Out
+    // Pieces sold + van-out + manually-removed stock ON the selected date → Stock Out
     final invoiceOut    = await _sumSold(ref, dayStart, dayEnd);
     final vanOutOnDate  = await sumVan('out', dayStart, dayEnd);
-    final onDate        = merge(invoiceOut, vanOutOnDate);
+    final movOutOnDate  = await ref.read(stockMovementRepositoryProvider).sumOutForDate(date);
+    final onDate        = merge(merge(invoiceOut, vanOutOnDate), movOutOnDate);
 
-    // Pieces sold + van-out AFTER the selected date
+    // Pieces sold + van-out + manually-removed stock AFTER the selected date
     final Map<String, int> invoiceOutAfter;
     final Map<String, int> vanOutAfter;
+    final Map<String, int> movOutAfter;
     if (dayEnd.isBefore(nowEnd)) {
       invoiceOutAfter = await _sumSold(ref, dayEnd, nowEnd);
       vanOutAfter     = await sumVan('out', dayEnd, nowEnd);
+      movOutAfter     = await ref.read(stockMovementRepositoryProvider).sumOutForRange(dayEnd, nowEnd);
     } else {
       invoiceOutAfter = {};
       vanOutAfter     = {};
+      movOutAfter     = {};
     }
-    final afterDate = merge(invoiceOutAfter, vanOutAfter);
+    final afterDate = merge(merge(invoiceOutAfter, vanOutAfter), movOutAfter);
 
     // Stock-in (movements) + van-in ON the selected date → Stock In
     final movIn        = await ref.read(stockMovementRepositoryProvider).sumInForDate(date);

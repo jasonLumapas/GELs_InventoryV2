@@ -343,7 +343,28 @@ class LocalDatabase extends _$LocalDatabase {
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     final dbFolder = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dbFolder.path, 'gel_inventory.sqlite'));
+    final file = File(p.join(dbFolder.path, await _resolveDbName()));
     return NativeDatabase(file);
   });
+}
+
+// Lets multiple copies of the app run side by side, each with its own local
+// database. Checked in order:
+//   1. `db_name.txt` next to the executable (one line: the sqlite filename)
+//   2. GEL_INVENTORY_DB_NAME environment variable
+//   3. default 'gel_inventory.sqlite'
+Future<String> _resolveDbName() async {
+  try {
+    final exeDir = File(Platform.resolvedExecutable).parent;
+    final configFile = File(p.join(exeDir.path, 'db_name.txt'));
+    if (await configFile.exists()) {
+      final name = (await configFile.readAsString()).trim();
+      if (name.isNotEmpty) return name;
+    }
+  } catch (_) {}
+
+  final envName = Platform.environment['GEL_INVENTORY_DB_NAME'];
+  if (envName != null && envName.trim().isNotEmpty) return envName.trim();
+
+  return 'gel_inventory.sqlite';
 }

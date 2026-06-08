@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/services/connectivity_service.dart';
+import '../../core/services/instance_config_service.dart';
 
 class AppScaffold extends ConsumerWidget {
   final String title;
@@ -22,10 +23,26 @@ class AppScaffold extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final onlineAsync = ref.watch(isOnlineProvider);
     final isOnline = onlineAsync.valueOrNull ?? true;
+    final headerTitle = ref.watch(headerTitleProvider).valueOrNull;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(title),
+        title: headerTitle == null
+            ? Text(title)
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(title),
+                  Text(
+                    headerTitle,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.normal,
+                    ),
+                  ),
+                ],
+              ),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 8),

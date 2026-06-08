@@ -47,6 +47,59 @@ class StockMovementRepository extends BaseRepository {
         ));
   }
 
+  Future<void> deleteById(String id) async {
+    if (isOnline) {
+      try {
+        await Supabase.instance.client
+            .from('stock_movements')
+            .delete()
+            .eq('id', id);
+      } catch (e) {
+        debugPrint('stock_movements Supabase delete failed: $e. Falling back to local.');
+      }
+    } else {
+      await syncService.enqueue(
+        tableName: 'stock_movements',
+        recordId: id,
+        operation: 'delete',
+        payload: {'id': id},
+      );
+    }
+    await trySaveLocal(() => (db.delete(db.stockMovements)
+          ..where((t) => t.id.equals(id)))
+        .go());
+  }
+
+  Future<void> update(StockMovement movement) async {
+    final payload = movement.toJson();
+    if (isOnline) {
+      try {
+        await Supabase.instance.client
+            .from('stock_movements')
+            .update(payload)
+            .eq('id', movement.id);
+      } catch (e) {
+        debugPrint('stock_movements Supabase update failed: $e. Falling back to local save.');
+      }
+    } else {
+      await syncService.enqueue(
+        tableName: 'stock_movements',
+        recordId: movement.id,
+        operation: 'update',
+        payload: payload,
+      );
+    }
+    await trySaveLocal(() => (db.update(db.stockMovements)
+          ..where((t) => t.id.equals(movement.id)))
+        .write(StockMovementsCompanion(
+          movementType: drift.Value(movement.movementType),
+          quantityPieces: drift.Value(movement.quantityPieces),
+          referenceDate: drift.Value(movement.referenceDate),
+          invoiceNumber: drift.Value(movement.invoiceNumber),
+          comments: drift.Value(movement.comments),
+        )));
+  }
+
   Future<Map<String, int>> _sumForTypeAndDate(
       String movementType, DateTime date) async {
     final dayStr = '${date.year}-'

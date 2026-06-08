@@ -279,10 +279,26 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                           return ListTile(
                             leading: const Icon(Icons.receipt_long),
                             title: Text(inv.displayNumber),
-                            subtitle: Text(
-                              '${client?.name ?? inv.clientId}'
-                              '  •  ${dateFmt.format(inv.invoiceDate)}'
-                              '  •  ${inv.status.toUpperCase()}',
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '${client?.name ?? inv.clientId}'
+                                  '  •  ${dateFmt.format(inv.invoiceDate)}'
+                                  '  •  ${inv.status.toUpperCase()}',
+                                ),
+                                if (inv.notes != null && inv.notes!.isNotEmpty)
+                                  Text(
+                                    inv.notes!,
+                                    style: TextStyle(
+                                      color: Colors.grey.shade600,
+                                      fontSize: 12,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                              ],
                             ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,

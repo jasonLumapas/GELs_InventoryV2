@@ -28,6 +28,10 @@ Future<T?> showSearchPicker<T>({
   bool Function(T)? isDisabledOf,
   void Function(T)? onSelected, // multi-pick mode when provided
   List<SearchFilter<T>>? filters,
+  // Called when the user taps the add button; receives the current item list
+  // for duplicate checking. Return the new item to insert it into the list,
+  // or null to cancel.
+  Future<T?> Function(List<T> existing)? onAdd,
 }) async {
   return showDialog<T>(
     context: context,
@@ -42,6 +46,7 @@ Future<T?> showSearchPicker<T>({
       isDisabledOf: isDisabledOf,
       onSelected: onSelected,
       filters: filters,
+      onAdd: onAdd,
     ),
   );
 }
@@ -57,6 +62,7 @@ class _SearchPickerDialog<T> extends StatefulWidget {
   final bool Function(T)? isDisabledOf;
   final void Function(T)? onSelected;
   final List<SearchFilter<T>>? filters;
+  final Future<T?> Function(List<T> existing)? onAdd;
 
   const _SearchPickerDialog({
     required this.title,
@@ -69,6 +75,7 @@ class _SearchPickerDialog<T> extends StatefulWidget {
     this.isDisabledOf,
     this.onSelected,
     this.filters,
+    this.onAdd,
   });
 
   @override
@@ -128,9 +135,29 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Text(widget.title,
-                  style: Theme.of(context).textTheme.titleMedium),
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(widget.title,
+                        style: Theme.of(context).textTheme.titleMedium),
+                  ),
+                  if (widget.onAdd != null)
+                    IconButton(
+                      icon: const Icon(Icons.add),
+                      tooltip: 'Add new',
+                      onPressed: () async {
+                        final newItem = await widget.onAdd!(_remaining);
+                        if (newItem != null) {
+                          setState(() {
+                            _remaining.insert(0, newItem);
+                            _onSearch();
+                          });
+                        }
+                      },
+                    ),
+                ],
+              ),
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),

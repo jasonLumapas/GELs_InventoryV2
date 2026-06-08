@@ -152,8 +152,77 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       items: _clients,
       labelOf: (c) => c.name,
       subtitleOf: (c) => c.address,
+      onAdd: (existing) => _promptAddClient(existing),
     );
     if (picked != null) setState(() => _selectedClient = picked);
+  }
+
+  Future<Client?> _promptAddClient(List<Client> existing) async {
+    final nameCtrl    = TextEditingController();
+    final addressCtrl = TextEditingController();
+    final formKey     = GlobalKey<FormState>();
+
+    return showDialog<Client>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add Client / Store'),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(
+                    labelText: 'Name *', isDense: true),
+                autofocus: true,
+                validator: (v) {
+                  if (v == null || v.trim().isEmpty) return 'Name is required';
+                  final dup = existing.any((c) =>
+                      c.name.trim().toLowerCase() ==
+                      v.trim().toLowerCase());
+                  if (dup) return 'A client with this name already exists';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: addressCtrl,
+                decoration: const InputDecoration(
+                    labelText: 'Address', isDense: true),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () async {
+              if (!formKey.currentState!.validate()) return;
+              final newClient = Client(
+                id: const Uuid().v4(),
+                name: nameCtrl.text.trim(),
+                address: addressCtrl.text.trim().isEmpty
+                    ? null
+                    : addressCtrl.text.trim(),
+                createdAt: DateTime.now(),
+              );
+              await ref
+                  .read(clientRepositoryProvider)
+                  .upsert(newClient);
+              // Keep local _clients list in sync and refresh all watchers
+              // (client list page, invoice list name lookup, etc.).
+              setState(() => _clients.insert(0, newClient));
+              ref.invalidate(clientsListProvider);
+              if (ctx.mounted) Navigator.pop(ctx, newClient);
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _pickProduct() async {
@@ -202,6 +271,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
         return TextStyle(
             color: qty > 0 ? Colors.green.shade700 : Colors.red);
       },
+      isDisabledOf: (p) => _effectiveAvailable(p.id) <= 0,
       onSelected: (p) => _addProduct(p),
       filters: supplierFilters,
     );
@@ -770,6 +840,7 @@ class _LineItemTileState extends State<_LineItemTile> {
               onSelectionChanged: (s) {
                 setState(() => item.unitType = s.first);
                 widget.onChanged();
+                widget.onQuantityEntered(item);
               },
             ),
             const SizedBox(width: 8),

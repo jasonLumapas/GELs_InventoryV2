@@ -14,10 +14,13 @@ class ClientListScreen extends ConsumerWidget {
 
     return AppScaffold(
       title: 'Clients / Stores',
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => context.go('/clients/new'),
-        child: const Icon(Icons.add),
-      ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.add),
+          tooltip: 'Add client',
+          onPressed: () => context.go('/clients/new'),
+        ),
+      ],
       body: clientsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),

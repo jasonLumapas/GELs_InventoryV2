@@ -340,8 +340,16 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
   DateTime _selectedDate = DateTime.now();
   String? _selectedSupplierId; // null = all suppliers
   bool? _endingSortAscending; // null = unsorted (original product order)
+  final _searchCtrl = TextEditingController();
+  String _searchQuery = '';
 
   late Future<_InvData> _future;
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -385,6 +393,10 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
           final cmp = (data.ending[a.id] ?? 0).compareTo(data.ending[b.id] ?? 0);
           return _endingSortAscending! ? cmp : -cmp;
         });
+    }
+    if (_searchQuery.isNotEmpty) {
+      final q = _searchQuery.toLowerCase();
+      products = products.where((p) => p.name.toLowerCase().contains(q)).toList();
     }
 
     await printInventoryReport(
@@ -495,6 +507,29 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                 orElse: () => const SizedBox.shrink(),
               ),
         ),
+        // ── Product search filter ─────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+          child: TextField(
+            controller: _searchCtrl,
+            decoration: InputDecoration(
+              hintText: 'Search product…',
+              prefixIcon: const Icon(Icons.search, size: 20),
+              isDense: true,
+              border: const OutlineInputBorder(),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, size: 18),
+                      onPressed: () => setState(() {
+                        _searchCtrl.clear();
+                        _searchQuery = '';
+                      }),
+                    )
+                  : null,
+            ),
+            onChanged: (v) => setState(() => _searchQuery = v.trim()),
+          ),
+        ),
         const Divider(height: 1),
 
         // ── Table ─────────────────────────────────────────────────────
@@ -517,6 +552,12 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                         .compareTo(data.ending[b.id] ?? 0);
                     return _endingSortAscending! ? cmp : -cmp;
                   });
+              }
+              if (_searchQuery.isNotEmpty) {
+                final q = _searchQuery.toLowerCase();
+                sortedProducts = sortedProducts
+                    .where((p) => p.name.toLowerCase().contains(q))
+                    .toList();
               }
               const colWidths = {
                 0: FlexColumnWidth(4),

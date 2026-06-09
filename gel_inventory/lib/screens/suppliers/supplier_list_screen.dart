@@ -14,10 +14,13 @@ class SupplierListScreen extends ConsumerWidget {
 
     return AppScaffold(
       title: 'Suppliers',
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => context.go('/suppliers/new'),
-        child: const Icon(Icons.add),
-      ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.add),
+          tooltip: 'Add supplier',
+          onPressed: () => context.go('/suppliers/new'),
+        ),
+      ],
       body: suppliersAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),

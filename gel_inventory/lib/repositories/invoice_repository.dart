@@ -62,7 +62,7 @@ class InvoiceRepository extends BaseRepository {
       if (endDate != null) {
         q = q.lt('invoice_date', endDate.toIso8601String());
       }
-      final data = await q.order('invoice_date', ascending: false);
+      final data = await q.order('invoice_number', ascending: true);
       return (data as List).map((j) => Invoice.fromJson(j)).toList();
     }
     final rows = await (db.select(db.invoices)
@@ -76,7 +76,7 @@ class InvoiceRepository extends BaseRepository {
             }
             return expr;
           })
-          ..orderBy([(t) => drift.OrderingTerm.desc(t.invoiceDate)]))
+          ..orderBy([(t) => drift.OrderingTerm.asc(t.invoiceNumber)]))
         .get();
     return rows
         .map((r) => Invoice(

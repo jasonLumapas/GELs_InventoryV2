@@ -33,10 +33,13 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
 
     return AppScaffold(
       title: 'Products',
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => context.go('/products/new'),
-        child: const Icon(Icons.add),
-      ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.add),
+          tooltip: 'Add product',
+          onPressed: () => context.go('/products/new'),
+        ),
+      ],
       body: Column(
         children: [
           // ── Search ──────────────────────────────────────────────────

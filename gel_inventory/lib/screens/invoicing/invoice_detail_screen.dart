@@ -123,6 +123,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   final Map<String, ProductPrice?> _priceCache = {};
   final Map<String, InventoryItem?> _inventoryCache = {};
   final Map<String, ProductDiscount?> _discountCache = {};
+  DateTime _invoiceDate = DateTime.now();
   String _paymentType = 'cash';
   final _partialAmountCtrl = TextEditingController();
   final _checkRefCtrl      = TextEditingController();
@@ -173,6 +174,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     _productsById = {for (final p in _products) p.id: p};
     _selectedClient =
         _clients.where((c) => c.id == _invoice!.clientId).firstOrNull;
+    _invoiceDate = _invoice!.invoiceDate;
     _paymentType = _invoice!.paymentType;
     if (_invoice!.partialAmount != null) {
       _partialAmountCtrl.text =
@@ -376,6 +378,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     final partial = _paymentType == 'partial';
     final updatedInvoice = _invoice!.copyWith(
       clientId: _selectedClient!.id,
+      invoiceDate: _invoiceDate,
       totalAmount: _total,
       paymentType: _paymentType,
       partialAmount: partial
@@ -506,9 +509,42 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(width: 8),
-                      Text(dateFmt.format(_invoice!.invoiceDate),
-                          style: const TextStyle(
-                              color: Colors.grey, fontSize: 12)),
+                      if (!isCancelled)
+                        InkWell(
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: _invoiceDate,
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime(2100),
+                            );
+                            if (picked != null) {
+                              setState(() => _invoiceDate = DateTime(
+                                    picked.year,
+                                    picked.month,
+                                    picked.day,
+                                    _invoiceDate.hour,
+                                    _invoiceDate.minute,
+                                    _invoiceDate.second,
+                                  ));
+                            }
+                          },
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(dateFmt.format(_invoiceDate),
+                                  style: const TextStyle(
+                                      color: Colors.grey, fontSize: 12)),
+                              const SizedBox(width: 4),
+                              const Icon(Icons.edit_calendar,
+                                  size: 14, color: Colors.grey),
+                            ],
+                          ),
+                        )
+                      else
+                        Text(dateFmt.format(_invoiceDate),
+                            style: const TextStyle(
+                                color: Colors.grey, fontSize: 12)),
                       const Spacer(),
                       Chip(
                         label: Text(_invoice!.invoiceType == 'delivery'

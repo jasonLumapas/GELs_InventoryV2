@@ -53,6 +53,14 @@ class InvoiceListScreen extends ConsumerStatefulWidget {
 class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
   _FilterType _filter = _FilterType.day;
   DateTime _anchor = DateTime.now().add(const Duration(days: 1));
+  final _searchCtrl = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   // ── Date range helpers ───────────────────────────────────────────────────
 
@@ -246,6 +254,30 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
             ),
           ),
 
+          // ── Search bar ────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+            child: TextField(
+              controller: _searchCtrl,
+              decoration: InputDecoration(
+                hintText: 'Search by store, notes or date…',
+                prefixIcon: const Icon(Icons.search, size: 20),
+                isDense: true,
+                border: const OutlineInputBorder(),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () => setState(() {
+                          _searchCtrl.clear();
+                          _searchQuery = '';
+                        }),
+                      )
+                    : null,
+              ),
+              onChanged: (v) => setState(() => _searchQuery = v.trim()),
+            ),
+          ),
+
           const Divider(height: 1),
 
           // ── Invoice list ───────────────────────────────────────────────
@@ -253,13 +285,31 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
             child: invoicesAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(child: Text('Error: $e')),
-              data: (invoices) {
+              data: (allInvoices) {
                 final clientsMap = {
                   for (final c in clientsAsync.valueOrNull ?? []) c.id: c
                 };
+
+                // Client-side filter by store name, notes, or date.
+                final invoices = _searchQuery.isEmpty
+                    ? allInvoices
+                    : () {
+                        final q = _searchQuery.toLowerCase();
+                        return allInvoices.where((inv) {
+                          final clientName = (clientsMap[inv.clientId]?.name ?? '').toLowerCase();
+                          final notes = (inv.notes ?? '').toLowerCase();
+                          final dateStr = dateFmt.format(inv.invoiceDate).toLowerCase();
+                          return clientName.contains(q) ||
+                              notes.contains(q) ||
+                              dateStr.contains(q);
+                        }).toList();
+                      }();
+
                 if (invoices.isEmpty) {
                   return Center(
-                    child: Text('No invoices for $_periodLabel.'),
+                    child: Text(_searchQuery.isEmpty
+                        ? 'No invoices for $_periodLabel.'
+                        : 'No invoices match "$_searchQuery".'),
                   );
                 }
 

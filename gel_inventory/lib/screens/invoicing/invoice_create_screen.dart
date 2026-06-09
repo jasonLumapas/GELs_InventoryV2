@@ -178,10 +178,12 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                 autofocus: true,
                 validator: (v) {
                   if (v == null || v.trim().isEmpty) return 'Name is required';
+                  final name    = v.trim().toLowerCase();
+                  final address = addressCtrl.text.trim().toLowerCase();
                   final dup = existing.any((c) =>
-                      c.name.trim().toLowerCase() ==
-                      v.trim().toLowerCase());
-                  if (dup) return 'A client with this name already exists';
+                      c.name.trim().toLowerCase() == name &&
+                      (c.address?.trim().toLowerCase() ?? '') == address);
+                  if (dup) return 'A client with the same name and address already exists';
                   return null;
                 },
               ),

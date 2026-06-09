@@ -64,7 +64,8 @@ final _router = GoRouter(
         path: '/invoices', builder: (ctx, s) => const InvoiceListScreen()),
     GoRoute(
         path: '/invoices/new',
-        builder: (ctx, s) => const InvoiceCreateScreen()),
+        builder: (ctx, s) =>
+            InvoiceCreateScreen(draftId: s.uri.queryParameters['draft'])),
     GoRoute(
       path: '/invoices/:id',
       builder: (_, state) =>

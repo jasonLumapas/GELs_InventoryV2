@@ -159,6 +159,7 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
     final invoicesAsync =
         ref.watch(filteredInvoicesProvider((_startDate, _endDate)));
     final clientsAsync = ref.watch(clientsListProvider);
+    final draftsAsync = ref.watch(draftInvoicesProvider);
     final dateFmt = DateFormat('MMM dd, yyyy');
 
     return AppScaffold(
@@ -178,6 +179,83 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
       ],
       body: Column(
         children: [
+          // ── Draft invoices banner ────────────────────────────────────────
+          draftsAsync.when(
+            loading: () => const SizedBox.shrink(),
+            error: (_, _) => const SizedBox.shrink(),
+            data: (drafts) {
+              if (drafts.isEmpty) return const SizedBox.shrink();
+              final clientsMap = {
+                for (final c in clientsAsync.valueOrNull ?? []) c.id: c
+              };
+              return Container(
+                width: double.infinity,
+                color: Colors.amber.shade100,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        '${drafts.length} unfinished invoice(s)',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                    ),
+                    ...drafts.map((d) {
+                      final client = clientsMap[d.clientId];
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.edit_note, size: 18),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                '${client?.name ?? 'Unknown client'}'
+                                '  •  ${dateFmt.format(d.invoiceDate)}'
+                                '  •  ${formatCurrency(d.totalAmount)}',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () => context
+                                  .go('/invoices/new?draft=${d.id}'),
+                              child: const Text('Resume'),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline,
+                                  color: Colors.red, size: 20),
+                              tooltip: 'Discard draft',
+                              onPressed: () async {
+                                final ok = await showConfirmDialog(
+                                  context,
+                                  title: 'Discard Draft',
+                                  message:
+                                      'Discard this unfinished invoice? This cannot be undone.',
+                                  confirmLabel: 'Discard',
+                                );
+                                if (ok) {
+                                  await ref
+                                      .read(invoiceRepositoryProvider)
+                                      .discardDraft(d.id);
+                                  ref.invalidate(draftInvoicesProvider);
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              );
+            },
+          ),
+
           // ── Filter bar ─────────────────────────────────────────────────
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),

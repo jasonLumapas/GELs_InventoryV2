@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -84,7 +86,11 @@ class _LineItem {
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 class InvoiceCreateScreen extends ConsumerStatefulWidget {
-  const InvoiceCreateScreen({super.key});
+  /// If set, resumes the existing draft invoice with this id instead of
+  /// starting a new one.
+  final String? draftId;
+
+  const InvoiceCreateScreen({super.key, this.draftId});
 
   @override
   ConsumerState<InvoiceCreateScreen> createState() =>
@@ -109,9 +115,22 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
   bool _loading = true;
   bool _saving = false;
 
+  // ── Auto-save (draft) ────────────────────────────────────────────────────
+  late final InvoiceRepository _invoiceRepo;
+  late String _invoiceId;
+  late DateTime _createdAt;
+  Timer? _autoSaveTimer;
+  bool _draftPersisted = false;
+  bool _finalized = false;
+  bool _autoSaving = false;
+  DateTime? _lastAutoSaved;
+
   @override
   void initState() {
     super.initState();
+    _invoiceRepo = ref.read(invoiceRepositoryProvider);
+    _invoiceId = widget.draftId ?? const Uuid().v4();
+    _createdAt = DateTime.now();
     _loadData();
   }
 
@@ -119,10 +138,18 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
     final clients   = await ref.read(clientRepositoryProvider).getAll();
     final products  = await ref.read(productRepositoryProvider).getAll();
     final suppliers = await ref.read(supplierRepositoryProvider).getAll();
-    final invoiceNum = await ref
-        .read(invoiceRepositoryProvider)
-        .generateInvoiceNumber(_invoiceDate);
     final suppMap = {for (final s in suppliers) s.id: s.name};
+
+    String? invoiceNum;
+    if (widget.draftId != null) {
+      await _loadDraft(widget.draftId!, clients, products);
+      invoiceNum = _invoiceNumber;
+    } else {
+      invoiceNum = await ref
+          .read(invoiceRepositoryProvider)
+          .generateInvoiceNumber(_invoiceDate);
+    }
+
     setState(() {
       _clients  = clients;
       _products = products;
@@ -130,6 +157,153 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       _invoiceNumber = invoiceNum;
       _loading  = false;
     });
+  }
+
+  // Loads a previously auto-saved draft invoice and reconstructs the
+  // _lineItems list from its stored items.
+  Future<void> _loadDraft(
+      String draftId, List<Client> clients, List<Product> products) async {
+    final draft = await _invoiceRepo.getById(draftId);
+    if (draft == null) return;
+
+    _createdAt = draft.createdAt;
+    _draftPersisted = true;
+    _selectedClient =
+        clients.where((c) => c.id == draft.clientId).firstOrNull;
+    _invoiceDate = draft.invoiceDate;
+    _invoiceNumber = draft.invoiceNumber;
+    _invoiceType = draft.invoiceType;
+    _paymentType = draft.paymentType;
+    _notesCtrl.text = draft.notes ?? '';
+
+    final items = await _invoiceRepo.getItems(draftId);
+    final productsById = {for (final p in products) p.id: p};
+
+    for (final dItem in items) {
+      final product = productsById[dItem.productId];
+      if (product == null) continue;
+
+      var price = _priceCache[product.id];
+      if (!_priceCache.containsKey(product.id)) {
+        price = await ref
+            .read(productRepositoryProvider)
+            .getCurrentPrice(product.id);
+        _priceCache[product.id] = price;
+      }
+      var inv = _inventoryCache[product.id];
+      if (!_inventoryCache.containsKey(product.id)) {
+        inv = await ref
+            .read(inventoryRepositoryProvider)
+            .getByProductId(product.id);
+        _inventoryCache[product.id] = inv;
+      }
+      var disc = _discountCache[product.id];
+      if (!_discountCache.containsKey(product.id)) {
+        disc = await ref
+            .read(productDiscountRepositoryProvider)
+            .getForProduct(product.id);
+        _discountCache[product.id] = disc;
+      }
+      price ??= ProductPrice(
+        id: '',
+        productId: product.id,
+        withdrawalPrice: 0,
+        sellingPrice: dItem.pricePerPiece,
+        effectiveFrom: DateTime.now(),
+      );
+
+      final ppb = product.piecesPerBox;
+      final lineItem = _LineItem(
+        product: product,
+        price: price,
+        inventory: inv,
+        discount: disc,
+      )
+        ..unitType = dItem.unitType
+        ..quantity = dItem.unitType == 'box' && ppb > 0
+            ? dItem.quantity ~/ ppb
+            : dItem.quantity
+        ..isFree = dItem.isFree;
+
+      if (disc != null && disc.isBuyXGetY && disc.minQuantityPieces > 0) {
+        lineItem.promptedFreeCycles =
+            dItem.quantity ~/ disc.minQuantityPieces;
+      }
+
+      _lineItems.add(lineItem);
+    }
+
+    // Re-link previously added free items to the line that grants them.
+    for (final item in _lineItems) {
+      if (item.isFree || item.discount == null || !item.discount!.isBuyXGetY) {
+        continue;
+      }
+      item.linkedFreeItem = _lineItems.where((other) =>
+          other.isFree &&
+          other.product.id == item.product.id &&
+          other != item).firstOrNull;
+    }
+  }
+
+  // Debounce auto-saving the invoice as a draft so rapid edits don't trigger
+  // a DB write on every keystroke.
+  void _scheduleAutoSave() {
+    if (_finalized) return;
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = Timer(const Duration(seconds: 2), _autoSaveDraft);
+  }
+
+  // Persists the current invoice as a draft (status == 'draft'). Drafts
+  // never affect inventory and are excluded from invoice list queries.
+  // Requires a client to be selected since clientId is a foreign key.
+  bool get _hasDraftContent =>
+      _selectedClient != null && _lineItems.isNotEmpty;
+
+  ({Invoice invoice, List<InvoiceItem> items}) _buildDraftPayload() {
+    final invoice = Invoice(
+      id: _invoiceId,
+      clientId: _selectedClient!.id,
+      invoiceDate: _invoiceDate,
+      totalAmount: _total,
+      status: 'draft',
+      createdAt: _createdAt,
+      invoiceNumber: _invoiceNumber,
+      invoiceType: _invoiceType,
+      paymentType: _paymentType,
+      notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+    );
+    final items = _lineItems.map((li) => InvoiceItem(
+          id: const Uuid().v4(),
+          invoiceId: _invoiceId,
+          productId: li.product.id,
+          unitType: li.unitType,
+          quantity: li.quantityInPieces,
+          pricePerPiece: li.price.sellingPrice,
+          subtotal: li.subtotal,
+          isFree: li.isFree,
+          discountPercent: (li._thresholdMet && li.discount!.isPercent)
+              ? li.discount!.discountValue
+              : 0,
+        )).toList();
+    return (invoice: invoice, items: items);
+  }
+
+  Future<void> _autoSaveDraft() async {
+    if (_finalized || !mounted) return;
+    if (!_hasDraftContent) return;
+
+    setState(() => _autoSaving = true);
+    final payload = _buildDraftPayload();
+    await _invoiceRepo.saveDraftInvoice(
+        invoice: payload.invoice, items: payload.items);
+    _draftPersisted = true;
+    ref.invalidate(draftInvoicesProvider);
+    if (mounted) {
+      setState(() {
+        _autoSaving = false;
+        _lastAutoSaved = DateTime.now();
+      });
+    }
   }
 
   Future<void> _pickDate() async {
@@ -145,6 +319,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
           .read(invoiceRepositoryProvider)
           .generateInvoiceNumber(picked);
       if (mounted) setState(() => _invoiceNumber = num);
+      _scheduleAutoSave();
     }
   }
 
@@ -157,7 +332,10 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       subtitleOf: (c) => c.address,
       onAdd: (existing) => _promptAddClient(existing),
     );
-    if (picked != null) setState(() => _selectedClient = picked);
+    if (picked != null) {
+      setState(() => _selectedClient = picked);
+      _scheduleAutoSave();
+    }
   }
 
   Future<Client?> _promptAddClient(List<Client> existing) async {
@@ -335,6 +513,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
         discount: disc,
       ));
     });
+    _scheduleAutoSave();
   }
 
   // Checks whether the entered quantity now satisfies a "buy X get Y free"
@@ -402,6 +581,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
           _lineItems.add(freeItem);
         }
       });
+      _scheduleAutoSave();
     }
   }
 
@@ -439,18 +619,17 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
   }
 
   Future<({Invoice invoice, List<InvoiceItem> items})> _persistInvoice() async {
-    final invoiceId = const Uuid().v4();
-    final invoiceNumber = await ref
-        .read(invoiceRepositoryProvider)
-        .generateInvoiceNumber(_invoiceDate);
+    _autoSaveTimer?.cancel();
+    _finalized = true;
+
     final invoice = Invoice(
-      id: invoiceId,
+      id: _invoiceId,
       clientId: _selectedClient!.id,
       invoiceDate: _invoiceDate,
       totalAmount: _total,
       status: 'printed',
-      createdAt: DateTime.now(),
-      invoiceNumber: invoiceNumber,
+      createdAt: _createdAt,
+      invoiceNumber: _invoiceNumber,
       invoiceType:  _invoiceType,
       paymentType:  _paymentType,
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
@@ -459,7 +638,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
     final items = _lineItems.map((li) {
       return InvoiceItem(
         id: const Uuid().v4(),
-        invoiceId: invoiceId,
+        invoiceId: _invoiceId,
         productId: li.product.id,
         unitType: li.unitType,
         quantity: li.quantityInPieces,
@@ -472,14 +651,16 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       );
     }).toList();
 
-    await ref.read(invoiceRepositoryProvider).saveInvoice(
-          invoice: invoice,
-          items: items,
-        );
+    if (_draftPersisted) {
+      await _invoiceRepo.finalizeDraft(invoice: invoice, items: items);
+    } else {
+      await _invoiceRepo.saveInvoice(invoice: invoice, items: items);
+    }
 
     ref.invalidate(invoicesListProvider);
     ref.invalidate(filteredInvoicesProvider);
     ref.invalidate(inventoryListProvider);
+    ref.invalidate(draftInvoicesProvider);
 
     return (invoice: invoice, items: items);
   }
@@ -507,8 +688,38 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
     if (mounted) context.go('/invoices');
   }
 
+  Future<void> _cancel() async {
+    _autoSaveTimer?.cancel();
+    if (_draftPersisted && !_finalized) {
+      await _invoiceRepo.discardDraft(_invoiceId);
+      _finalized = true;
+      ref.invalidate(draftInvoicesProvider);
+    }
+    if (mounted) context.go('/invoices');
+  }
+
   @override
   void dispose() {
+    final hadPendingSave = _autoSaveTimer?.isActive ?? false;
+    _autoSaveTimer?.cancel();
+    if (!_finalized) {
+      if (_hasDraftContent) {
+        // Flush any pending debounced save immediately so the draft shows up
+        // in the list right away, instead of waiting for the next edit.
+        if (hadPendingSave || !_draftPersisted) {
+          final payload = _buildDraftPayload();
+          _invoiceRepo.saveDraftInvoice(
+              invoice: payload.invoice, items: payload.items);
+        }
+      } else if (_draftPersisted && widget.draftId == null) {
+        // Only discard drafts created fresh during this session
+        // (crash-recovery safety net). A resumed draft (widget.draftId !=
+        // null) should remain saved so the user can come back to it again
+        // later — only the explicit Cancel button discards those.
+        _invoiceRepo.discardDraft(_invoiceId);
+      }
+      ref.invalidate(draftInvoicesProvider);
+    }
     _notesCtrl.dispose();
     super.dispose();
   }
@@ -527,13 +738,32 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                   color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   padding: const EdgeInsets.symmetric(
                       horizontal: 16, vertical: 10),
-                  child: Text(
-                    'Invoice #: ${_invoiceNumber ?? '...'}',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Invoice #: ${_invoiceNumber ?? '...'}',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const Spacer(),
+                      if (_autoSaving)
+                        Text(
+                          'Saving draft…',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        )
+                      else if (_lastAutoSaved != null)
+                        Text(
+                          'Draft saved at ${DateFormat('HH:mm').format(_lastAutoSaved!)}',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        ),
+                    ],
                   ),
                 ),
 
@@ -555,8 +785,10 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                               label: Text('Walk-in')),
                         ],
                         selected: {_invoiceType},
-                        onSelectionChanged: (s) =>
-                            setState(() => _invoiceType = s.first),
+                        onSelectionChanged: (s) {
+                          setState(() => _invoiceType = s.first);
+                          _scheduleAutoSave();
+                        },
                       ),
                       const Spacer(),
                       DropdownButton<String>(
@@ -569,7 +801,10 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                           DropdownMenuItem(value: 'credit',  child: Text('Credit')),
                           DropdownMenuItem(value: 'partial', child: Text('Partial')),
                         ],
-                        onChanged: (v) => setState(() => _paymentType = v!),
+                        onChanged: (v) {
+                          setState(() => _paymentType = v!);
+                          _scheduleAutoSave();
+                        },
                       ),
                     ],
                   ),
@@ -631,6 +866,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                       isDense: true,
                     ),
                     maxLines: 2,
+                    onChanged: (_) => _scheduleAutoSave(),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -665,9 +901,14 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                             effectiveAvailable: _effectiveAvailable(
                                 _lineItems[i].product.id,
                                 excludeIndex: i),
-                            onRemove: () =>
-                                setState(() => _lineItems.removeAt(i)),
-                            onChanged: () => setState(() {}),
+                            onRemove: () {
+                              setState(() => _lineItems.removeAt(i));
+                              _scheduleAutoSave();
+                            },
+                            onChanged: () {
+                              setState(() {});
+                              _scheduleAutoSave();
+                            },
                             onQuantityEntered: (item) =>
                                 _maybeOfferFreeItem(item),
                           ),
@@ -702,7 +943,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                         ),
                       ),
                       OutlinedButton(
-                        onPressed: () => context.go('/invoices'),
+                        onPressed: _cancel,
                         child: const Text('Cancel'),
                       ),
                       const SizedBox(width: 8),

@@ -747,7 +747,6 @@ Future<void> printInventoryReport({
     ],
   ));
 
-  // ── Save to desktop for inspection — printing not yet wired up ────────────
   final bytes = await doc.save();
   final home  = Platform.environment['USERPROFILE'] ??
       Platform.environment['HOME'] ?? '.';

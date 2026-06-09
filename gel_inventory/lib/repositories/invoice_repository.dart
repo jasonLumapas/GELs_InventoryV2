@@ -55,7 +55,8 @@ class InvoiceRepository extends BaseRepository {
       var q = Supabase.instance.client
           .from('invoices')
           .select()
-          .neq('status', 'cancelled');
+          .neq('status', 'cancelled')
+          .neq('status', 'draft');
       if (startDate != null) {
         q = q.gte('invoice_date', startDate.toIso8601String());
       }
@@ -67,7 +68,8 @@ class InvoiceRepository extends BaseRepository {
     }
     final rows = await (db.select(db.invoices)
           ..where((t) {
-            drift.Expression<bool> expr = t.status.isNotValue('cancelled');
+            drift.Expression<bool> expr = t.status.isNotValue('cancelled') &
+                t.status.isNotValue('draft');
             if (startDate != null) {
               expr = expr & t.invoiceDate.isBiggerOrEqualValue(startDate);
             }
@@ -97,6 +99,62 @@ class InvoiceRepository extends BaseRepository {
               notes: r.notes,
             ))
         .toList();
+  }
+
+  /// Returns all draft invoices (status == 'draft'), most recently created first.
+  Future<List<Invoice>> getDrafts() async {
+    if (isOnline) {
+      final data = await Supabase.instance.client
+          .from('invoices')
+          .select()
+          .eq('status', 'draft')
+          .order('created_at', ascending: false);
+      return (data as List).map((j) => Invoice.fromJson(j)).toList();
+    }
+    final rows = await (db.select(db.invoices)
+          ..where((t) => t.status.equals('draft'))
+          ..orderBy([(t) => drift.OrderingTerm.desc(t.createdAt)]))
+        .get();
+    return rows.map(_invoiceFromRow).toList();
+  }
+
+  /// Fetches a single invoice by id, regardless of status (including drafts).
+  Future<Invoice?> getById(String id) async {
+    if (isOnline) {
+      final data = await Supabase.instance.client
+          .from('invoices')
+          .select()
+          .eq('id', id)
+          .limit(1);
+      if ((data as List).isEmpty) return null;
+      return Invoice.fromJson(data.first);
+    }
+    final rows = await (db.select(db.invoices)
+          ..where((t) => t.id.equals(id))
+          ..limit(1))
+        .get();
+    if (rows.isEmpty) return null;
+    return _invoiceFromRow(rows.first);
+  }
+
+  Invoice _invoiceFromRow(dynamic r) {
+    return Invoice(
+      id: r.id,
+      clientId: r.clientId,
+      invoiceDate: r.invoiceDate,
+      totalAmount: r.totalAmount,
+      status: r.status,
+      createdAt: r.createdAt,
+      invoiceNumber:  r.invoiceNumber,
+      invoiceType:    r.invoiceType,
+      paymentType:    r.paymentType,
+      partialAmount:  r.partialAmount,
+      partialDate:    r.partialDate,
+      checkReference: r.checkReference,
+      checkAmount:    r.checkAmount,
+      checkDueDate:   r.checkDueDate,
+      notes: r.notes,
+    );
   }
 
   Future<List<InvoiceItem>> getItems(String invoiceId) async {
@@ -163,6 +221,90 @@ class InvoiceRepository extends BaseRepository {
         deltaPieces: -item.quantity,
       );
     }
+  }
+
+  /// Deletes all items belonging to [invoiceId] without adjusting inventory.
+  /// Used for draft saves/finalization where the previous draft items never
+  /// affected inventory.
+  Future<void> _clearItems(String invoiceId) async {
+    if (isOnline) {
+      await Supabase.instance.client
+          .from('invoice_items')
+          .delete()
+          .eq('invoice_id', invoiceId);
+    }
+    await (db.delete(db.invoiceItems)
+          ..where((t) => t.invoiceId.equals(invoiceId)))
+        .go();
+  }
+
+  /// Saves or updates a draft invoice (status == 'draft'). Replaces all
+  /// items for the invoice. Drafts never affect inventory.
+  Future<void> saveDraftInvoice({
+    required Invoice invoice,
+    required List<InvoiceItem> items,
+  }) async {
+    final invPayload = invoice.toJson();
+    if (isOnline) {
+      await Supabase.instance.client.from('invoices').upsert(invPayload);
+    } else {
+      await syncService.enqueue(
+        tableName: 'invoices',
+        recordId: invoice.id,
+        operation: 'insert',
+        payload: invPayload,
+      );
+    }
+    await trySaveLocal(() => _saveLocalInvoice(invoice));
+
+    await _clearItems(invoice.id);
+    for (final item in items) {
+      final itemPayload = item.toJson();
+      if (isOnline) {
+        await Supabase.instance.client
+            .from('invoice_items')
+            .insert(itemPayload);
+      } else {
+        await syncService.enqueue(
+          tableName: 'invoice_items',
+          recordId: item.id,
+          operation: 'insert',
+          payload: itemPayload,
+        );
+      }
+      await trySaveLocal(() => _saveLocalItem(item));
+    }
+  }
+
+  /// Replaces a draft invoice's items with [items], marks it as [status]
+  /// (typically 'printed'), and deducts inventory for the new items.
+  /// The previous draft items are discarded without inventory adjustment.
+  Future<void> finalizeDraft({
+    required Invoice invoice,
+    required List<InvoiceItem> items,
+  }) async {
+    await _clearItems(invoice.id);
+    await saveInvoice(invoice: invoice, items: items);
+  }
+
+  /// Permanently deletes a draft invoice and its items. Drafts never affect
+  /// inventory, so nothing is restored.
+  Future<void> discardDraft(String invoiceId) async {
+    await _clearItems(invoiceId);
+    if (isOnline) {
+      await Supabase.instance.client
+          .from('invoices')
+          .delete()
+          .eq('id', invoiceId);
+    } else {
+      await syncService.enqueue(
+        tableName: 'invoices',
+        recordId: invoiceId,
+        operation: 'delete',
+        payload: {'id': invoiceId},
+      );
+    }
+    await (db.delete(db.invoices)..where((t) => t.id.equals(invoiceId))).go();
   }
 
   /// Replaces the items of an existing invoice and adjusts inventory for the
@@ -346,6 +488,12 @@ final invoiceRepositoryProvider = Provider<InvoiceRepository>((ref) {
 /// Unfiltered list â€” used for invalidation and the detail screen lookup.
 final invoicesListProvider = FutureProvider<List<Invoice>>((ref) {
   return ref.watch(invoiceRepositoryProvider).getAll();
+});
+
+/// Draft invoices (status == 'draft') â€” used to offer resuming unfinished
+/// invoices from the Invoices list.
+final draftInvoicesProvider = FutureProvider<List<Invoice>>((ref) {
+  return ref.watch(invoiceRepositoryProvider).getDrafts();
 });
 
 /// Date-range filtered list â€” keyed on (startDate, endDate); null = no bound.

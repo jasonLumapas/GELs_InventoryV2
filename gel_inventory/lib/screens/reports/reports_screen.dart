@@ -340,6 +340,7 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
   DateTime _selectedDate = DateTime.now();
   String? _selectedSupplierId; // null = all suppliers
   bool? _endingSortAscending; // null = unsorted (original product order)
+  bool _showOnlyWithEnding = false;
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
 
@@ -397,6 +398,9 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
     if (_searchQuery.isNotEmpty) {
       final q = _searchQuery.toLowerCase();
       products = products.where((p) => p.name.toLowerCase().contains(q)).toList();
+    }
+    if (_showOnlyWithEnding) {
+      products = products.where((p) => (data.ending[p.id] ?? 0) > 0).toList();
     }
 
     await printInventoryReport(
@@ -530,6 +534,22 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
             onChanged: (v) => setState(() => _searchQuery = v.trim()),
           ),
         ),
+        // ── With-ending-only toggle ───────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+          child: Row(
+            children: [
+              Switch(
+                value: _showOnlyWithEnding,
+                onChanged: (v) => setState(() => _showOnlyWithEnding = v),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              const SizedBox(width: 6),
+              const Text('Show only rows with ending inventory',
+                  style: TextStyle(fontSize: 13)),
+            ],
+          ),
+        ),
         const Divider(height: 1),
 
         // ── Table ─────────────────────────────────────────────────────
@@ -557,6 +577,11 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                 final q = _searchQuery.toLowerCase();
                 sortedProducts = sortedProducts
                     .where((p) => p.name.toLowerCase().contains(q))
+                    .toList();
+              }
+              if (_showOnlyWithEnding) {
+                sortedProducts = sortedProducts
+                    .where((p) => (data.ending[p.id] ?? 0) > 0)
                     .toList();
               }
               const colWidths = {
@@ -749,13 +774,19 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                             ),
                           // ── Ending inventory total footer ──
                           const SizedBox(height: 12),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: Text(
-                              'Ending Inventory Capital Value: ${formatCurrency(data.totalEndingValue)}',
-                              style: const TextStyle(
-                                  fontSize: 15, fontWeight: FontWeight.bold),
-                            ),
+                          Row(
+                            children: [
+                              Text(
+                                '${sortedProducts.length} product(s)',
+                                style: const TextStyle(color: Colors.grey),
+                              ),
+                              const Spacer(),
+                              Text(
+                                'Ending Inventory Capital Value: ${formatCurrency(data.totalEndingValue)}',
+                                style: const TextStyle(
+                                    fontSize: 15, fontWeight: FontWeight.bold),
+                              ),
+                            ],
                           ),
                         ],
                       ),

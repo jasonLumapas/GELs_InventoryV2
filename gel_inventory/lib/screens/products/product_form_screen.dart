@@ -46,6 +46,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
   final _buyQtyCtrl  = TextEditingController();
   final _freeQtyCtrl = TextEditingController();
   String _discountType = 'percent'; // 'percent' | 'amount' | 'buy_x_get_y'
+  String _freeQtyUnit = 'box'; // 'piece' | 'box'
   bool _percentEnabled  = false;
   bool _amountEnabled   = false;
   bool _buyXGetYEnabled = false;
@@ -96,9 +97,12 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
           if (_buyXGetYEnabled) {
             _buyQtyCtrl.text =
                 (_existingDiscount!.minQuantityPieces ~/ ppb).toString();
-            _freeQtyCtrl.text =
-                ((_existingDiscount!.freeQuantityPieces ?? 0) ~/ ppb)
-                    .toString();
+            _freeQtyUnit = _existingDiscount!.freeQuantityUnit;
+            final freeQtyPieces = _existingDiscount!.freeQuantityPieces ?? 0;
+            _freeQtyCtrl.text = (_freeQtyUnit == 'box'
+                    ? freeQtyPieces ~/ ppb
+                    : freeQtyPieces)
+                .toString();
           } else {
             // Populate only the matching type's controllers
             _activeMinQtyCtrl.text =
@@ -183,17 +187,20 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
           .deleteForProduct(existing.id);
       setState(() => _existingDiscount = null);
     } else if (_buyXGetYEnabled) {
-      final buyBoxes  = int.tryParse(_buyQtyCtrl.text);
-      final freeBoxes = int.tryParse(_freeQtyCtrl.text);
+      final buyBoxes = int.tryParse(_buyQtyCtrl.text);
+      final freeQty  = int.tryParse(_freeQtyCtrl.text);
       if (buyBoxes != null && buyBoxes > 0 &&
-          freeBoxes != null && freeBoxes > 0) {
+          freeQty != null && freeQty > 0) {
         final newDiscount = ProductDiscount(
           id: _existingDiscount?.id ?? const Uuid().v4(),
           productId: existing.id,
           minQuantityPieces: buyBoxes * existing.piecesPerBox,
           discountValue: 0,
           discountType: 'buy_x_get_y',
-          freeQuantityPieces: freeBoxes * existing.piecesPerBox,
+          freeQuantityPieces: _freeQtyUnit == 'box'
+              ? freeQty * existing.piecesPerBox
+              : freeQty,
+          freeQuantityUnit: _freeQtyUnit,
         );
         await ref.read(productDiscountRepositoryProvider).upsert(newDiscount);
         setState(() => _existingDiscount = newDiscount);
@@ -507,19 +514,42 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
                           onChanged: (_) => setState(() {}),
                         ),
                         const SizedBox(height: 12),
-                        TextFormField(
-                          controller: _freeQtyCtrl,
-                          decoration: InputDecoration(
-                            labelText: 'Free quantity (boxes)',
-                            helperText: ppb > 0
-                                ? '= ${(int.tryParse(_freeQtyCtrl.text) ?? 0) * ppb} pcs'
-                                : null,
-                          ),
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: _freeQtyCtrl,
+                                decoration: InputDecoration(
+                                  labelText: _freeQtyUnit == 'box'
+                                      ? 'Free quantity (boxes)'
+                                      : 'Free quantity (pieces)',
+                                  helperText: _freeQtyUnit == 'box' && ppb > 0
+                                      ? '= ${(int.tryParse(_freeQtyCtrl.text) ?? 0) * ppb} pcs per cycle'
+                                      : 'per cycle',
+                                ),
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.digitsOnly
+                                ],
+                                onChanged: (_) => setState(() {}),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            SegmentedButton<String>(
+                              segments: const [
+                                ButtonSegment(value: 'box', label: Text('Box')),
+                                ButtonSegment(value: 'piece', label: Text('Pcs')),
+                              ],
+                              selected: {_freeQtyUnit},
+                              onSelectionChanged: (s) =>
+                                  setState(() => _freeQtyUnit = s.first),
+                              style: const ButtonStyle(
+                                visualDensity: VisualDensity.compact,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                            ),
                           ],
-                          onChanged: (_) => setState(() {}),
                         ),
                       ],
                     ),
@@ -530,7 +560,14 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
           if (_existingDiscount != null) ...[
             Text(
               _existingDiscount!.isBuyXGetY
-                  ? 'Active: Buy ${_existingDiscount!.minQuantityPieces ~/ ppb} box(es) → +${(_existingDiscount!.freeQuantityPieces ?? 0) ~/ ppb} box(es) free'
+                  ? () {
+                      final freeQtyPieces = _existingDiscount!.freeQuantityPieces ?? 0;
+                      final freeUnit = _existingDiscount!.freeQuantityUnit;
+                      final freeDisplay = freeUnit == 'box'
+                          ? '${freeQtyPieces ~/ ppb} box(es)'
+                          : '$freeQtyPieces piece(s)';
+                      return 'Active: Buy ${_existingDiscount!.minQuantityPieces ~/ ppb} box(es) → +$freeDisplay free (per cycle)';
+                    }()
                   : _existingDiscount!.isPercent
                       ? 'Active: ${_existingDiscount!.minQuantityPieces ~/ ppb} boxes → ${_existingDiscount!.discountValue.toStringAsFixed(1)}% off'
                       : 'Active: ${_existingDiscount!.minQuantityPieces ~/ ppb} boxes → ₱${_existingDiscount!.discountValue.toStringAsFixed(2)} off',

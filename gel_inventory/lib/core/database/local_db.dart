@@ -65,9 +65,11 @@ class ProductDiscounts extends Table {
   // discount_type: 'percent' | 'amount' | 'buy_x_get_y'
   TextColumn get discountType =>
       text().withDefault(const Constant('percent'))();
-  // Free quantity (in pieces) granted when min_quantity_pieces is reached.
-  // Only used when discount_type == 'buy_x_get_y'.
+  // Free quantity (in pieces) granted per cycle when discount_type == 'buy_x_get_y'.
   IntColumn get freeQuantityPieces => integer().nullable()();
+  // Whether the free quantity is expressed in 'piece' or 'box' units.
+  TextColumn get freeQuantityUnit =>
+      text().withDefault(const Constant('box'))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -249,7 +251,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 15;
+  int get schemaVersion => 16;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -321,6 +323,10 @@ class LocalDatabase extends _$LocalDatabase {
           if (from < 15) {
             await _addColumnIfMissing(m.database, 'product_discounts',
                 'free_quantity_pieces', 'INTEGER');
+          }
+          if (from < 16) {
+            await _addColumnIfMissing(m.database, 'product_discounts',
+                'free_quantity_unit', "TEXT NOT NULL DEFAULT 'box'");
           }
         },
       );

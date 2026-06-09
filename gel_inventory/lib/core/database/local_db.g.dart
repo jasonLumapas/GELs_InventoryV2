@@ -1592,6 +1592,18 @@ class $ProductDiscountsTable extends ProductDiscounts
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _freeQuantityUnitMeta = const VerificationMeta(
+    'freeQuantityUnit',
+  );
+  @override
+  late final GeneratedColumn<String> freeQuantityUnit = GeneratedColumn<String>(
+    'free_quantity_unit',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('box'),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1600,6 +1612,7 @@ class $ProductDiscountsTable extends ProductDiscounts
     discountPercent,
     discountType,
     freeQuantityPieces,
+    freeQuantityUnit,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1666,6 +1679,15 @@ class $ProductDiscountsTable extends ProductDiscounts
         ),
       );
     }
+    if (data.containsKey('free_quantity_unit')) {
+      context.handle(
+        _freeQuantityUnitMeta,
+        freeQuantityUnit.isAcceptableOrUnknown(
+          data['free_quantity_unit']!,
+          _freeQuantityUnitMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1699,6 +1721,10 @@ class $ProductDiscountsTable extends ProductDiscounts
         DriftSqlType.int,
         data['${effectivePrefix}free_quantity_pieces'],
       ),
+      freeQuantityUnit: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}free_quantity_unit'],
+      )!,
     );
   }
 
@@ -1715,6 +1741,7 @@ class ProductDiscount extends DataClass implements Insertable<ProductDiscount> {
   final double discountPercent;
   final String discountType;
   final int? freeQuantityPieces;
+  final String freeQuantityUnit;
   const ProductDiscount({
     required this.id,
     required this.productId,
@@ -1722,6 +1749,7 @@ class ProductDiscount extends DataClass implements Insertable<ProductDiscount> {
     required this.discountPercent,
     required this.discountType,
     this.freeQuantityPieces,
+    required this.freeQuantityUnit,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1734,6 +1762,7 @@ class ProductDiscount extends DataClass implements Insertable<ProductDiscount> {
     if (!nullToAbsent || freeQuantityPieces != null) {
       map['free_quantity_pieces'] = Variable<int>(freeQuantityPieces);
     }
+    map['free_quantity_unit'] = Variable<String>(freeQuantityUnit);
     return map;
   }
 
@@ -1747,6 +1776,7 @@ class ProductDiscount extends DataClass implements Insertable<ProductDiscount> {
       freeQuantityPieces: freeQuantityPieces == null && nullToAbsent
           ? const Value.absent()
           : Value(freeQuantityPieces),
+      freeQuantityUnit: Value(freeQuantityUnit),
     );
   }
 
@@ -1762,6 +1792,7 @@ class ProductDiscount extends DataClass implements Insertable<ProductDiscount> {
       discountPercent: serializer.fromJson<double>(json['discountPercent']),
       discountType: serializer.fromJson<String>(json['discountType']),
       freeQuantityPieces: serializer.fromJson<int?>(json['freeQuantityPieces']),
+      freeQuantityUnit: serializer.fromJson<String>(json['freeQuantityUnit']),
     );
   }
   @override
@@ -1774,6 +1805,7 @@ class ProductDiscount extends DataClass implements Insertable<ProductDiscount> {
       'discountPercent': serializer.toJson<double>(discountPercent),
       'discountType': serializer.toJson<String>(discountType),
       'freeQuantityPieces': serializer.toJson<int?>(freeQuantityPieces),
+      'freeQuantityUnit': serializer.toJson<String>(freeQuantityUnit),
     };
   }
 
@@ -1784,6 +1816,7 @@ class ProductDiscount extends DataClass implements Insertable<ProductDiscount> {
     double? discountPercent,
     String? discountType,
     Value<int?> freeQuantityPieces = const Value.absent(),
+    String? freeQuantityUnit,
   }) => ProductDiscount(
     id: id ?? this.id,
     productId: productId ?? this.productId,
@@ -1793,6 +1826,7 @@ class ProductDiscount extends DataClass implements Insertable<ProductDiscount> {
     freeQuantityPieces: freeQuantityPieces.present
         ? freeQuantityPieces.value
         : this.freeQuantityPieces,
+    freeQuantityUnit: freeQuantityUnit ?? this.freeQuantityUnit,
   );
   ProductDiscount copyWithCompanion(ProductDiscountsCompanion data) {
     return ProductDiscount(
@@ -1810,6 +1844,9 @@ class ProductDiscount extends DataClass implements Insertable<ProductDiscount> {
       freeQuantityPieces: data.freeQuantityPieces.present
           ? data.freeQuantityPieces.value
           : this.freeQuantityPieces,
+      freeQuantityUnit: data.freeQuantityUnit.present
+          ? data.freeQuantityUnit.value
+          : this.freeQuantityUnit,
     );
   }
 
@@ -1821,7 +1858,8 @@ class ProductDiscount extends DataClass implements Insertable<ProductDiscount> {
           ..write('minQuantityPieces: $minQuantityPieces, ')
           ..write('discountPercent: $discountPercent, ')
           ..write('discountType: $discountType, ')
-          ..write('freeQuantityPieces: $freeQuantityPieces')
+          ..write('freeQuantityPieces: $freeQuantityPieces, ')
+          ..write('freeQuantityUnit: $freeQuantityUnit')
           ..write(')'))
         .toString();
   }
@@ -1834,6 +1872,7 @@ class ProductDiscount extends DataClass implements Insertable<ProductDiscount> {
     discountPercent,
     discountType,
     freeQuantityPieces,
+    freeQuantityUnit,
   );
   @override
   bool operator ==(Object other) =>
@@ -1844,7 +1883,8 @@ class ProductDiscount extends DataClass implements Insertable<ProductDiscount> {
           other.minQuantityPieces == this.minQuantityPieces &&
           other.discountPercent == this.discountPercent &&
           other.discountType == this.discountType &&
-          other.freeQuantityPieces == this.freeQuantityPieces);
+          other.freeQuantityPieces == this.freeQuantityPieces &&
+          other.freeQuantityUnit == this.freeQuantityUnit);
 }
 
 class ProductDiscountsCompanion extends UpdateCompanion<ProductDiscount> {
@@ -1854,6 +1894,7 @@ class ProductDiscountsCompanion extends UpdateCompanion<ProductDiscount> {
   final Value<double> discountPercent;
   final Value<String> discountType;
   final Value<int?> freeQuantityPieces;
+  final Value<String> freeQuantityUnit;
   final Value<int> rowid;
   const ProductDiscountsCompanion({
     this.id = const Value.absent(),
@@ -1862,6 +1903,7 @@ class ProductDiscountsCompanion extends UpdateCompanion<ProductDiscount> {
     this.discountPercent = const Value.absent(),
     this.discountType = const Value.absent(),
     this.freeQuantityPieces = const Value.absent(),
+    this.freeQuantityUnit = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ProductDiscountsCompanion.insert({
@@ -1871,6 +1913,7 @@ class ProductDiscountsCompanion extends UpdateCompanion<ProductDiscount> {
     required double discountPercent,
     this.discountType = const Value.absent(),
     this.freeQuantityPieces = const Value.absent(),
+    this.freeQuantityUnit = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        productId = Value(productId),
@@ -1883,6 +1926,7 @@ class ProductDiscountsCompanion extends UpdateCompanion<ProductDiscount> {
     Expression<double>? discountPercent,
     Expression<String>? discountType,
     Expression<int>? freeQuantityPieces,
+    Expression<String>? freeQuantityUnit,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1893,6 +1937,7 @@ class ProductDiscountsCompanion extends UpdateCompanion<ProductDiscount> {
       if (discountType != null) 'discount_type': discountType,
       if (freeQuantityPieces != null)
         'free_quantity_pieces': freeQuantityPieces,
+      if (freeQuantityUnit != null) 'free_quantity_unit': freeQuantityUnit,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1904,6 +1949,7 @@ class ProductDiscountsCompanion extends UpdateCompanion<ProductDiscount> {
     Value<double>? discountPercent,
     Value<String>? discountType,
     Value<int?>? freeQuantityPieces,
+    Value<String>? freeQuantityUnit,
     Value<int>? rowid,
   }) {
     return ProductDiscountsCompanion(
@@ -1913,6 +1959,7 @@ class ProductDiscountsCompanion extends UpdateCompanion<ProductDiscount> {
       discountPercent: discountPercent ?? this.discountPercent,
       discountType: discountType ?? this.discountType,
       freeQuantityPieces: freeQuantityPieces ?? this.freeQuantityPieces,
+      freeQuantityUnit: freeQuantityUnit ?? this.freeQuantityUnit,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1938,6 +1985,9 @@ class ProductDiscountsCompanion extends UpdateCompanion<ProductDiscount> {
     if (freeQuantityPieces.present) {
       map['free_quantity_pieces'] = Variable<int>(freeQuantityPieces.value);
     }
+    if (freeQuantityUnit.present) {
+      map['free_quantity_unit'] = Variable<String>(freeQuantityUnit.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1953,6 +2003,7 @@ class ProductDiscountsCompanion extends UpdateCompanion<ProductDiscount> {
           ..write('discountPercent: $discountPercent, ')
           ..write('discountType: $discountType, ')
           ..write('freeQuantityPieces: $freeQuantityPieces, ')
+          ..write('freeQuantityUnit: $freeQuantityUnit, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -8651,6 +8702,7 @@ typedef $$ProductDiscountsTableCreateCompanionBuilder =
       required double discountPercent,
       Value<String> discountType,
       Value<int?> freeQuantityPieces,
+      Value<String> freeQuantityUnit,
       Value<int> rowid,
     });
 typedef $$ProductDiscountsTableUpdateCompanionBuilder =
@@ -8661,6 +8713,7 @@ typedef $$ProductDiscountsTableUpdateCompanionBuilder =
       Value<double> discountPercent,
       Value<String> discountType,
       Value<int?> freeQuantityPieces,
+      Value<String> freeQuantityUnit,
       Value<int> rowid,
     });
 
@@ -8731,6 +8784,11 @@ class $$ProductDiscountsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get freeQuantityUnit => $composableBuilder(
+    column: $table.freeQuantityUnit,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$ProductsTableFilterComposer get productId {
     final $$ProductsTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -8789,6 +8847,11 @@ class $$ProductDiscountsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get freeQuantityUnit => $composableBuilder(
+    column: $table.freeQuantityUnit,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$ProductsTableOrderingComposer get productId {
     final $$ProductsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -8842,6 +8905,11 @@ class $$ProductDiscountsTableAnnotationComposer
 
   GeneratedColumn<int> get freeQuantityPieces => $composableBuilder(
     column: $table.freeQuantityPieces,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get freeQuantityUnit => $composableBuilder(
+    column: $table.freeQuantityUnit,
     builder: (column) => column,
   );
 
@@ -8905,6 +8973,7 @@ class $$ProductDiscountsTableTableManager
                 Value<double> discountPercent = const Value.absent(),
                 Value<String> discountType = const Value.absent(),
                 Value<int?> freeQuantityPieces = const Value.absent(),
+                Value<String> freeQuantityUnit = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProductDiscountsCompanion(
                 id: id,
@@ -8913,6 +8982,7 @@ class $$ProductDiscountsTableTableManager
                 discountPercent: discountPercent,
                 discountType: discountType,
                 freeQuantityPieces: freeQuantityPieces,
+                freeQuantityUnit: freeQuantityUnit,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -8923,6 +8993,7 @@ class $$ProductDiscountsTableTableManager
                 required double discountPercent,
                 Value<String> discountType = const Value.absent(),
                 Value<int?> freeQuantityPieces = const Value.absent(),
+                Value<String> freeQuantityUnit = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProductDiscountsCompanion.insert(
                 id: id,
@@ -8931,6 +9002,7 @@ class $$ProductDiscountsTableTableManager
                 discountPercent: discountPercent,
                 discountType: discountType,
                 freeQuantityPieces: freeQuantityPieces,
+                freeQuantityUnit: freeQuantityUnit,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

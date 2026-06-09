@@ -32,9 +32,12 @@ class _LineItem {
   String unitType = 'piece';
   int quantity = 0;
   bool isFree = false;
-  // Whether the user has already been asked about the "buy X get Y free"
-  // promo for this line item (so we don't re-prompt on every keystroke).
-  bool freePromptHandled = false;
+  // Highest "buy X get Y" cycle count the user has already been prompted
+  // about for this line item (so we don't re-prompt on every keystroke,
+  // but do re-prompt if the quantity grows enough for another cycle).
+  int promptedFreeCycles = 0;
+  // The free line item added in response to this item's promo, if any.
+  _LineItem? linkedFreeItem;
 
   _LineItem({
     required this.product,
@@ -336,20 +339,27 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
 
   // Checks whether the entered quantity now satisfies a "buy X get Y free"
   // promo for this line, and if so, asks the user whether to add the free
-  // item to the invoice. Only asks once per line item.
+  // item to the invoice. Re-prompts if the quantity grows enough to reach
+  // another cycle of the promo, even if a previous prompt was declined.
   Future<void> _maybeOfferFreeItem(_LineItem item) async {
     final discount = item.discount;
-    if (item.isFree || item.freePromptHandled) return;
-    if (discount == null || !discount.isBuyXGetY) return;
+    if (item.isFree || discount == null || !discount.isBuyXGetY) return;
     final freeQtyPieces = discount.freeQuantityPieces ?? 0;
     if (freeQtyPieces <= 0) return;
-    if (item.quantityInPieces < discount.minQuantityPieces) return;
 
-    item.freePromptHandled = true;
+    final cycles = item.quantityInPieces ~/ discount.minQuantityPieces;
+    if (cycles <= item.promptedFreeCycles) return;
+    item.promptedFreeCycles = cycles;
+    if (cycles <= 0) return;
 
     final ppb = item.product.piecesPerBox;
-    final buyBoxes  = ppb > 0 ? discount.minQuantityPieces ~/ ppb : discount.minQuantityPieces;
-    final freeBoxes = ppb > 0 ? freeQtyPieces ~/ ppb : freeQtyPieces;
+    final buyBoxes = ppb > 0 ? discount.minQuantityPieces ~/ ppb : discount.minQuantityPieces;
+
+    final freeUnit = discount.freeQuantityUnit;
+    final freeQtyPerCycle =
+        freeUnit == 'box' && ppb > 0 ? freeQtyPieces ~/ ppb : freeQtyPieces;
+    final totalFreeQty = freeQtyPerCycle * cycles;
+    final freeUnitLabel = freeUnit == 'box' ? 'box(es)' : 'piece(s)';
 
     final add = await showDialog<bool>(
       context: context,
@@ -357,8 +367,8 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
         title: const Text('Free Item Available'),
         content: Text(
           '${item.product.name} qualifies for a "Buy $buyBoxes box(es) '
-          'get $freeBoxes box(es) free" promo.\n\n'
-          'Add $freeBoxes box(es) of ${item.product.name} to this invoice for free?',
+          'get $freeQtyPerCycle $freeUnitLabel free" promo.\n\n'
+          'Add $totalFreeQty $freeUnitLabel of ${item.product.name} to this invoice for free?',
         ),
         actions: [
           TextButton(
@@ -375,16 +385,22 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
 
     if (add == true && mounted) {
       setState(() {
-        _lineItems.add(_LineItem(
-          product: item.product,
-          price: item.price,
-          inventory: item.inventory,
-          discount: item.discount,
-        )
-          ..unitType = 'box'
-          ..quantity = freeBoxes
-          ..isFree = true
-          ..freePromptHandled = true);
+        final existing = item.linkedFreeItem;
+        if (existing != null && _lineItems.contains(existing)) {
+          existing.quantity = totalFreeQty;
+        } else {
+          final freeItem = _LineItem(
+            product: item.product,
+            price: item.price,
+            inventory: item.inventory,
+            discount: item.discount,
+          )
+            ..unitType = freeUnit == 'box' ? 'box' : 'piece'
+            ..quantity = totalFreeQty
+            ..isFree = true;
+          item.linkedFreeItem = freeItem;
+          _lineItems.add(freeItem);
+        }
       });
     }
   }
@@ -667,11 +683,22 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                   child: Row(
                     children: [
                       Expanded(
-                        child: Text(
-                          'Total: ${formatCurrency(_total)}',
-                          style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Total: ${formatCurrency(_total)}',
+                              style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold),
+                            ),
+                            Text(
+                              '${_lineItems.length} item(s)',
+                              style: const TextStyle(
+                                  fontSize: 12, color: Colors.grey),
+                            ),
+                          ],
                         ),
                       ),
                       OutlinedButton(

@@ -4,9 +4,11 @@ class ProductDiscount {
   final int minQuantityPieces;
   final double discountValue; // percent (0-100) or fixed currency amount
   final String discountType; // 'percent' | 'amount' | 'buy_x_get_y'
-  // Free quantity (in pieces) granted once minQuantityPieces is reached.
+  // Free quantity (in pieces) granted per cycle of minQuantityPieces.
   // Only meaningful when discountType == 'buy_x_get_y'.
   final int? freeQuantityPieces;
+  // Whether freeQuantityPieces represents pieces or boxes ('piece' | 'box').
+  final String freeQuantityUnit;
 
   const ProductDiscount({
     required this.id,
@@ -15,6 +17,7 @@ class ProductDiscount {
     required this.discountValue,
     this.discountType = 'percent',
     this.freeQuantityPieces,
+    this.freeQuantityUnit = 'box',
   });
 
   bool get isPercent => discountType == 'percent';
@@ -27,6 +30,7 @@ class ProductDiscount {
         discountValue: (j['discount_percent'] as num).toDouble(),
         discountType: (j['discount_type'] as String?) ?? 'percent',
         freeQuantityPieces: j['free_quantity_pieces'] as int?,
+        freeQuantityUnit: (j['free_quantity_unit'] as String?) ?? 'box',
       );
 
   Map<String, dynamic> toJson() => {
@@ -36,5 +40,6 @@ class ProductDiscount {
         'discount_percent': discountValue,
         'discount_type': discountType,
         'free_quantity_pieces': freeQuantityPieces,
+        'free_quantity_unit': freeQuantityUnit,
       };
 }

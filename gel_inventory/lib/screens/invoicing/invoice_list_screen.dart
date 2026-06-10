@@ -147,6 +147,7 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
           clientName: clientsMap[inv.clientId]?.name ?? inv.clientId,
           date: inv.invoiceDate,
           amount: inv.totalAmount,
+          notes: inv.notes,
         )).toList();
 
     await printInvoiceList(periodLabel: _periodLabel, items: items);

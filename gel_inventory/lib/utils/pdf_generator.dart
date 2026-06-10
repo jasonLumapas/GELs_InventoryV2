@@ -378,12 +378,14 @@ class InvoiceListItem {
   final String clientName;
   final DateTime date;
   final double amount;
+  final String? notes;
 
   const InvoiceListItem({
     required this.invoiceNumber,
     required this.clientName,
     required this.date,
     required this.amount,
+    this.notes,
   });
 }
 
@@ -440,18 +442,31 @@ Future<void> printInvoiceList({
       for (int i = 0; i < items.length; i++) ...[
         pw.Padding(
           padding: const pw.EdgeInsets.symmetric(vertical: 4),
-          child: pw.Row(children: [
-            pw.SizedBox(
-                width: invNoW,
-                child: pw.Text(items[i].invoiceNumber, style: ts())),
-            pw.SizedBox(
-                width: clientW,
-                child: pw.Text(items[i].clientName, style: ts())),
-            pw.SizedBox(
-                width: amtW,
-                child: pw.Text(phpFmt(items[i].amount),
-                    style: ts(), textAlign: pw.TextAlign.right)),
-          ]),
+          child: pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.SizedBox(
+                  width: invNoW,
+                  child: pw.Text(items[i].invoiceNumber, style: ts())),
+              pw.SizedBox(
+                  width: clientW,
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(items[i].clientName, style: ts()),
+                      if (items[i].notes != null &&
+                          items[i].notes!.trim().isNotEmpty)
+                        pw.Text(items[i].notes!.trim(),
+                            style: pw.TextStyle(
+                                font: font, fontSize: fs - 2)),
+                    ],
+                  )),
+              pw.SizedBox(
+                  width: amtW,
+                  child: pw.Text(phpFmt(items[i].amount),
+                      style: ts(), textAlign: pw.TextAlign.right)),
+            ],
+          ),
         ),
         if (i < items.length - 1)
           pw.Divider(height: 1, thickness: 0.3),
@@ -747,11 +762,8 @@ Future<void> printInventoryReport({
     ],
   ));
 
-  final bytes = await doc.save();
-  final home  = Platform.environment['USERPROFILE'] ??
-      Platform.environment['HOME'] ?? '.';
-  final tag   = DateFormat('yyyyMMdd').format(date);
-  await File('$home\\Desktop\\inventory_report_$tag.pdf').writeAsBytes(bytes);
+  await _printWithSlot(
+    doc: doc, format: pageFormat, slot: PrinterSettingsService.layout);
 }
 
 // ── Van Stock History PDF ─────────────────────────────────────────────────────

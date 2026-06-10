@@ -844,6 +844,16 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
       products = products.where((p) => p.supplierId == supplierId).toList();
     }
 
+    // Sort by supplier name, then alphabetically by product name.
+    final suppliers = await ref.read(supplierRepositoryProvider).getAll();
+    final supplierNames = {for (final s in suppliers) s.id: s.name};
+    products = List.of(products)
+      ..sort((a, b) {
+        final cmp = (supplierNames[a.supplierId] ?? '')
+            .compareTo(supplierNames[b.supplierId] ?? '');
+        return cmp != 0 ? cmp : a.name.compareTo(b.name);
+      });
+
     final inventoryItems =
         await ref.read(inventoryRepositoryProvider).getAll();
     final currentInv = <String, int>{

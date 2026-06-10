@@ -403,10 +403,17 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
       products = products.where((p) => (data.ending[p.id] ?? 0) > 0).toList();
     }
 
+    final showSelling =
+        ref.read(inventoryReportShowSellingProvider).valueOrNull ?? false;
+
     await printInventoryReport(
       date: _selectedDate,
       supplierName: supplierName,
-      totalEndingValue: data.totalEndingValue,
+      totalEndingValue:
+          showSelling ? data.totalEndingSellingValue : data.totalEndingValue,
+      endingValueLabel: showSelling
+          ? 'Ending Inventory Selling Value'
+          : 'Ending Inventory Capital Value',
       totalStockInValue: data.totalStockInValue,
       rows: products
           .map((p) => InventoryReportRow(
@@ -782,7 +789,11 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                               ),
                               const Spacer(),
                               Text(
-                                'Ending Inventory Capital Value: ${formatCurrency(data.totalEndingValue)}',
+                                (ref.watch(inventoryReportShowSellingProvider)
+                                            .valueOrNull ??
+                                        false)
+                                    ? 'Ending Inventory Selling Value: ${formatCurrency(data.totalEndingSellingValue)}'
+                                    : 'Ending Inventory Capital Value: ${formatCurrency(data.totalEndingValue)}',
                                 style: const TextStyle(
                                     fontSize: 15, fontWeight: FontWeight.bold),
                               ),
@@ -938,8 +949,9 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
 
     // Total ending inventory value = ending pieces × withdrawal price
     // Total stock-in value = stock-in pieces × withdrawal price
-    double totalEndingValue  = 0;
-    double totalStockInValue = 0;
+    double totalEndingValue        = 0;
+    double totalEndingSellingValue = 0;
+    double totalStockInValue       = 0;
     for (final p in products) {
       final price = await ref
           .read(productRepositoryProvider)
@@ -947,7 +959,8 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
       if (price == null) continue;
       final endPieces = ending[p.id] ?? 0;
       if (endPieces > 0) {
-        totalEndingValue += price.withdrawalPrice * endPieces;
+        totalEndingValue        += price.withdrawalPrice * endPieces;
+        totalEndingSellingValue += price.sellingPrice * endPieces;
       }
       final inPieces = stockIn[p.id] ?? 0;
       if (inPieces > 0) {
@@ -962,6 +975,7 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
         stockOut: onDate,
         ending: ending,
         totalEndingValue: totalEndingValue,
+        totalEndingSellingValue: totalEndingSellingValue,
         totalStockInValue: totalStockInValue);
   }
 
@@ -991,6 +1005,7 @@ class _InvData {
   final Map<String, int> stockOut;
   final Map<String, int> ending;
   final double totalEndingValue;
+  final double totalEndingSellingValue;
   final double totalStockInValue;
 
   const _InvData({
@@ -1000,6 +1015,7 @@ class _InvData {
     required this.stockOut,
     required this.ending,
     required this.totalEndingValue,
+    required this.totalEndingSellingValue,
     required this.totalStockInValue,
   });
 }

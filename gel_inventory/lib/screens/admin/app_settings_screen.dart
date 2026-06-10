@@ -66,6 +66,7 @@ class _AppSettingsScreenState extends ConsumerState<AppSettingsScreen> {
   bool _showCapitalProfit = true;
   bool _showOffSiteLoading = true;
   bool _showImportCsv = true;
+  bool _inventoryReportShowSelling = false;
 
   @override
   void initState() {
@@ -87,6 +88,8 @@ class _AppSettingsScreenState extends ConsumerState<AppSettingsScreen> {
     _showCapitalProfit  = await AppSettingsService.getShowCapitalProfit();
     _showOffSiteLoading = await AppSettingsService.getShowOffSiteLoading();
     _showImportCsv      = await AppSettingsService.getShowImportCsv();
+    _inventoryReportShowSelling =
+        await AppSettingsService.getInventoryReportShowSelling();
     if (!mounted) return;
     setState(() {
       _unlocked = true;
@@ -110,6 +113,12 @@ class _AppSettingsScreenState extends ConsumerState<AppSettingsScreen> {
     setState(() => _showImportCsv = value);
     await AppSettingsService.setShowImportCsv(value);
     ref.invalidate(showImportCsvProvider);
+  }
+
+  Future<void> _toggleInventoryReportShowSelling(bool value) async {
+    setState(() => _inventoryReportShowSelling = value);
+    await AppSettingsService.setInventoryReportShowSelling(value);
+    ref.invalidate(inventoryReportShowSellingProvider);
   }
 
   @override
@@ -143,6 +152,13 @@ class _AppSettingsScreenState extends ConsumerState<AppSettingsScreen> {
                           'Display the Import CSV entry in the navigation menu and dashboard'),
                       value: _showImportCsv,
                       onChanged: _toggleImportCsv,
+                    ),
+                    SwitchListTile(
+                      title: const Text('Inventory Report: Show Selling Value'),
+                      subtitle: const Text(
+                          'Show the ending inventory grand total as selling value instead of capital value'),
+                      value: _inventoryReportShowSelling,
+                      onChanged: _toggleInventoryReportShowSelling,
                     ),
                   ],
                 ),

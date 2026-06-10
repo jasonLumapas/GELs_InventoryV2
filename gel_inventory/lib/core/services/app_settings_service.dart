@@ -8,10 +8,12 @@ class AppSettingsService {
   static const _keyShowCapitalProfit  = 'settings_show_capital_profit';
   static const _keyShowOffSiteLoading = 'settings_show_offsite_loading';
   static const _keyShowImportCsv      = 'settings_show_import_csv';
+  static const _keyInventoryReportShowSelling =
+      'settings_inventory_report_show_selling';
 
-  static Future<bool> _getFlag(String key) async {
+  static Future<bool> _getFlag(String key, {bool defaultValue = true}) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(key) ?? true;
+    return prefs.getBool(key) ?? defaultValue;
   }
 
   static Future<void> _setFlag(String key, bool value) async {
@@ -31,6 +33,13 @@ class AppSettingsService {
   static Future<bool> getShowImportCsv() => _getFlag(_keyShowImportCsv);
   static Future<void> setShowImportCsv(bool value) =>
       _setFlag(_keyShowImportCsv, value);
+
+  /// When true, the inventory report's grand total shows the ending
+  /// inventory's selling value instead of its capital (withdrawal) value.
+  static Future<bool> getInventoryReportShowSelling() =>
+      _getFlag(_keyInventoryReportShowSelling, defaultValue: false);
+  static Future<void> setInventoryReportShowSelling(bool value) =>
+      _setFlag(_keyInventoryReportShowSelling, value);
 }
 
 final showCapitalProfitProvider =
@@ -41,3 +50,6 @@ final showOffSiteLoadingProvider =
 
 final showImportCsvProvider =
     FutureProvider<bool>((ref) => AppSettingsService.getShowImportCsv());
+
+final inventoryReportShowSellingProvider = FutureProvider<bool>(
+    (ref) => AppSettingsService.getInventoryReportShowSelling());

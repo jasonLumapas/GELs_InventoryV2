@@ -647,6 +647,7 @@ Future<void> printInventoryReport({
   String? supplierName,
   required List<InventoryReportRow> rows,
   required double totalEndingValue,
+  String endingValueLabel = 'Ending Inventory Capital Value',
   required double totalStockInValue,
 }) async {
   final doc     = pw.Document();
@@ -755,7 +756,7 @@ Future<void> printInventoryReport({
       pw.Align(
         alignment: pw.Alignment.centerRight,
         child: pw.Text(
-          'Ending Inventory Capital Value: ${_n(totalEndingValue)}',
+          '$endingValueLabel: ${_n(totalEndingValue)}',
           style: ts(bold: true, size: fsHead),
         ),
       ),

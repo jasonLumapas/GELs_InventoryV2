@@ -1,22 +1,30 @@
 import 'package:drift/drift.dart' as drift;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../core/database/local_db.dart' hide BadOrder, BadOrderItem;
+import 'package:uuid/uuid.dart';
+import '../core/database/local_db.dart' hide BadOrder, BadOrderItem, StockMovement;
 import '../core/services/connectivity_service.dart';
 import '../core/services/sync_service.dart';
 import '../models/bad_order.dart';
 import '../models/bad_order_item.dart';
+import '../models/stock_movement.dart';
 import 'base_repository.dart';
 import 'inventory_repository.dart';
+import 'product_repository.dart';
+import 'stock_movement_repository.dart';
 
 class BadOrderRepository extends BaseRepository {
   final InventoryRepository inventoryRepo;
+  final StockMovementRepository stockMovementRepo;
+  final ProductRepository productRepo;
 
   BadOrderRepository({
     required super.db,
     required super.connectivity,
     required super.syncService,
     required this.inventoryRepo,
+    required this.stockMovementRepo,
+    required this.productRepo,
   });
 
   Future<List<BadOrder>> getAll() async {
@@ -117,18 +125,62 @@ class BadOrderRepository extends BaseRepository {
             quantity: drift.Value(item.quantity),
           )));
 
-      // Only returns restore inventory
+      final ppb = piecesPerBoxByProduct[item.productId] ?? 1;
+      final pieces =
+          item.unitType == 'box' ? item.quantity * ppb : item.quantity;
+
       if (order.isReturn) {
-        final ppb = piecesPerBoxByProduct[item.productId] ?? 1;
-        final pieces =
-            item.unitType == 'box' ? item.quantity * ppb : item.quantity;
+        // Returns restore inventory.
         await inventoryRepo.adjust(
             productId: item.productId, deltaPieces: pieces);
+        await stockMovementRepo.save(StockMovement(
+          id: const Uuid().v4(),
+          productId: item.productId,
+          movementType: 'in',
+          quantityPieces: pieces,
+          referenceDate: order.date,
+          invoiceNumber: 'BO-${order.id}',
+          comments: 'Return',
+          createdAt: DateTime.now(),
+        ));
+      } else {
+        // Bad orders deduct inventory (stock out).
+        await inventoryRepo.adjust(
+            productId: item.productId, deltaPieces: -pieces);
+        await stockMovementRepo.save(StockMovement(
+          id: const Uuid().v4(),
+          productId: item.productId,
+          movementType: 'out',
+          quantityPieces: pieces,
+          referenceDate: order.date,
+          invoiceNumber: 'BO-${order.id}',
+          comments: 'Bad order',
+          createdAt: DateTime.now(),
+        ));
       }
     }
   }
 
+  /// Deletes the bad order/return and reverses its inventory effect.
   Future<void> delete(String id) async {
+    final items = await getItems(id);
+    if (items.isNotEmpty) {
+      final order = (await getAll()).where((o) => o.id == id).firstOrNull;
+      final products = await productRepo.getAll();
+      final ppbMap = {for (final p in products) p.id: p.piecesPerBox};
+      for (final item in items) {
+        final ppb = ppbMap[item.productId] ?? 1;
+        final pieces =
+            item.unitType == 'box' ? item.quantity * ppb : item.quantity;
+        // Reverse the original adjustment: returns added pieces back
+        // (subtract them now), bad orders removed pieces (add them back).
+        final reverseDelta = (order?.isReturn ?? false) ? -pieces : pieces;
+        await inventoryRepo.adjust(
+            productId: item.productId, deltaPieces: reverseDelta);
+      }
+      await stockMovementRepo.deleteByInvoiceNumber('BO-$id');
+    }
+
     if (isOnline) {
       await Supabase.instance.client
           .from('bad_order_items')
@@ -158,6 +210,8 @@ final badOrderRepositoryProvider = Provider<BadOrderRepository>((ref) {
     connectivity: ref.watch(connectivityServiceProvider),
     syncService: ref.watch(syncServiceProvider),
     inventoryRepo: ref.watch(inventoryRepositoryProvider),
+    stockMovementRepo: ref.watch(stockMovementRepositoryProvider),
+    productRepo: ref.watch(productRepositoryProvider),
   );
 });
 

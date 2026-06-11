@@ -49,6 +49,11 @@ class DashboardScreen extends ConsumerWidget {
             route: '/supplier-deliveries',
           ),
           _NavCard(
+            icon: Icons.shopping_cart,
+            label: 'Purchase Orders',
+            route: '/purchase-orders',
+          ),
+          _NavCard(
             icon: Icons.receipt_long,
             label: 'Invoices',
             route: '/invoices',

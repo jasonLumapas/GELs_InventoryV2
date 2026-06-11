@@ -255,6 +255,39 @@ class SupplierReceivedInvoiceItems extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// A request for stock to be ordered from a supplier (before delivery).
+class PurchaseOrders extends Table {
+  TextColumn get id => text()();
+  TextColumn get supplierId => text().references(Suppliers, #id)();
+  DateTimeColumn get orderDate =>
+      dateTime().withDefault(currentDateAndTime)();
+  TextColumn get referenceNumber => text().nullable()();
+  RealColumn get totalAmount => real().withDefault(const Constant(0.0))();
+  // status: 'open' | 'cancelled'
+  TextColumn get status => text().withDefault(const Constant('open'))();
+  TextColumn get notes => text().nullable()();
+  DateTimeColumn get createdAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+class PurchaseOrderItems extends Table {
+  TextColumn get id => text()();
+  TextColumn get purchaseOrderId =>
+      text().references(PurchaseOrders, #id)();
+  TextColumn get productId => text().references(Products, #id)();
+  // Product's withdrawal price at the time the item was added.
+  RealColumn get price => real()();
+  // "# of case", editable.
+  RealColumn get cases => real()();
+  RealColumn get amount => real()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 class SyncQueue extends Table {
   TextColumn get id => text()();
   TextColumn get targetTable => text()();
@@ -288,13 +321,15 @@ class SyncQueue extends Table {
   InvoicePayments,
   SupplierReceivedInvoices,
   SupplierReceivedInvoiceItems,
+  PurchaseOrders,
+  PurchaseOrderItems,
   SyncQueue,
 ])
 class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 17;
+  int get schemaVersion => 18;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -374,6 +409,10 @@ class LocalDatabase extends _$LocalDatabase {
           if (from < 17) {
             await m.createTable(supplierReceivedInvoices);
             await m.createTable(supplierReceivedInvoiceItems);
+          }
+          if (from < 18) {
+            await m.createTable(purchaseOrders);
+            await m.createTable(purchaseOrderItems);
           }
         },
       );

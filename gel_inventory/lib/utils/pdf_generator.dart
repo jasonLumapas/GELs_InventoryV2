@@ -9,9 +9,12 @@ import '../models/client.dart';
 import '../models/invoice.dart';
 import '../models/invoice_item.dart';
 import '../models/product.dart';
+import '../models/purchase_order.dart';
+import '../models/purchase_order_item.dart';
 import '../models/supplier.dart';
 import '../models/supplier_received_invoice.dart';
 import '../models/supplier_received_invoice_item.dart';
+import 'product_format.dart';
 
 // ── Printer routing helper ────────────────────────────────────────────────────
 // Shows the system print dialog so the user can confirm printer and page setup.
@@ -1394,5 +1397,99 @@ Future<void> printSupplierReceivedInvoice({
 
   await _printWithSlot(
     doc: doc, format: pageFormat, slot: PrinterSettingsService.supplierDelivery);
+}
+
+Future<void> printPurchaseOrder({
+  required PurchaseOrder order,
+  required Supplier supplier,
+  required List<PurchaseOrderItem> items,
+  required Map<String, Product> productsById,
+}) async {
+  final doc     = pw.Document();
+  final dateFmt = DateFormat('MMMM dd, yyyy');
+
+  final pageFormat = PdfPageFormat.a4.copyWith(
+    marginTop: 40,
+    marginBottom: 40,
+    marginLeft: 40,
+    marginRight: 40,
+  );
+  final usableW = pageFormat.availableWidth;
+  final prodW  = usableW * 0.40;
+  final pkgW   = usableW * 0.20;
+  final colW   = (usableW - prodW - pkgW) / 3;
+
+  final font     = pw.Font.helvetica();
+  final fontBold = pw.Font.helveticaBold();
+  const double fs     = 8.5;
+  const double fsHead = 11;
+
+  pw.TextStyle ts({bool bold = false, double? size}) =>
+      pw.TextStyle(font: bold ? fontBold : font, fontSize: size ?? fs);
+
+  pw.Widget col(String text, double width,
+          {bool bold = false,
+           pw.TextAlign align = pw.TextAlign.left,
+           double? size}) =>
+      pw.SizedBox(
+        width: width,
+        child: pw.Text(text, style: ts(bold: bold, size: size), textAlign: align),
+      );
+
+  final grandTotal = items.fold(0.0, (s, i) => s + i.amount);
+
+  doc.addPage(pw.MultiPage(
+    pageFormat: pageFormat,
+    build: (ctx) => [
+      pw.Text('Purchase Order', style: ts(bold: true, size: fsHead + 2)),
+      pw.SizedBox(height: 4),
+      pw.Text('Date: ${dateFmt.format(order.orderDate)}', style: ts(size: fsHead)),
+      pw.Text('Supplier: ${supplier.name}', style: ts(size: fsHead)),
+      if (order.referenceNumber != null && order.referenceNumber!.isNotEmpty)
+        pw.Text('Reference #: ${order.referenceNumber}', style: ts(size: fsHead)),
+      pw.SizedBox(height: 10),
+
+      // Column header row
+      pw.Row(children: [
+        col('Product Description', prodW, bold: true, size: fsHead - 1),
+        col('Packaging', pkgW, bold: true, size: fsHead - 1),
+        col('Price', colW, bold: true, align: pw.TextAlign.right, size: fsHead - 1),
+        col('# of Case', colW, bold: true, align: pw.TextAlign.right, size: fsHead - 1),
+        col('Amount', colW, bold: true, align: pw.TextAlign.right, size: fsHead - 1),
+      ]),
+      pw.Divider(height: 4, thickness: 0.5),
+
+      // Data rows
+      for (int i = 0; i < items.length; i++) ...[
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 1.5),
+          child: pw.Row(children: [
+            col(productsById[items[i].productId]?.name ?? items[i].productId, prodW),
+            col(
+              productsById[items[i].productId] != null
+                  ? packagingLabel(productsById[items[i].productId]!)
+                  : '',
+              pkgW,
+            ),
+            col(_n(items[i].price), colW, align: pw.TextAlign.right),
+            col(_n(items[i].cases), colW, align: pw.TextAlign.right),
+            col(_n(items[i].amount), colW, align: pw.TextAlign.right),
+          ]),
+        ),
+        if (i < items.length - 1) pw.Divider(height: 1, thickness: 0.2),
+      ],
+
+      pw.Divider(height: 8, thickness: 0.5),
+      pw.SizedBox(height: 6),
+      pw.Align(
+        alignment: pw.Alignment.centerRight,
+        child: pw.Text('Grand Total: ${_n(grandTotal)}',
+            style: ts(bold: true, size: fsHead)),
+      ),
+    ],
+  ));
+
+  await _printWithSlot(
+    doc: doc, format: pageFormat, slot: PrinterSettingsService.purchaseOrder);
 }
 

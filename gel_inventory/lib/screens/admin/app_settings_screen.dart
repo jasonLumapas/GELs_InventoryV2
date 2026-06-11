@@ -67,6 +67,7 @@ class _AppSettingsScreenState extends ConsumerState<AppSettingsScreen> {
   bool _showOffSiteLoading = true;
   bool _showImportCsv = true;
   bool _inventoryReportShowSelling = false;
+  bool _allowBadOrderNoClient = false;
 
   @override
   void initState() {
@@ -90,6 +91,8 @@ class _AppSettingsScreenState extends ConsumerState<AppSettingsScreen> {
     _showImportCsv      = await AppSettingsService.getShowImportCsv();
     _inventoryReportShowSelling =
         await AppSettingsService.getInventoryReportShowSelling();
+    _allowBadOrderNoClient =
+        await AppSettingsService.getAllowBadOrderNoClient();
     if (!mounted) return;
     setState(() {
       _unlocked = true;
@@ -119,6 +122,12 @@ class _AppSettingsScreenState extends ConsumerState<AppSettingsScreen> {
     setState(() => _inventoryReportShowSelling = value);
     await AppSettingsService.setInventoryReportShowSelling(value);
     ref.invalidate(inventoryReportShowSellingProvider);
+  }
+
+  Future<void> _toggleAllowBadOrderNoClient(bool value) async {
+    setState(() => _allowBadOrderNoClient = value);
+    await AppSettingsService.setAllowBadOrderNoClient(value);
+    ref.invalidate(allowBadOrderNoClientProvider);
   }
 
   @override
@@ -159,6 +168,13 @@ class _AppSettingsScreenState extends ConsumerState<AppSettingsScreen> {
                           'Show the ending inventory grand total as selling value instead of capital value'),
                       value: _inventoryReportShowSelling,
                       onChanged: _toggleInventoryReportShowSelling,
+                    ),
+                    SwitchListTile(
+                      title: const Text('Allow Bad Order / Return without a Client'),
+                      subtitle: const Text(
+                          'When enabled, Bad Orders and Returns can be saved without selecting a client (saved as "No Client Specified")'),
+                      value: _allowBadOrderNoClient,
+                      onChanged: _toggleAllowBadOrderNoClient,
                     ),
                   ],
                 ),

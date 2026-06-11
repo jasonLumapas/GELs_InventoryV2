@@ -417,6 +417,17 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                                   '  •  ${dateFmt.format(inv.invoiceDate)}'
                                   '  •  ${inv.status.toUpperCase()}',
                                 ),
+                                if (client?.address != null &&
+                                    client!.address!.isNotEmpty)
+                                  Text(
+                                    client.address!,
+                                    style: TextStyle(
+                                      color: Colors.grey.shade600,
+                                      fontSize: 12,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 if (inv.notes != null && inv.notes!.isNotEmpty)
                                   Text(
                                     inv.notes!,

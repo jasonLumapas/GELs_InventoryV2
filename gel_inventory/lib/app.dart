@@ -24,6 +24,8 @@ import 'screens/admin/app_settings_screen.dart';
 import 'screens/incentives/incentives_screen.dart';
 import 'screens/supplier_deliveries/supplier_received_invoice_list_screen.dart';
 import 'screens/supplier_deliveries/supplier_received_invoice_form_screen.dart';
+import 'screens/purchase_orders/purchase_order_list_screen.dart';
+import 'screens/purchase_orders/purchase_order_form_screen.dart';
 
 final _router = GoRouter(
   initialLocation: '/',
@@ -128,6 +130,20 @@ final _router = GoRouter(
       path: '/supplier-deliveries/:id',
       builder: (_, state) => SupplierReceivedInvoiceFormScreen(
           invoiceId: state.pathParameters['id']),
+    ),
+
+    // Purchase Orders
+    GoRoute(
+        path: '/purchase-orders',
+        builder: (ctx, s) => const PurchaseOrderListScreen()),
+    GoRoute(
+        path: '/purchase-orders/new',
+        builder: (ctx, s) => PurchaseOrderFormScreen(
+            draftId: s.uri.queryParameters['draft'])),
+    GoRoute(
+      path: '/purchase-orders/:id',
+      builder: (_, state) => PurchaseOrderFormScreen(
+          orderId: state.pathParameters['id']),
     ),
   ],
 );

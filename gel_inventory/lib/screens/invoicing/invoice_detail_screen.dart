@@ -991,6 +991,16 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                       ),
                     ),
                   ),
+                  if (_selectedClient?.address != null &&
+                      _selectedClient!.address!.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+                      child: Text(
+                        _selectedClient!.address!,
+                        style: TextStyle(
+                            fontSize: 12, color: Theme.of(context).hintColor),
+                      ),
+                    ),
                   const SizedBox(height: 8),
 
                   // Notes (internal only — not printed on the invoice)

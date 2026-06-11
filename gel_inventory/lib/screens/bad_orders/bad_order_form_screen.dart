@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
+import '../../core/services/app_settings_service.dart';
 import '../../models/bad_order.dart';
 import '../../models/bad_order_item.dart';
 import '../../models/client.dart';
@@ -35,6 +36,8 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
   bool _saving = false;
   Set<String> _orderedProductIds = {};
   bool _loadingOrderedProducts = false;
+  bool _allowNoClient = false;
+  bool _noClient = false;
 
   @override
   void initState() {
@@ -45,7 +48,17 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
   Future<void> _load() async {
     _clients = await ref.read(clientRepositoryProvider).getAll();
     _products = await ref.read(productRepositoryProvider).getAll();
+    _allowNoClient = await AppSettingsService.getAllowBadOrderNoClient();
     setState(() => _loading = false);
+  }
+
+  void _toggleNoClient(bool value) {
+    setState(() {
+      _noClient = value;
+      _selectedClient = null;
+      _orderedProductIds = {};
+      _items.clear();
+    });
   }
 
   Future<void> _pickDate() async {
@@ -108,20 +121,23 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
   }
 
   Future<void> _pickProduct() async {
-    if (_selectedClient == null) {
+    if (_selectedClient == null && !_noClient) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Select a client first.')));
       return;
     }
     final already = _items.map((i) => i.productId).toSet();
-    final available = _products
-        .where((p) =>
-            !already.contains(p.id) && _orderedProductIds.contains(p.id))
-        .toList();
+    final available = _noClient
+        ? _products.where((p) => !already.contains(p.id)).toList()
+        : _products
+            .where((p) =>
+                !already.contains(p.id) && _orderedProductIds.contains(p.id))
+            .toList();
     if (available.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content:
-              Text('No previously ordered products found for this client.')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_noClient
+              ? 'No products available to add.'
+              : 'No previously ordered products found for this client.')));
       return;
     }
     final picked = await showSearchPicker<Product>(
@@ -141,12 +157,15 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
   }
 
   Future<void> _save() async {
-    if (_selectedClient == null || _items.isEmpty) return;
+    if ((_selectedClient == null && !_noClient) || _items.isEmpty) return;
     setState(() => _saving = true);
     final now = DateTime.now();
+    final clientId = _noClient
+        ? (await ref.read(clientRepositoryProvider).getOrCreateNoClientPlaceholder()).id
+        : _selectedClient!.id;
     final order = BadOrder(
       id: const Uuid().v4(),
-      clientId: _selectedClient!.id,
+      clientId: clientId,
       date: _selectedDate,
       type: _type,
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
@@ -226,7 +245,7 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: const Text(
-                            'Bad orders will NOT restore inventory.',
+                            'Bad orders will deduct the quantity from inventory (stock out).',
                             style: TextStyle(fontSize: 12),
                           ),
                         ),
@@ -248,24 +267,37 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                       const SizedBox(height: 8),
                       // Client
                       InkWell(
-                        onTap: _pickClient,
+                        onTap: _noClient ? null : _pickClient,
                         borderRadius: BorderRadius.circular(4),
                         child: InputDecorator(
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             labelText: 'Client',
-                            border: OutlineInputBorder(),
-                            suffixIcon: Icon(Icons.search),
+                            border: const OutlineInputBorder(),
+                            suffixIcon:
+                                _noClient ? null : const Icon(Icons.search),
+                            enabled: !_noClient,
                           ),
                           child: Text(
-                            _selectedClient?.name ?? 'Tap to search…',
+                            _noClient
+                                ? 'No Client Specified'
+                                : _selectedClient?.name ?? 'Tap to search…',
                             style: TextStyle(
-                              color: _selectedClient == null
+                              color: _noClient || _selectedClient == null
                                   ? Theme.of(context).hintColor
                                   : null,
                             ),
                           ),
                         ),
                       ),
+                      if (_allowNoClient)
+                        CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          dense: true,
+                          title: const Text('No client specified'),
+                          value: _noClient,
+                          onChanged: (v) => _toggleNoClient(v ?? false),
+                        ),
                       const SizedBox(height: 8),
                       // Notes
                       TextField(
@@ -306,14 +338,16 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                   child: _items.isEmpty
                       ? Center(
                           child: Text(
-                            _selectedClient == null
-                                ? 'Select a client, then add at least one product.'
-                                : (!_loadingOrderedProducts &&
-                                        _orderedProductIds.isEmpty)
-                                    ? 'This client has no orders on or before '
-                                        '${DateFormat('MMM dd, yyyy').format(_selectedDate)} — '
-                                        'nothing available to add.'
-                                    : 'Add at least one product.',
+                            _noClient
+                                ? 'Add at least one product.'
+                                : _selectedClient == null
+                                    ? 'Select a client, then add at least one product.'
+                                    : (!_loadingOrderedProducts &&
+                                            _orderedProductIds.isEmpty)
+                                        ? 'This client has no orders on or before '
+                                            '${DateFormat('MMM dd, yyyy').format(_selectedDate)} — '
+                                            'nothing available to add.'
+                                        : 'Add at least one product.',
                             textAlign: TextAlign.center,
                             style: const TextStyle(color: Colors.grey),
                           ),
@@ -343,7 +377,7 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                       ),
                       const SizedBox(width: 8),
                       FilledButton(
-                        onPressed: (_selectedClient != null &&
+                        onPressed: ((_selectedClient != null || _noClient) &&
                                 _items.isNotEmpty &&
                                 !_saving)
                             ? _save

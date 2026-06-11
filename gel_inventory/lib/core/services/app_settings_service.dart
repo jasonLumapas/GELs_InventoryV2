@@ -10,6 +10,8 @@ class AppSettingsService {
   static const _keyShowImportCsv      = 'settings_show_import_csv';
   static const _keyInventoryReportShowSelling =
       'settings_inventory_report_show_selling';
+  static const _keyAllowBadOrderNoClient =
+      'settings_allow_bad_order_no_client';
 
   static Future<bool> _getFlag(String key, {bool defaultValue = true}) async {
     final prefs = await SharedPreferences.getInstance();
@@ -40,6 +42,13 @@ class AppSettingsService {
       _getFlag(_keyInventoryReportShowSelling, defaultValue: false);
   static Future<void> setInventoryReportShowSelling(bool value) =>
       _setFlag(_keyInventoryReportShowSelling, value);
+
+  /// When true, Bad Order / Return entries can be saved without specifying
+  /// a client — saved with a placeholder "No Client Specified" client.
+  static Future<bool> getAllowBadOrderNoClient() =>
+      _getFlag(_keyAllowBadOrderNoClient, defaultValue: false);
+  static Future<void> setAllowBadOrderNoClient(bool value) =>
+      _setFlag(_keyAllowBadOrderNoClient, value);
 }
 
 final showCapitalProfitProvider =
@@ -53,3 +62,6 @@ final showImportCsvProvider =
 
 final inventoryReportShowSellingProvider = FutureProvider<bool>(
     (ref) => AppSettingsService.getInventoryReportShowSelling());
+
+final allowBadOrderNoClientProvider = FutureProvider<bool>(
+    (ref) => AppSettingsService.getAllowBadOrderNoClient());

@@ -139,7 +139,9 @@ class _PurchaseOrderFormScreenState
               .getCurrentPrice(product.id);
           _lineItems.add(_LineItem(
             product: product,
-            price: currentPrice?.withdrawalPrice ?? it.price,
+            price: currentPrice != null
+                ? currentPrice.withdrawalPrice * product.piecesPerBox
+                : it.price,
             cases: it.cases,
           ));
         }
@@ -407,7 +409,7 @@ class _PurchaseOrderFormScreenState
     setState(() {
       _lineItems.add(_LineItem(
         product: product,
-        price: price?.withdrawalPrice ?? 0,
+        price: (price?.withdrawalPrice ?? 0) * product.piecesPerBox,
       ));
     });
     _scheduleAutoSave();
@@ -721,7 +723,7 @@ class _PurchaseOrderFormScreenState
                         ),
                         SizedBox(
                           width: 110,
-                          child: Text('Price',
+                          child: Text('Price (Box)',
                               textAlign: TextAlign.right,
                               style: TextStyle(fontWeight: FontWeight.bold)),
                         ),

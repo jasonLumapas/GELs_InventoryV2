@@ -25,25 +25,27 @@ import '../../widgets/common/search_picker.dart';
 class _LineItem {
   final Product product;
   final double systemPrice;
-  String unitType;
   int quantity;
   final TextEditingController supplierPriceCtrl;
 
   _LineItem({
     required this.product,
     required this.systemPrice,
-    this.unitType = 'piece',
     this.quantity = 0,
     double? supplierPrice,
   }) : supplierPriceCtrl = TextEditingController(
-          text: (supplierPrice ?? systemPrice).toStringAsFixed(2),
+          text: ((supplierPrice ?? systemPrice) * product.piecesPerBox)
+              .toStringAsFixed(2),
         );
 
-  int get quantityInPieces =>
-      unitType == 'box' ? quantity * product.piecesPerBox : quantity;
+  int get quantityInPieces => quantity * product.piecesPerBox;
 
-  double get supplierPrice =>
-      double.tryParse(supplierPriceCtrl.text) ?? systemPrice;
+  double get systemPricePerBox => systemPrice * product.piecesPerBox;
+
+  double get supplierPrice => product.piecesPerBox > 0
+      ? (double.tryParse(supplierPriceCtrl.text) ?? systemPricePerBox) /
+          product.piecesPerBox
+      : (double.tryParse(supplierPriceCtrl.text) ?? systemPrice);
 
   double get subtotalSystem => quantityInPieces * systemPrice;
   double get subtotalSupplier => quantityInPieces * supplierPrice;
@@ -156,8 +158,7 @@ class _SupplierReceivedInvoiceFormScreenState
           _lineItems.add(_LineItem(
             product: product,
             systemPrice: currentPrice?.withdrawalPrice ?? it.systemPrice,
-            unitType: it.unitType,
-            quantity: it.unitType == 'box' && product.piecesPerBox > 0
+            quantity: product.piecesPerBox > 0
                 ? it.quantity ~/ product.piecesPerBox
                 : it.quantity,
             supplierPrice: it.supplierPrice,
@@ -465,7 +466,7 @@ class _SupplierReceivedInvoiceFormScreenState
               id: const Uuid().v4(),
               receivedInvoiceId: _invoiceId,
               productId: li.product.id,
-              unitType: li.unitType,
+              unitType: 'box',
               quantity: li.quantityInPieces,
               systemPrice: li.systemPrice,
               supplierPrice: li.supplierPrice,
@@ -499,7 +500,7 @@ class _SupplierReceivedInvoiceFormScreenState
               id: const Uuid().v4(),
               receivedInvoiceId: _invoiceId,
               productId: li.product.id,
-              unitType: li.unitType,
+              unitType: 'box',
               quantity: li.quantityInPieces,
               systemPrice: li.systemPrice,
               supplierPrice: li.supplierPrice,
@@ -933,7 +934,7 @@ class _LineItemTileState extends State<_LineItemTile> {
               children: [
                 Expanded(
                   child: Text(
-                    'System Price: ${formatCurrency(item.systemPrice)}',
+                    'Widrawal Price (Box): ${formatCurrency(item.systemPricePerBox)}',
                     style: const TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                 ),
@@ -943,7 +944,7 @@ class _LineItemTileState extends State<_LineItemTile> {
                     controller: item.supplierPriceCtrl,
                     enabled: widget.enabled,
                     decoration: const InputDecoration(
-                        labelText: 'Supplier Price', isDense: true),
+                        labelText: 'Supplier Price (Box)', isDense: true),
                     keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
                     inputFormatters: [
@@ -954,27 +955,13 @@ class _LineItemTileState extends State<_LineItemTile> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(value: 'piece', label: Text('Pcs')),
-                    ButtonSegment(value: 'box', label: Text('Box')),
-                  ],
-                  selected: {item.unitType},
-                  onSelectionChanged: widget.enabled
-                      ? (s) {
-                          setState(() => item.unitType = s.first);
-                          widget.onChanged();
-                        }
-                      : null,
-                ),
-                const SizedBox(width: 8),
                 SizedBox(
                   width: 70,
                   child: TextField(
                     controller: _qtyCtrl,
                     enabled: widget.enabled,
                     decoration: const InputDecoration(
-                        labelText: 'Qty', isDense: true),
+                        labelText: 'Qty (Box)', isDense: true),
                     keyboardType: TextInputType.number,
                     inputFormatters: [
                       FilteringTextInputFormatter.digitsOnly

@@ -235,6 +235,106 @@ class StockMovementRepository extends BaseRepository {
   Future<Map<String, int>> sumOutForRange(DateTime from, DateTime to) =>
       _sumForTypeAndRange('out', from, to);
 
+  static bool _isBadOrder(String? invoiceNumber) =>
+      invoiceNumber != null && invoiceNumber.startsWith('BO-');
+
+  /// Splits 'out' movements for [date] into (non-bad-order, bad-order) totals
+  /// per product, based on whether `invoice_number` starts with `BO-`.
+  Future<(Map<String, int>, Map<String, int>)> sumOutSplitForDate(
+      DateTime date) async {
+    final dayStr = '${date.year}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
+    final nonBO = <String, int>{};
+    final bo = <String, int>{};
+
+    if (isOnline) {
+      try {
+        final data = await Supabase.instance.client
+            .from('stock_movements')
+            .select('product_id, quantity_pieces, reference_date, invoice_number')
+            .eq('movement_type', 'out');
+        for (final m in data as List) {
+          final refStr = m['reference_date'] as String?;
+          if (refStr == null) continue;
+          final storedDay = refStr.length >= 10 ? refStr.substring(0, 10) : refStr;
+          if (storedDay == dayStr) {
+            final pid = m['product_id'] as String;
+            final qty = (m['quantity_pieces'] as num).toInt();
+            final target = _isBadOrder(m['invoice_number'] as String?) ? bo : nonBO;
+            target[pid] = (target[pid] ?? 0) + qty;
+          }
+        }
+        return (nonBO, bo);
+      } catch (e) {
+        debugPrint('sumOutSplitForDate Supabase query failed: $e. Falling back to local.');
+      }
+    }
+
+    final dayStart = DateTime(date.year, date.month, date.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+    final rows = await (db.select(db.stockMovements)
+          ..where((t) => t.movementType.equals('out')))
+        .get();
+    for (final r in rows) {
+      final rd = r.referenceDate;
+      if (rd != null && !rd.isBefore(dayStart) && rd.isBefore(dayEnd)) {
+        final target = _isBadOrder(r.invoiceNumber) ? bo : nonBO;
+        target[r.productId] = (target[r.productId] ?? 0) + r.quantityPieces;
+      }
+    }
+    return (nonBO, bo);
+  }
+
+  /// Splits 'out' movements in [from, to) into (non-bad-order, bad-order)
+  /// totals per product, based on whether `invoice_number` starts with `BO-`.
+  Future<(Map<String, int>, Map<String, int>)> sumOutSplitForRange(
+      DateTime from, DateTime to) async {
+    final fromStr = '${from.year}-'
+        '${from.month.toString().padLeft(2, '0')}-'
+        '${from.day.toString().padLeft(2, '0')}';
+    final toStr = '${to.year}-'
+        '${to.month.toString().padLeft(2, '0')}-'
+        '${to.day.toString().padLeft(2, '0')}';
+    final nonBO = <String, int>{};
+    final bo = <String, int>{};
+
+    if (isOnline) {
+      try {
+        final data = await Supabase.instance.client
+            .from('stock_movements')
+            .select('product_id, quantity_pieces, reference_date, invoice_number')
+            .eq('movement_type', 'out');
+        for (final m in data as List) {
+          final refStr = m['reference_date'] as String?;
+          if (refStr == null) continue;
+          final storedDay = refStr.length >= 10 ? refStr.substring(0, 10) : refStr;
+          if (storedDay.compareTo(fromStr) >= 0 && storedDay.compareTo(toStr) < 0) {
+            final pid = m['product_id'] as String;
+            final qty = (m['quantity_pieces'] as num).toInt();
+            final target = _isBadOrder(m['invoice_number'] as String?) ? bo : nonBO;
+            target[pid] = (target[pid] ?? 0) + qty;
+          }
+        }
+        return (nonBO, bo);
+      } catch (e) {
+        debugPrint('sumOutSplitForRange Supabase query failed: $e. Falling back to local.');
+      }
+    }
+
+    final rows = await (db.select(db.stockMovements)
+          ..where((t) => t.movementType.equals('out')))
+        .get();
+    for (final r in rows) {
+      final rd = r.referenceDate;
+      if (rd != null && !rd.isBefore(from) && rd.isBefore(to)) {
+        final target = _isBadOrder(r.invoiceNumber) ? bo : nonBO;
+        target[r.productId] = (target[r.productId] ?? 0) + r.quantityPieces;
+      }
+    }
+    return (nonBO, bo);
+  }
+
   Future<List<StockMovement>> getForProduct(String productId) async {
     if (isOnline) {
       final data = await Supabase.instance.client

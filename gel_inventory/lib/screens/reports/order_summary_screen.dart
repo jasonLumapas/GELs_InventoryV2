@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../models/product.dart';
+import '../../repositories/bad_order_repository.dart';
 import '../../repositories/invoice_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../repositories/supplier_repository.dart';
@@ -93,6 +94,36 @@ class _OrderSummaryScreenState extends ConsumerState<OrderSummaryScreen> {
             piecesPerBox: product.piecesPerBox,
             totalPieces: item.quantity,
             totalAmount: item.subtotal,
+          );
+        }
+      }
+    }
+
+    final badOrders = await ref.read(badOrderRepositoryProvider).getAll();
+    for (final o in badOrders) {
+      if (o.type != 'bad_order') continue;
+      if (o.date.isBefore(start) || !o.date.isBefore(end)) continue;
+      final items = await ref.read(badOrderRepositoryProvider).getItems(o.id);
+      for (final item in items) {
+        final product = productsById[item.productId];
+        if (product == null) continue;
+        final pieces = item.unitType == 'box'
+            ? item.quantity * product.piecesPerBox
+            : item.quantity;
+        final price =
+            await ref.read(productRepositoryProvider).getCurrentPrice(item.productId);
+        final amount = pieces * (price?.sellingPrice ?? 0.0);
+        if (rowMap.containsKey(item.productId)) {
+          rowMap[item.productId]!.totalPieces += pieces;
+          rowMap[item.productId]!.totalAmount += amount;
+        } else {
+          rowMap[item.productId] = _Row(
+            productId: item.productId,
+            productName: product.name,
+            supplierName: suppliersById[product.supplierId] ?? 'Unknown',
+            piecesPerBox: product.piecesPerBox,
+            totalPieces: pieces,
+            totalAmount: amount,
           );
         }
       }

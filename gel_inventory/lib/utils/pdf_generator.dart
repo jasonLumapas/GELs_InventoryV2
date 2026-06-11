@@ -631,7 +631,8 @@ class InventoryReportRow {
   final int piecesPerBox;
   final int beginning;
   final int stockIn;
-  final int stockOut;
+  final int stockOutInvoices;
+  final int stockOutBO;
   final int ending;
 
   const InventoryReportRow({
@@ -639,7 +640,8 @@ class InventoryReportRow {
     required this.piecesPerBox,
     required this.beginning,
     required this.stockIn,
-    required this.stockOut,
+    required this.stockOutInvoices,
+    required this.stockOutBO,
     required this.ending,
   });
 
@@ -647,8 +649,10 @@ class InventoryReportRow {
   int get begPcs   => beginning % piecesPerBox;
   int get inBoxes  => stockIn ~/ piecesPerBox;
   int get inPcs    => stockIn % piecesPerBox;
-  int get outBoxes => stockOut ~/ piecesPerBox;
-  int get outPcs   => stockOut % piecesPerBox;
+  int get outInvBoxes => stockOutInvoices ~/ piecesPerBox;
+  int get outInvPcs   => stockOutInvoices % piecesPerBox;
+  int get outBOBoxes  => stockOutBO ~/ piecesPerBox;
+  int get outBOPcs    => stockOutBO % piecesPerBox;
   int get endBoxes => ending ~/ piecesPerBox;
   int get endPcs   => ending % piecesPerBox;
 }
@@ -672,7 +676,7 @@ Future<void> printInventoryReport({
   );
   final usableW = pageFormat.availableWidth;
   final prodW = usableW * 0.28;
-  final numW  = (usableW - prodW) / 8;
+  final numW  = (usableW - prodW) / 10;
 
   final font     = pw.Font.helvetica();
   final fontBold = pw.Font.helveticaBold();
@@ -718,12 +722,23 @@ Future<void> printInventoryReport({
         pw.SizedBox(width: prodW),
         groupHeader('Beginning', numW * 2),
         groupHeader('Stock In',  numW * 2),
-        groupHeader('Stock Out', numW * 2),
+        groupHeader('Stock Out', numW * 4),
         groupHeader('Ending',    numW * 2),
+      ]),
+      // Stock-out sub-group header row
+      pw.Row(children: [
+        pw.SizedBox(width: prodW),
+        pw.SizedBox(width: numW * 2),
+        pw.SizedBox(width: numW * 2),
+        groupHeader('Invoices', numW * 2),
+        groupHeader('BO',       numW * 2),
+        pw.SizedBox(width: numW * 2),
       ]),
       // Column header row
       pw.Row(children: [
         col('Product', prodW, bold: true, size: fsHead - 1),
+        col('Boxes', numW, bold: true, align: pw.TextAlign.center, size: fsHead - 1),
+        col('Pcs',   numW, bold: true, align: pw.TextAlign.center, size: fsHead - 1),
         col('Boxes', numW, bold: true, align: pw.TextAlign.center, size: fsHead - 1),
         col('Pcs',   numW, bold: true, align: pw.TextAlign.center, size: fsHead - 1),
         col('Boxes', numW, bold: true, align: pw.TextAlign.center, size: fsHead - 1),
@@ -745,8 +760,10 @@ Future<void> printInventoryReport({
             col(fmt(rows[i].begPcs),   numW, align: pw.TextAlign.center),
             col(fmt(rows[i].inBoxes),  numW, align: pw.TextAlign.center),
             col(fmt(rows[i].inPcs),    numW, align: pw.TextAlign.center),
-            col(fmt(rows[i].outBoxes), numW, align: pw.TextAlign.center),
-            col(fmt(rows[i].outPcs),   numW, align: pw.TextAlign.center),
+            col(fmt(rows[i].outInvBoxes), numW, align: pw.TextAlign.center),
+            col(fmt(rows[i].outInvPcs),   numW, align: pw.TextAlign.center),
+            col(fmt(rows[i].outBOBoxes),  numW, align: pw.TextAlign.center),
+            col(fmt(rows[i].outBOPcs),    numW, align: pw.TextAlign.center),
             col(fmt(rows[i].endBoxes), numW, align: pw.TextAlign.center),
             col(fmt(rows[i].endPcs),   numW, align: pw.TextAlign.center),
           ]),

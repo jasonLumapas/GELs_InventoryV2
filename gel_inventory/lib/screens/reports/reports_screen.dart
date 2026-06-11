@@ -421,7 +421,8 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                 piecesPerBox: p.piecesPerBox,
                 beginning: data.beginning[p.id] ?? 0,
                 stockIn: data.stockIn[p.id] ?? 0,
-                stockOut: data.stockOut[p.id] ?? 0,
+                stockOutInvoices: data.stockOutInvoices[p.id] ?? 0,
+                stockOutBO: data.stockOutBO[p.id] ?? 0,
                 ending: data.ending[p.id] ?? 0,
               ))
           .toList(),
@@ -601,6 +602,8 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                 6: FlexColumnWidth(1.5),
                 7: FlexColumnWidth(1.5),
                 8: FlexColumnWidth(1.5),
+                9: FlexColumnWidth(1.5),
+                10: FlexColumnWidth(1.5),
               };
               final headerBorder = TableBorder(
                 left: BorderSide(color: Colors.grey.shade400),
@@ -661,7 +664,7 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                                 ),
                               ),
                               Expanded(
-                                flex: 3,
+                                flex: 6,
                                 child: Container(
                                   color: _outDark,
                                   padding: const EdgeInsets.symmetric(vertical: 8),
@@ -703,6 +706,40 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                             ],
                           ),
                         ),
+                        // Stock-out sub-group header row (Invoices / BO)
+                        Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey.shade400),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(flex: 4, child: Container(color: Colors.grey.shade300, child: const Text(''))),
+                              Expanded(flex: 3, child: Container(color: _begDark, child: const Text(''))),
+                              Expanded(flex: 3, child: Container(color: _inDark, child: const Text(''))),
+                              Expanded(
+                                flex: 3,
+                                child: Container(
+                                  color: _outMid,
+                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                  child: const Text('Invoices',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 3,
+                                child: Container(
+                                  color: _boMid,
+                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                  child: const Text('BO',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                ),
+                              ),
+                              Expanded(flex: 3, child: Container(color: _endDark, child: const Text(''))),
+                            ],
+                          ),
+                        ),
                         // Column labels row
                         Table(
                           border: headerBorder,
@@ -716,6 +753,8 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                               _cell('Pcs',   _inMid,  bold: true, center: true),
                               _cell('Boxes', _outMid, bold: true, center: true),
                               _cell('Pcs',   _outMid, bold: true, center: true),
+                              _cell('Boxes', _boMid,  bold: true, center: true),
+                              _cell('Pcs',   _boMid,  bold: true, center: true),
                               _cell('Boxes', _endMid, bold: true, center: true),
                               _cell('Pcs',   _endMid, bold: true, center: true),
                             ]),
@@ -738,7 +777,8 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                               ...sortedProducts.map((p) {
                                 final beg = data.beginning[p.id] ?? 0;
                                 final inn = data.stockIn[p.id]  ?? 0;
-                                final out = data.stockOut[p.id] ?? 0;
+                                final outInv = data.stockOutInvoices[p.id] ?? 0;
+                                final outBO  = data.stockOutBO[p.id] ?? 0;
                                 final end = data.ending[p.id]   ?? 0;
                                 return TableRow(children: [
                                   _cell(p.name, null),
@@ -746,8 +786,10 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                                   _cell(_fmt(beg % p.piecesPerBox),  _begLight, center: true),
                                   _cell(_fmt(inn ~/ p.piecesPerBox), _inLight,  center: true),
                                   _cell(_fmt(inn % p.piecesPerBox),  _inLight,  center: true),
-                                  _cell(_fmt(out ~/ p.piecesPerBox), _outLight, center: true),
-                                  _cell(_fmt(out % p.piecesPerBox),  _outLight, center: true),
+                                  _cell(_fmt(outInv ~/ p.piecesPerBox), _outLight, center: true),
+                                  _cell(_fmt(outInv % p.piecesPerBox),  _outLight, center: true),
+                                  _cell(_fmt(outBO ~/ p.piecesPerBox), _boLight, center: true),
+                                  _cell(_fmt(outBO % p.piecesPerBox),  _boLight, center: true),
                                   _cell(_fmt(end ~/ p.piecesPerBox), _endLight, center: true),
                                   _cell(_fmt(end % p.piecesPerBox),  _endLight, center: true),
                                 ]);
@@ -775,7 +817,7 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                                     ),
                                   ),
                                 ),
-                                Expanded(flex: 3, child: const SizedBox()),
+                                Expanded(flex: 6, child: const SizedBox()),
                                 Expanded(flex: 3, child: const SizedBox()),
                               ],
                             ),
@@ -824,6 +866,9 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
   static final _outDark  = Colors.orange.shade200;
   static final _outMid   = Colors.orange.shade100;
   static final _outLight = Colors.orange.shade50;
+
+  static final _boMid    = Colors.amber.shade100;
+  static final _boLight  = Colors.amber.shade50;
 
   static final _endDark  = Colors.green.shade200;
   static final _endMid   = Colors.green.shade100;
@@ -898,8 +943,11 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
     // Pieces sold + van-out + manually-removed stock ON the selected date → Stock Out
     final invoiceOut    = await _sumSold(ref, dayStart, dayEnd);
     final vanOutOnDate  = await sumVan('out', dayStart, dayEnd);
-    final movOutOnDate  = await ref.read(stockMovementRepositoryProvider).sumOutForDate(date);
-    final onDate        = merge(merge(invoiceOut, vanOutOnDate), movOutOnDate);
+    final (movOutOnDate, badOrderOutOnDate) =
+        await ref.read(stockMovementRepositoryProvider).sumOutSplitForDate(date);
+    final stockOutInvoices = merge(merge(invoiceOut, vanOutOnDate), movOutOnDate);
+    final stockOutBO       = badOrderOutOnDate;
+    final onDate           = merge(stockOutInvoices, stockOutBO);
 
     // Pieces sold + van-out + manually-removed stock AFTER the selected date
     final Map<String, int> invoiceOutAfter;
@@ -908,7 +956,9 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
     if (dayEnd.isBefore(nowEnd)) {
       invoiceOutAfter = await _sumSold(ref, dayEnd, nowEnd);
       vanOutAfter     = await sumVan('out', dayEnd, nowEnd);
-      movOutAfter     = await ref.read(stockMovementRepositoryProvider).sumOutForRange(dayEnd, nowEnd);
+      final (nonBOAfter, boAfter) =
+          await ref.read(stockMovementRepositoryProvider).sumOutSplitForRange(dayEnd, nowEnd);
+      movOutAfter = merge(nonBOAfter, boAfter);
     } else {
       invoiceOutAfter = {};
       vanOutAfter     = {};
@@ -972,7 +1022,8 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
         products: products,
         beginning: beginning,
         stockIn: stockIn,
-        stockOut: onDate,
+        stockOutInvoices: stockOutInvoices,
+        stockOutBO: stockOutBO,
         ending: ending,
         totalEndingValue: totalEndingValue,
         totalEndingSellingValue: totalEndingSellingValue,
@@ -1002,7 +1053,8 @@ class _InvData {
   final List<Product> products;
   final Map<String, int> beginning;
   final Map<String, int> stockIn;
-  final Map<String, int> stockOut;
+  final Map<String, int> stockOutInvoices;
+  final Map<String, int> stockOutBO;
   final Map<String, int> ending;
   final double totalEndingValue;
   final double totalEndingSellingValue;
@@ -1012,7 +1064,8 @@ class _InvData {
     required this.products,
     required this.beginning,
     required this.stockIn,
-    required this.stockOut,
+    required this.stockOutInvoices,
+    required this.stockOutBO,
     required this.ending,
     required this.totalEndingValue,
     required this.totalEndingSellingValue,

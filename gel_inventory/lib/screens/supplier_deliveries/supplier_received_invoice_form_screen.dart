@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -53,8 +55,10 @@ class _LineItem {
 
 class SupplierReceivedInvoiceFormScreen extends ConsumerStatefulWidget {
   final String? invoiceId;
+  final String? draftId;
 
-  const SupplierReceivedInvoiceFormScreen({super.key, this.invoiceId});
+  const SupplierReceivedInvoiceFormScreen(
+      {super.key, this.invoiceId, this.draftId});
 
   @override
   ConsumerState<SupplierReceivedInvoiceFormScreen> createState() =>
@@ -80,16 +84,40 @@ class _SupplierReceivedInvoiceFormScreenState
   bool _loading = true;
   bool _saving = false;
 
+  Timer? _autoSaveTimer;
+  bool _draftPersisted = false;
+  bool _finalized = false;
+  bool _autoSaving = false;
+  DateTime? _lastAutoSaved;
+  ProviderContainer? _container;
+
   @override
   void initState() {
     super.initState();
-    _invoiceId = widget.invoiceId ?? const Uuid().v4();
+    _invoiceId = widget.invoiceId ?? widget.draftId ?? const Uuid().v4();
     _createdAt = DateTime.now();
     _loadData();
   }
 
   @override
   void dispose() {
+    final hadPendingSave = _autoSaveTimer?.isActive ?? false;
+    _autoSaveTimer?.cancel();
+    if (!_finalized && isNew) {
+      final repo = _container?.read(supplierReceivedInvoiceRepositoryProvider);
+      if (repo != null) {
+        if (_hasDraftContent) {
+          if (hadPendingSave || !_draftPersisted) {
+            final payload = _buildDraftPayload();
+            repo.saveDraftInvoice(
+                invoice: payload.invoice, items: payload.items);
+          }
+        } else if (_draftPersisted && widget.draftId == null) {
+          repo.discardDraft(_invoiceId);
+        }
+        _container?.invalidate(draftSupplierReceivedInvoicesProvider);
+      }
+    }
     _referenceCtrl.dispose();
     _notesCtrl.dispose();
     for (final item in _lineItems) {
@@ -102,17 +130,19 @@ class _SupplierReceivedInvoiceFormScreenState
     final suppliers = await ref.read(supplierRepositoryProvider).getAll();
     final products = await ref.read(productRepositoryProvider).getAll();
 
-    if (!isNew) {
+    final loadId = widget.invoiceId ?? widget.draftId;
+    if (loadId != null) {
       final repo = ref.read(supplierReceivedInvoiceRepositoryProvider);
-      final invoice = await repo.getById(widget.invoiceId!);
+      final invoice = await repo.getById(loadId);
       if (invoice != null) {
         _createdAt = invoice.createdAt;
         _receivedDate = invoice.receivedDate;
-        _status = invoice.status;
+        _status = invoice.status == 'draft' ? 'received' : invoice.status;
         _referenceCtrl.text = invoice.referenceNumber ?? '';
         _notesCtrl.text = invoice.notes ?? '';
         _selectedSupplier =
             suppliers.where((s) => s.id == invoice.supplierId).firstOrNull;
+        if (widget.draftId != null) _draftPersisted = true;
 
         final items = await repo.getItems(invoice.id);
         _oldItems = items;
@@ -152,6 +182,7 @@ class _SupplierReceivedInvoiceFormScreenState
     );
     if (picked != null) {
       setState(() => _receivedDate = picked);
+      _scheduleAutoSave();
     }
   }
 
@@ -168,6 +199,7 @@ class _SupplierReceivedInvoiceFormScreenState
     );
     if (picked != null) {
       setState(() => _selectedSupplier = picked);
+      _scheduleAutoSave();
     }
   }
 
@@ -398,6 +430,7 @@ class _SupplierReceivedInvoiceFormScreenState
         systemPrice: price?.withdrawalPrice ?? 0,
       ));
     });
+    _scheduleAutoSave();
   }
 
   double get _totalSystem =>
@@ -443,16 +476,83 @@ class _SupplierReceivedInvoiceFormScreenState
     return (invoice: invoice, items: items);
   }
 
+  bool get _hasDraftContent =>
+      _selectedSupplier != null && _lineItems.isNotEmpty;
+
+  ({SupplierReceivedInvoice invoice, List<SupplierReceivedInvoiceItem> items})
+      _buildDraftPayload() {
+    final invoice = SupplierReceivedInvoice(
+      id: _invoiceId,
+      supplierId: _selectedSupplier!.id,
+      receivedDate: _receivedDate,
+      referenceNumber: _referenceCtrl.text.trim().isEmpty
+          ? null
+          : _referenceCtrl.text.trim(),
+      totalAmountSystem: _totalSystem,
+      totalAmountSupplier: _totalSupplier,
+      status: 'draft',
+      notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+      createdAt: _createdAt,
+    );
+    final items = _lineItems
+        .map((li) => SupplierReceivedInvoiceItem(
+              id: const Uuid().v4(),
+              receivedInvoiceId: _invoiceId,
+              productId: li.product.id,
+              unitType: li.unitType,
+              quantity: li.quantityInPieces,
+              systemPrice: li.systemPrice,
+              supplierPrice: li.supplierPrice,
+              subtotalSystem: li.subtotalSystem,
+              subtotalSupplier: li.subtotalSupplier,
+            ))
+        .toList();
+    return (invoice: invoice, items: items);
+  }
+
+  void _scheduleAutoSave() {
+    if (_finalized || !isNew) return;
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = Timer(const Duration(seconds: 2), _autoSaveDraft);
+  }
+
+  Future<void> _autoSaveDraft() async {
+    if (_finalized || !mounted) return;
+    if (!_hasDraftContent) return;
+    setState(() => _autoSaving = true);
+    final payload = _buildDraftPayload();
+    await ref
+        .read(supplierReceivedInvoiceRepositoryProvider)
+        .saveDraftInvoice(invoice: payload.invoice, items: payload.items);
+    _draftPersisted = true;
+    ref.invalidate(draftSupplierReceivedInvoicesProvider);
+    if (mounted) {
+      setState(() {
+        _autoSaving = false;
+        _lastAutoSaved = DateTime.now();
+      });
+    }
+  }
+
   Future<({SupplierReceivedInvoice invoice, List<SupplierReceivedInvoiceItem> items})>
       _persist() async {
+    _autoSaveTimer?.cancel();
     final payload = _buildPayload();
     final repo = ref.read(supplierReceivedInvoiceRepositoryProvider);
     if (isNew) {
-      await repo.saveInvoice(
-        invoice: payload.invoice,
-        items: payload.items,
-        supplier: _selectedSupplier!,
-      );
+      if (_draftPersisted) {
+        await repo.finalizeDraft(
+          invoice: payload.invoice,
+          items: payload.items,
+          supplier: _selectedSupplier!,
+        );
+      } else {
+        await repo.saveInvoice(
+          invoice: payload.invoice,
+          items: payload.items,
+          supplier: _selectedSupplier!,
+        );
+      }
     } else {
       await repo.editInvoice(
         invoice: payload.invoice,
@@ -461,9 +561,11 @@ class _SupplierReceivedInvoiceFormScreenState
         supplier: _selectedSupplier!,
       );
     }
+    _finalized = true;
     ref.invalidate(supplierReceivedInvoicesListProvider);
     ref.invalidate(filteredSupplierReceivedInvoicesProvider);
     ref.invalidate(inventoryListProvider);
+    ref.invalidate(draftSupplierReceivedInvoicesProvider);
     return payload;
   }
 
@@ -520,12 +622,27 @@ class _SupplierReceivedInvoiceFormScreenState
 
   @override
   Widget build(BuildContext context) {
+    _container ??= ProviderScope.containerOf(context, listen: false);
     return AppScaffold(
       title: isNew ? 'New Supplier Delivery' : 'Supplier Delivery',
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
+                if (isNew && (_autoSaving || _lastAutoSaved != null))
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        _autoSaving
+                            ? 'Saving draft…'
+                            : 'Draft saved at ${DateFormat('HH:mm').format(_lastAutoSaved!)}',
+                        style: const TextStyle(
+                            fontSize: 12, color: Colors.grey),
+                      ),
+                    ),
+                  ),
                 if (_status == 'cancelled')
                   Container(
                     width: double.infinity,
@@ -595,6 +712,7 @@ class _SupplierReceivedInvoiceFormScreenState
                       border: OutlineInputBorder(),
                       isDense: true,
                     ),
+                    onChanged: (_) => _scheduleAutoSave(),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -611,6 +729,7 @@ class _SupplierReceivedInvoiceFormScreenState
                       isDense: true,
                     ),
                     maxLines: 2,
+                    onChanged: (_) => _scheduleAutoSave(),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -643,9 +762,14 @@ class _SupplierReceivedInvoiceFormScreenState
                           itemBuilder: (ctx, i) => _LineItemTile(
                             item: _lineItems[i],
                             enabled: _status != 'cancelled',
-                            onRemove: () =>
-                                setState(() => _lineItems.removeAt(i)),
-                            onChanged: () => setState(() {}),
+                            onRemove: () {
+                              setState(() => _lineItems.removeAt(i));
+                              _scheduleAutoSave();
+                            },
+                            onChanged: () {
+                              setState(() {});
+                              _scheduleAutoSave();
+                            },
                           ),
                         ),
                 ),
@@ -814,7 +938,7 @@ class _LineItemTileState extends State<_LineItemTile> {
                   ),
                 ),
                 SizedBox(
-                  width: 100,
+                  width: 130,
                   child: TextField(
                     controller: item.supplierPriceCtrl,
                     enabled: widget.enabled,

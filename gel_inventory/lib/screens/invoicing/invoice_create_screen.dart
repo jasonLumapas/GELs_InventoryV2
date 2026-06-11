@@ -98,6 +98,10 @@ class InvoiceCreateScreen extends ConsumerStatefulWidget {
 }
 
 class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
+  // Captured during build so it can still be used in dispose(), where `ref`
+  // throws (the ConsumerStatefulElement is already marked disposed by then).
+  ProviderContainer? _container;
+
   List<Client> _clients = [];
   List<Product> _products = [];
   Map<String, String> _supplierNames = {}; // productId → supplier name
@@ -445,7 +449,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       context: context,
       title: 'Select Product',
       items: available,
-      labelOf: (p) => p.name,
+      labelOf: (p) => '${p.name} x ${p.piecesPerBox}',
       searchableOf: (p) => '${p.name} ${p.productCode ?? ''}',
       leadingOf: (p) => _stockIndicator(_effectiveAvailable(p.id)),
       subtitleOf: (p) => _stockLabel(p, _effectiveAvailable(p.id)),
@@ -718,7 +722,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
         // later — only the explicit Cancel button discards those.
         _invoiceRepo.discardDraft(_invoiceId);
       }
-      ref.invalidate(draftInvoicesProvider);
+      _container?.invalidate(draftInvoicesProvider);
     }
     _notesCtrl.dispose();
     super.dispose();
@@ -726,6 +730,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
 
   @override
   Widget build(BuildContext context) {
+    _container = ProviderScope.containerOf(context, listen: false);
     return AppScaffold(
       title: 'New Invoice',
       body: _loading
@@ -1047,7 +1052,7 @@ class _LineItemTileState extends State<_LineItemTile> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(item.product.name,
+                  Text('${item.product.name} x ${item.product.piecesPerBox}',
                       style:
                           const TextStyle(fontWeight: FontWeight.bold)),
                   Text(

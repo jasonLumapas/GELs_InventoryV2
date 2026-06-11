@@ -31,7 +31,10 @@ class SupplierReceivedInvoiceRepository extends BaseRepository {
     DateTime? endDate,
   }) async {
     if (isOnline) {
-      var q = Supabase.instance.client.from('supplier_received_invoices').select();
+      var q = Supabase.instance.client
+          .from('supplier_received_invoices')
+          .select()
+          .neq('status', 'draft');
       if (startDate != null) {
         q = q.gte('received_date', startDate.toIso8601String());
       }
@@ -45,7 +48,7 @@ class SupplierReceivedInvoiceRepository extends BaseRepository {
     }
     final rows = await (db.select(db.supplierReceivedInvoices)
           ..where((t) {
-            drift.Expression<bool> expr = const drift.Constant(true);
+            drift.Expression<bool> expr = t.status.isNotValue('draft');
             if (startDate != null) {
               expr = expr & t.receivedDate.isBiggerOrEqualValue(startDate);
             }
@@ -55,6 +58,25 @@ class SupplierReceivedInvoiceRepository extends BaseRepository {
             return expr;
           })
           ..orderBy([(t) => drift.OrderingTerm.desc(t.receivedDate)]))
+        .get();
+    return rows.map(_invoiceFromRow).toList();
+  }
+
+  /// Returns all received invoices that were left as drafts (unfinished).
+  Future<List<SupplierReceivedInvoice>> getDrafts() async {
+    if (isOnline) {
+      final data = await Supabase.instance.client
+          .from('supplier_received_invoices')
+          .select()
+          .eq('status', 'draft')
+          .order('created_at', ascending: false);
+      return (data as List)
+          .map((j) => SupplierReceivedInvoice.fromJson(j))
+          .toList();
+    }
+    final rows = await (db.select(db.supplierReceivedInvoices)
+          ..where((t) => t.status.equals('draft'))
+          ..orderBy([(t) => drift.OrderingTerm.desc(t.createdAt)]))
         .get();
     return rows.map(_invoiceFromRow).toList();
   }
@@ -116,6 +138,92 @@ class SupplierReceivedInvoiceRepository extends BaseRepository {
               subtotalSupplier: r.subtotalSupplier,
             ))
         .toList();
+  }
+
+  /// Deletes all item rows for a received invoice without touching inventory.
+  Future<void> _clearItems(String receivedInvoiceId) async {
+    if (isOnline) {
+      await Supabase.instance.client
+          .from('supplier_received_invoice_items')
+          .delete()
+          .eq('received_invoice_id', receivedInvoiceId);
+    }
+    await (db.delete(db.supplierReceivedInvoiceItems)
+          ..where((t) => t.receivedInvoiceId.equals(receivedInvoiceId)))
+        .go();
+  }
+
+  /// Saves (upserts) an invoice as a draft and replaces its items.
+  /// Has no effect on inventory or stock movements.
+  Future<void> saveDraftInvoice({
+    required SupplierReceivedInvoice invoice,
+    required List<SupplierReceivedInvoiceItem> items,
+  }) async {
+    final invPayload = invoice.toJson();
+    if (isOnline) {
+      await Supabase.instance.client
+          .from('supplier_received_invoices')
+          .upsert(invPayload);
+    } else {
+      await syncService.enqueue(
+        tableName: 'supplier_received_invoices',
+        recordId: invoice.id,
+        operation: 'insert',
+        payload: invPayload,
+      );
+    }
+    await trySaveLocal(() => _saveLocalInvoice(invoice));
+
+    await _clearItems(invoice.id);
+
+    for (final item in items) {
+      final itemPayload = item.toJson();
+      if (isOnline) {
+        await Supabase.instance.client
+            .from('supplier_received_invoice_items')
+            .insert(itemPayload);
+      } else {
+        await syncService.enqueue(
+          tableName: 'supplier_received_invoice_items',
+          recordId: item.id,
+          operation: 'insert',
+          payload: itemPayload,
+        );
+      }
+      await trySaveLocal(() => _saveLocalItem(item));
+    }
+  }
+
+  /// Converts a draft into a finalized received invoice, applying inventory
+  /// and stock-movement effects.
+  Future<void> finalizeDraft({
+    required SupplierReceivedInvoice invoice,
+    required List<SupplierReceivedInvoiceItem> items,
+    required Supplier supplier,
+  }) async {
+    await _clearItems(invoice.id);
+    await saveInvoice(invoice: invoice, items: items, supplier: supplier);
+  }
+
+  /// Discards a draft received invoice and its items entirely.
+  Future<void> discardDraft(String invoiceId) async {
+    await _clearItems(invoiceId);
+    if (isOnline) {
+      await Supabase.instance.client
+          .from('supplier_received_invoices')
+          .delete()
+          .eq('id', invoiceId);
+    } else {
+      await syncService.enqueue(
+        tableName: 'supplier_received_invoices',
+        recordId: invoiceId,
+        operation: 'delete',
+        payload: {'id': invoiceId},
+      );
+    }
+    await (db.delete(db.supplierReceivedInvoices)
+          ..where((t) => t.id.equals(invoiceId)))
+        .go();
   }
 
   Future<void> saveInvoice({
@@ -380,6 +488,11 @@ final supplierReceivedInvoiceRepositoryProvider =
 final supplierReceivedInvoicesListProvider =
     FutureProvider<List<SupplierReceivedInvoice>>((ref) {
   return ref.watch(supplierReceivedInvoiceRepositoryProvider).getAll();
+});
+
+final draftSupplierReceivedInvoicesProvider =
+    FutureProvider<List<SupplierReceivedInvoice>>((ref) {
+  return ref.watch(supplierReceivedInvoiceRepositoryProvider).getDrafts();
 });
 
 final filteredSupplierReceivedInvoicesProvider = FutureProvider.family<

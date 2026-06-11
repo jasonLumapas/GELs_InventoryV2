@@ -7,6 +7,7 @@ import '../../repositories/supplier_received_invoice_repository.dart';
 import '../../repositories/supplier_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../widgets/common/app_scaffold.dart';
+import '../../widgets/common/confirm_dialog.dart';
 
 enum _FilterType { day, week, month }
 
@@ -111,6 +112,7 @@ class _SupplierReceivedInvoiceListScreenState
     final invoicesAsync =
         ref.watch(filteredSupplierReceivedInvoicesProvider((_startDate, _endDate)));
     final suppliersAsync = ref.watch(suppliersListProvider);
+    final draftsAsync = ref.watch(draftSupplierReceivedInvoicesProvider);
     final dateFmt = DateFormat('MMM dd, yyyy');
 
     return AppScaffold(
@@ -125,6 +127,85 @@ class _SupplierReceivedInvoiceListScreenState
       ],
       body: Column(
         children: [
+          // ── Draft deliveries banner ──────────────────────────────────────
+          draftsAsync.when(
+            loading: () => const SizedBox.shrink(),
+            error: (_, _) => const SizedBox.shrink(),
+            data: (drafts) {
+              if (drafts.isEmpty) return const SizedBox.shrink();
+              final suppliersMap = {
+                for (final s in suppliersAsync.valueOrNull ?? []) s.id: s
+              };
+              return Container(
+                width: double.infinity,
+                color: Colors.amber.shade100,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        '${drafts.length} unfinished delivery(ies)',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                    ),
+                    ...drafts.map((d) {
+                      final supplier = suppliersMap[d.supplierId];
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.edit_note, size: 18),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                '${supplier?.name ?? 'Unknown supplier'}'
+                                '  •  ${dateFmt.format(d.receivedDate)}'
+                                '  •  ${formatCurrency(d.totalAmountSupplier)}',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () => context.go(
+                                  '/supplier-deliveries/new?draft=${d.id}'),
+                              child: const Text('Resume'),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline,
+                                  color: Colors.red, size: 20),
+                              tooltip: 'Discard draft',
+                              onPressed: () async {
+                                final ok = await showConfirmDialog(
+                                  context,
+                                  title: 'Discard Draft',
+                                  message:
+                                      'Discard this unfinished delivery? This cannot be undone.',
+                                  confirmLabel: 'Discard',
+                                );
+                                if (ok) {
+                                  await ref
+                                      .read(
+                                          supplierReceivedInvoiceRepositoryProvider)
+                                      .discardDraft(d.id);
+                                  ref.invalidate(
+                                      draftSupplierReceivedInvoicesProvider);
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              );
+            },
+          ),
+
           // ── Filter bar ─────────────────────────────────────────────────
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),

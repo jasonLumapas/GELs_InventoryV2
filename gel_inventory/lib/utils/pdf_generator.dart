@@ -146,7 +146,10 @@ Future<void> printInvoice({
   // ── Item height estimator ────────────────────────────────────────────────────
   // 22 pt = single-line row; 36 pt = two-line row (long name or discount).
   double itemH(InvoiceItem item) {
-    final name = productsById[item.productId]?.name ?? '';
+    final product = productsById[item.productId];
+    final name = product != null
+        ? '${product.name} x ${product.piecesPerBox}'
+        : '';
     final orig = item.quantity * item.pricePerPiece;
     final twoLine = name.length > 20 ||
         (!item.isFree && (orig - item.subtotal) > 0.01);
@@ -158,7 +161,9 @@ Future<void> printInvoice({
   for (final item in items) {
     final product = productsById[item.productId];
     final ppb  = product?.piecesPerBox ?? 1;
-    final name = product?.name ?? item.productId;
+    final name = product != null
+        ? '${product.name} x ${product.piecesPerBox}'
+        : item.productId;
 
     final String qtyStr;
     final double unitPrice;

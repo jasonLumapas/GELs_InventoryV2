@@ -289,7 +289,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
       context: context,
       title: 'Select Product',
       items: available,
-      labelOf: (p) => p.name,
+      labelOf: (p) => '${p.name} x ${p.piecesPerBox}',
       searchableOf: (p) => '${p.name} ${p.productCode ?? ''}',
       leadingOf: (p) => _stockIndicator(_inventoryCache[p.id]?.quantityPieces ?? 0),
       subtitleOf: (p) => _stockLabel(p, _inventoryCache[p.id]?.quantityPieces ?? 0),
@@ -1144,7 +1144,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
             children: [
               _headerRow(['Product', 'Unit', 'Qty', 'Subtotal']),
               ..._editItems.map((item) => _dataRow([
-                    item.product.name,
+                    '${item.product.name} x ${item.product.piecesPerBox}',
                     item.unitType,
                     '${item.quantity}',
                     formatCurrency(item.subtotal),
@@ -1243,7 +1243,7 @@ class _EditItemTileState extends State<_EditItemTile> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(item.product.name,
+                  Text('${item.product.name} x ${item.product.piecesPerBox}',
                       style:
                           const TextStyle(fontWeight: FontWeight.bold)),
                   if (!stockOk)

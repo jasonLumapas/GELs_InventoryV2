@@ -134,7 +134,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                         Icons.inventory,
                         color: qty == 0 ? Colors.red : null,
                       ),
-                      title: Text(product.name),
+                      title: Text('${product.name} x ${product.piecesPerBox}'),
                       subtitle: qty == 0
                           ? const Text('No stock',
                               style: TextStyle(color: Colors.red))
@@ -195,7 +195,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     await showDialog(
       context: this.context,
       builder: (ctx) => AlertDialog(
-        title: Text('History — ${product.name}'),
+        title: Text('History — ${product.name} x ${product.piecesPerBox}'),
         contentPadding: const EdgeInsets.fromLTRB(0, 12, 0, 0),
         content: SizedBox(
           width: 480,
@@ -330,7 +330,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(product.name,
+                Text('${product.name} x ${product.piecesPerBox}',
                     style: const TextStyle(fontWeight: FontWeight.bold)),
                 Text(
                   'Original: $origBoxes box(es) + $origPcs pcs'
@@ -494,7 +494,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(product.name,
+                Text('${product.name} x ${product.piecesPerBox}',
                     style:
                         const TextStyle(fontWeight: FontWeight.bold)),
                 Text('Current: ${formatNumber(currentQty)} pcs',

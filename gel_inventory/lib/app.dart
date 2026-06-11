@@ -122,7 +122,8 @@ final _router = GoRouter(
         builder: (ctx, s) => const SupplierReceivedInvoiceListScreen()),
     GoRoute(
         path: '/supplier-deliveries/new',
-        builder: (ctx, s) => const SupplierReceivedInvoiceFormScreen()),
+        builder: (ctx, s) => SupplierReceivedInvoiceFormScreen(
+            draftId: s.uri.queryParameters['draft'])),
     GoRoute(
       path: '/supplier-deliveries/:id',
       builder: (_, state) => SupplierReceivedInvoiceFormScreen(

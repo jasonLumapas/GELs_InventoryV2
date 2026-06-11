@@ -11,6 +11,7 @@ class PrinterSettingsService {
   static const layout      = 'printer_layout';
   static const remittance  = 'printer_remittance';
   static const loading     = 'printer_loading';
+  static const supplierDelivery = 'printer_supplier_delivery';
 
   /// Human-readable label for each slot (used in the settings UI).
   static const Map<String, String> slotLabels = {
@@ -19,6 +20,7 @@ class PrinterSettingsService {
     layout:      'Layout',
     remittance:  'Remittance',
     loading:     'Loading Report',
+    supplierDelivery: 'Supplier Delivery Receipt',
   };
 
   // ── API ───────────────────────────────────────────────────────────────────

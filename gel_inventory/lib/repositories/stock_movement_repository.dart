@@ -70,6 +70,34 @@ class StockMovementRepository extends BaseRepository {
         .go());
   }
 
+  Future<void> deleteByInvoiceNumber(String invoiceNumber) async {
+    if (isOnline) {
+      try {
+        await Supabase.instance.client
+            .from('stock_movements')
+            .delete()
+            .eq('invoice_number', invoiceNumber);
+      } catch (e) {
+        debugPrint('stock_movements Supabase delete by invoice_number failed: $e. Falling back to local.');
+      }
+    } else {
+      final rows = await (db.select(db.stockMovements)
+            ..where((t) => t.invoiceNumber.equals(invoiceNumber)))
+          .get();
+      for (final r in rows) {
+        await syncService.enqueue(
+          tableName: 'stock_movements',
+          recordId: r.id,
+          operation: 'delete',
+          payload: {'id': r.id},
+        );
+      }
+    }
+    await trySaveLocal(() => (db.delete(db.stockMovements)
+          ..where((t) => t.invoiceNumber.equals(invoiceNumber)))
+        .go());
+  }
+
   Future<void> update(StockMovement movement) async {
     final payload = movement.toJson();
     if (isOnline) {

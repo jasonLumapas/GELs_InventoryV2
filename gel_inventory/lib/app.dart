@@ -22,6 +22,8 @@ import 'screens/admin/csv_import_screen.dart';
 import 'screens/admin/printer_settings_screen.dart';
 import 'screens/admin/app_settings_screen.dart';
 import 'screens/incentives/incentives_screen.dart';
+import 'screens/supplier_deliveries/supplier_received_invoice_list_screen.dart';
+import 'screens/supplier_deliveries/supplier_received_invoice_form_screen.dart';
 
 final _router = GoRouter(
   initialLocation: '/',
@@ -113,6 +115,19 @@ final _router = GoRouter(
     GoRoute(
         path: '/incentives',
         builder: (ctx, s) => const IncentivesScreen()),
+
+    // Supplier Deliveries
+    GoRoute(
+        path: '/supplier-deliveries',
+        builder: (ctx, s) => const SupplierReceivedInvoiceListScreen()),
+    GoRoute(
+        path: '/supplier-deliveries/new',
+        builder: (ctx, s) => const SupplierReceivedInvoiceFormScreen()),
+    GoRoute(
+      path: '/supplier-deliveries/:id',
+      builder: (_, state) => SupplierReceivedInvoiceFormScreen(
+          invoiceId: state.pathParameters['id']),
+    ),
   ],
 );
 

@@ -44,6 +44,11 @@ class DashboardScreen extends ConsumerWidget {
             route: '/inventory',
           ),
           _NavCard(
+            icon: Icons.move_to_inbox,
+            label: 'Supplier Deliveries',
+            route: '/supplier-deliveries',
+          ),
+          _NavCard(
             icon: Icons.receipt_long,
             label: 'Invoices',
             route: '/invoices',

@@ -214,6 +214,47 @@ class InvoicePayments extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Stock received from a supplier (delivery / receiving record).
+class SupplierReceivedInvoices extends Table {
+  TextColumn get id => text()();
+  TextColumn get supplierId => text().references(Suppliers, #id)();
+  DateTimeColumn get receivedDate =>
+      dateTime().withDefault(currentDateAndTime)();
+  // Supplier's own DR/invoice number.
+  TextColumn get referenceNumber => text().nullable()();
+  RealColumn get totalAmountSystem =>
+      real().withDefault(const Constant(0.0))();
+  RealColumn get totalAmountSupplier =>
+      real().withDefault(const Constant(0.0))();
+  // status: 'received' | 'cancelled'
+  TextColumn get status => text().withDefault(const Constant('received'))();
+  TextColumn get notes => text().nullable()();
+  DateTimeColumn get createdAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+class SupplierReceivedInvoiceItems extends Table {
+  TextColumn get id => text()();
+  TextColumn get receivedInvoiceId =>
+      text().references(SupplierReceivedInvoices, #id)();
+  TextColumn get productId => text().references(Products, #id)();
+  // unitType: 'box' | 'piece'
+  TextColumn get unitType => text()();
+  IntColumn get quantity => integer()(); // pieces
+  // Product's withdrawal price at the time of receiving.
+  RealColumn get systemPrice => real()();
+  // Price entered from the supplier's invoice.
+  RealColumn get supplierPrice => real()();
+  RealColumn get subtotalSystem => real()();
+  RealColumn get subtotalSupplier => real()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 class SyncQueue extends Table {
   TextColumn get id => text()();
   TextColumn get targetTable => text()();
@@ -245,13 +286,15 @@ class SyncQueue extends Table {
   VanStocks,
   StockMovements,
   InvoicePayments,
+  SupplierReceivedInvoices,
+  SupplierReceivedInvoiceItems,
   SyncQueue,
 ])
 class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 16;
+  int get schemaVersion => 17;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -327,6 +370,10 @@ class LocalDatabase extends _$LocalDatabase {
           if (from < 16) {
             await _addColumnIfMissing(m.database, 'product_discounts',
                 'free_quantity_unit', "TEXT NOT NULL DEFAULT 'box'");
+          }
+          if (from < 17) {
+            await m.createTable(supplierReceivedInvoices);
+            await m.createTable(supplierReceivedInvoiceItems);
           }
         },
       );

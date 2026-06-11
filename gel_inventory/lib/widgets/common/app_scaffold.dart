@@ -83,6 +83,8 @@ class _AppDrawer extends ConsumerWidget {
           _tile(context, Icons.store, 'Clients', '/clients'),
           _tile(context, Icons.inventory_2, 'Products', '/products'),
           _tile(context, Icons.warehouse, 'Inventory', '/inventory'),
+          _tile(context, Icons.move_to_inbox, 'Supplier Deliveries',
+              '/supplier-deliveries'),
           _tile(context, Icons.receipt_long, 'Invoices', '/invoices'),
           _tile(context, Icons.summarize, 'Layout', '/layout'),
           _tile(context, Icons.account_balance_wallet, 'Remittance', '/collectibles'),

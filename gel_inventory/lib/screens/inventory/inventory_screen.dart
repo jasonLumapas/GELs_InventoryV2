@@ -48,7 +48,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   Widget build(BuildContext context) {
     final viewAsync      = ref.watch(inventoryViewProvider);
     final suppliersAsync = ref.watch(suppliersListProvider);
-    final suppliers      = suppliersAsync.valueOrNull ?? [];
+    final suppliers      = [...suppliersAsync.valueOrNull ?? []]
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
     return AppScaffold(
       title: 'Inventory',

@@ -9,6 +9,9 @@ import '../models/client.dart';
 import '../models/invoice.dart';
 import '../models/invoice_item.dart';
 import '../models/product.dart';
+import '../models/supplier.dart';
+import '../models/supplier_received_invoice.dart';
+import '../models/supplier_received_invoice_item.dart';
 
 // ── Printer routing helper ────────────────────────────────────────────────────
 // Shows the system print dialog so the user can confirm printer and page setup.
@@ -1264,5 +1267,127 @@ Future<void> printRemittanceCredit({
 
   await _printWithSlot(
     doc: doc, format: pageFormat, slot: PrinterSettingsService.remittance);
+}
+
+// ── Supplier Delivery Receipt ─────────────────────────────────────────────────
+
+Future<void> printSupplierReceivedInvoice({
+  required SupplierReceivedInvoice invoice,
+  required Supplier supplier,
+  required List<SupplierReceivedInvoiceItem> items,
+  required Map<String, Product> productsById,
+}) async {
+  final doc     = pw.Document();
+  final dateFmt = DateFormat('MMMM dd, yyyy');
+
+  final pageFormat = PdfPageFormat.a4.copyWith(
+    marginTop: 40,
+    marginBottom: 40,
+    marginLeft: 40,
+    marginRight: 40,
+  );
+  final usableW = pageFormat.availableWidth;
+  final prodW  = usableW * 0.30;
+  final qtyW   = usableW * 0.12;
+  final priceW = (usableW - prodW - qtyW) / 4;
+
+  final font     = pw.Font.helvetica();
+  final fontBold = pw.Font.helveticaBold();
+  const double fs     = 8.5;
+  const double fsHead = 11;
+
+  pw.TextStyle ts({bool bold = false, double? size}) =>
+      pw.TextStyle(font: bold ? fontBold : font, fontSize: size ?? fs);
+
+  pw.Widget col(String text, double width,
+          {bool bold = false,
+           pw.TextAlign align = pw.TextAlign.left,
+           double? size}) =>
+      pw.SizedBox(
+        width: width,
+        child: pw.Text(text, style: ts(bold: bold, size: size), textAlign: align),
+      );
+
+  String qtyLabel(SupplierReceivedInvoiceItem item) {
+    final product = productsById[item.productId];
+    final ppb = product?.piecesPerBox ?? 0;
+    if (ppb <= 0) return '${item.quantity} pcs';
+    final boxes = item.quantity ~/ ppb;
+    final pcs   = item.quantity % ppb;
+    return boxes > 0
+        ? '$boxes box(es)${pcs > 0 ? ' + $pcs pcs' : ''}'
+        : '$pcs pcs';
+  }
+
+  double totalSystem = 0;
+  double totalSupplier = 0;
+  for (final item in items) {
+    totalSystem += item.subtotalSystem;
+    totalSupplier += item.subtotalSupplier;
+  }
+
+  doc.addPage(pw.MultiPage(
+    pageFormat: pageFormat,
+    build: (ctx) => [
+      pw.Text('Supplier Delivery Receipt',
+          style: ts(bold: true, size: fsHead + 2)),
+      pw.SizedBox(height: 4),
+      pw.Text('Date: ${dateFmt.format(invoice.receivedDate)}',
+          style: ts(size: fsHead)),
+      pw.Text('Supplier: ${supplier.name}', style: ts(size: fsHead)),
+      if (invoice.referenceNumber != null && invoice.referenceNumber!.isNotEmpty)
+        pw.Text('Reference #: ${invoice.referenceNumber}',
+            style: ts(size: fsHead)),
+      pw.SizedBox(height: 10),
+
+      // Column header row
+      pw.Row(children: [
+        col('Product', prodW, bold: true, size: fsHead - 1),
+        col('Qty', qtyW, bold: true, align: pw.TextAlign.center, size: fsHead - 1),
+        col('System Price', priceW, bold: true, align: pw.TextAlign.right, size: fsHead - 1),
+        col('Supplier Price', priceW, bold: true, align: pw.TextAlign.right, size: fsHead - 1),
+        col('Subtotal (System)', priceW, bold: true, align: pw.TextAlign.right, size: fsHead - 1),
+        col('Subtotal (Supplier)', priceW, bold: true, align: pw.TextAlign.right, size: fsHead - 1),
+      ]),
+      pw.Divider(height: 4, thickness: 0.5),
+
+      // Data rows
+      for (int i = 0; i < items.length; i++) ...[
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 1.5),
+          child: pw.Row(children: [
+            col(productsById[items[i].productId]?.name ?? items[i].productId, prodW),
+            col(qtyLabel(items[i]), qtyW, align: pw.TextAlign.center),
+            col(_n(items[i].systemPrice), priceW, align: pw.TextAlign.right),
+            col(_n(items[i].supplierPrice), priceW, align: pw.TextAlign.right),
+            col(_n(items[i].subtotalSystem), priceW, align: pw.TextAlign.right),
+            col(_n(items[i].subtotalSupplier), priceW, align: pw.TextAlign.right),
+          ]),
+        ),
+        if (i < items.length - 1) pw.Divider(height: 1, thickness: 0.2),
+      ],
+
+      pw.Divider(height: 8, thickness: 0.5),
+      pw.SizedBox(height: 6),
+      pw.Align(
+        alignment: pw.Alignment.centerRight,
+        child: pw.Text('System Total: ${_n(totalSystem)}',
+            style: ts(bold: true, size: fsHead)),
+      ),
+      pw.Align(
+        alignment: pw.Alignment.centerRight,
+        child: pw.Text('Supplier Total: ${_n(totalSupplier)}',
+            style: ts(bold: true, size: fsHead)),
+      ),
+      pw.Align(
+        alignment: pw.Alignment.centerRight,
+        child: pw.Text('Difference: ${_n(totalSupplier - totalSystem)}',
+            style: ts(bold: true, size: fsHead)),
+      ),
+    ],
+  ));
+
+  await _printWithSlot(
+    doc: doc, format: pageFormat, slot: PrinterSettingsService.supplierDelivery);
 }
 

@@ -469,10 +469,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     int currentQty, {
     required bool isAdd,
   }) async {
-    final qtyCtrl     = TextEditingController();
+    final boxesCtrl   = TextEditingController();
+    final piecesCtrl  = TextEditingController();
     final invCtrl     = TextEditingController();
     final commentCtrl = TextEditingController();
-    String unitType   = isAdd ? 'box' : 'piece';
     DateTime refDate  = DateTime.now();
 
     // Fetch withdrawal price for price-per-box display
@@ -506,35 +506,45 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                         color: Colors.blue.shade700, fontSize: 13),
                   ),
                 const SizedBox(height: 8),
-                SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(value: 'piece', label: Text('Pieces')),
-                    ButtonSegment(value: 'box', label: Text('Boxes')),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: boxesCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Boxes',
+                        ),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly
+                        ],
+                        autofocus: true,
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: piecesCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Pieces',
+                        ),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly
+                        ],
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
                   ],
-                  selected: {unitType},
-                  onSelectionChanged: (s) =>
-                      setState(() => unitType = s.first),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: qtyCtrl,
-                  decoration: InputDecoration(
-                    labelText:
-                        'Quantity (${unitType == 'box' ? 'boxes' : 'pcs'})',
-                  ),
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  autofocus: true,
-                  onChanged: (_) => setState(() {}),
                 ),
                 if (isAdd && price != null) ...[
                   const SizedBox(height: 4),
                   Builder(builder: (_) {
-                    final qty = int.tryParse(qtyCtrl.text) ?? 0;
-                    final unitPrice = unitType == 'box'
-                        ? pricePerBox!
-                        : price.withdrawalPrice;
-                    final total = qty * unitPrice;
+                    final boxes = int.tryParse(boxesCtrl.text) ?? 0;
+                    final pcs = int.tryParse(piecesCtrl.text) ?? 0;
+                    final total = boxes * pricePerBox! +
+                        pcs * price.withdrawalPrice;
                     return Text(
                       'Total: ${formatCurrency(total)}',
                       style: const TextStyle(
@@ -604,10 +614,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 child: const Text('Cancel')),
             FilledButton(
               onPressed: () async {
-                final qty = int.tryParse(qtyCtrl.text) ?? 0;
-                if (qty <= 0) return;
-                final pieces =
-                    unitType == 'box' ? qty * product.piecesPerBox : qty;
+                final boxes = int.tryParse(boxesCtrl.text) ?? 0;
+                final pcs = int.tryParse(piecesCtrl.text) ?? 0;
+                final pieces = boxes * product.piecesPerBox + pcs;
+                if (pieces <= 0) return;
                 final delta = isAdd ? pieces : -pieces;
                 await ref
                     .read(inventoryRepositoryProvider)

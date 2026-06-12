@@ -71,11 +71,11 @@ class InventoryRepository extends BaseRepository {
       item = InventoryItem(
         id: const Uuid().v4(),
         productId: productId,
-        quantityPieces: deltaPieces.clamp(0, 999999),
+        quantityPieces: deltaPieces.clamp(-999999, 999999),
         lastUpdated: now,
       );
     } else {
-      final newQty = (item.quantityPieces + deltaPieces).clamp(0, 999999);
+      final newQty = (item.quantityPieces + deltaPieces).clamp(-999999, 999999);
       item = InventoryItem(
         id: item.id,
         productId: productId,

@@ -114,6 +114,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
   DateTime _invoiceDate =
       DateTime.now().add(const Duration(days: 1));
   String? _invoiceNumber;
+  int? _displaySequenceNumber;
   final List<_LineItem> _lineItems = [];
   final _notesCtrl = TextEditingController();
   bool _loading = true;
@@ -154,11 +155,15 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
           .generateInvoiceNumber(_invoiceDate);
     }
 
+    final displaySeq = _displaySequenceNumber ??
+        await ref.read(invoiceRepositoryProvider).getNextSequenceNumber();
+
     setState(() {
       _clients  = clients;
       _products = products;
       _supplierNames = {for (final p in products) p.id: suppMap[p.supplierId] ?? ''};
       _invoiceNumber = invoiceNum;
+      _displaySequenceNumber = displaySeq;
       _loading  = false;
     });
   }
@@ -176,6 +181,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
         clients.where((c) => c.id == draft.clientId).firstOrNull;
     _invoiceDate = draft.invoiceDate;
     _invoiceNumber = draft.invoiceNumber;
+    _displaySequenceNumber = draft.sequenceNumber;
     _invoiceType = draft.invoiceType;
     _paymentType = draft.paymentType;
     _notesCtrl.text = draft.notes ?? '';
@@ -655,10 +661,12 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       );
     }).toList();
 
+    final Invoice savedInvoice;
     if (_draftPersisted) {
-      await _invoiceRepo.finalizeDraft(invoice: invoice, items: items);
+      savedInvoice =
+          await _invoiceRepo.finalizeDraft(invoice: invoice, items: items);
     } else {
-      await _invoiceRepo.saveInvoice(invoice: invoice, items: items);
+      savedInvoice = await _invoiceRepo.saveInvoice(invoice: invoice, items: items);
     }
 
     ref.invalidate(invoicesListProvider);
@@ -666,7 +674,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
     ref.invalidate(inventoryListProvider);
     ref.invalidate(draftInvoicesProvider);
 
-    return (invoice: invoice, items: items);
+    return (invoice: savedInvoice, items: items);
   }
 
   Future<void> _save() async {
@@ -746,7 +754,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                   child: Row(
                     children: [
                       Text(
-                        'Invoice #: ${_invoiceNumber ?? '...'}',
+                        'Invoice #: ${_displaySequenceNumber != null ? _displaySequenceNumber!.toString().padLeft(8, '0') : '...'}',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,

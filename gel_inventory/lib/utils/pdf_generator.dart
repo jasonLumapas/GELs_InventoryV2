@@ -373,13 +373,11 @@ Future<void> printInvoice({
     ));
   }
 
-  // ── Save to desktop for inspection, then print ────────────────────────────────
+  // ── Save to desktop instead of printing ──────────────────────────────────────
   final pdfBytes = await doc.save();
   final desktop  = '${Platform.environment['USERPROFILE']}\\Desktop';
   final safeNum  = invoice.displayNumber.replaceAll(RegExp(r'[\\/:*?"<>|]'), '-');
   await File('$desktop\\invoice_$safeNum.pdf').writeAsBytes(pdfBytes);
-
-  await _printWithSlot(doc: doc, format: stdFormat, slot: 'invoice');
 }
 
 // ── Invoice List PDF ─────────────────────────────────────────────────────────

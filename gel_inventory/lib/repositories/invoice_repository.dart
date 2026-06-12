@@ -47,6 +47,88 @@ class InvoiceRepository extends BaseRepository {
     return '$dateStr-${count.toString().padLeft(3, '0')}';
   }
 
+  /// Returns the next available sequential display number (max existing
+  /// `sequence_number` + 1, or 1 if none are assigned yet).
+  Future<int> getNextSequenceNumber() async {
+    if (isOnline) {
+      final data = await Supabase.instance.client
+          .from('invoices')
+          .select('sequence_number')
+          .not('sequence_number', 'is', null)
+          .order('sequence_number', ascending: false)
+          .limit(1);
+      final list = data as List;
+      final maxSeq =
+          list.isEmpty ? 0 : (list.first['sequence_number'] as num).toInt();
+      return maxSeq + 1;
+    }
+    final rows = await (db.select(db.invoices)
+          ..where((t) => t.sequenceNumber.isNotNull())
+          ..orderBy([(t) => drift.OrderingTerm.desc(t.sequenceNumber)])
+          ..limit(1))
+        .get();
+    final maxSeq = rows.isEmpty ? 0 : (rows.first.sequenceNumber ?? 0);
+    return maxSeq + 1;
+  }
+
+  /// Assigns sequence numbers to non-draft invoices that don't have one yet,
+  /// in `createdAt` ascending order, continuing after any existing max.
+  /// Returns true if any invoices were updated.
+  Future<bool> backfillSequenceNumbers() async {
+    List<MapEntry<String, int?>> entries;
+    if (isOnline) {
+      final data = await Supabase.instance.client
+          .from('invoices')
+          .select('id, sequence_number')
+          .neq('status', 'draft')
+          .order('created_at', ascending: true);
+      entries = (data as List)
+          .map((j) => MapEntry(
+              j['id'] as String, (j['sequence_number'] as num?)?.toInt()))
+          .toList();
+    } else {
+      final rows = await (db.select(db.invoices)
+            ..where((t) => t.status.isNotValue('draft'))
+            ..orderBy([(t) => drift.OrderingTerm.asc(t.createdAt)]))
+          .get();
+      entries = rows.map((r) => MapEntry(r.id, r.sequenceNumber)).toList();
+    }
+
+    var next = 1;
+    for (final e in entries) {
+      if (e.value != null && e.value! >= next) next = e.value! + 1;
+    }
+
+    var changed = false;
+    for (final e in entries) {
+      if (e.value == null) {
+        await _setSequenceNumber(e.key, next);
+        next++;
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  Future<void> _setSequenceNumber(String invoiceId, int seq) async {
+    final updated = {'sequence_number': seq};
+    if (isOnline) {
+      await Supabase.instance.client
+          .from('invoices')
+          .update(updated)
+          .eq('id', invoiceId);
+    } else {
+      await syncService.enqueue(
+        tableName: 'invoices',
+        recordId: invoiceId,
+        operation: 'update',
+        payload: updated,
+      );
+    }
+    await (db.update(db.invoices)..where((t) => t.id.equals(invoiceId)))
+        .write(InvoicesCompanion(sequenceNumber: drift.Value(seq)));
+  }
+
   Future<List<Invoice>> getAll({
     DateTime? startDate,
     DateTime? endDate,
@@ -89,6 +171,7 @@ class InvoiceRepository extends BaseRepository {
               status: r.status,
               createdAt: r.createdAt,
               invoiceNumber:  r.invoiceNumber,
+              sequenceNumber: r.sequenceNumber,
               invoiceType:    r.invoiceType,
               paymentType:    r.paymentType,
               partialAmount:  r.partialAmount,
@@ -146,6 +229,7 @@ class InvoiceRepository extends BaseRepository {
       status: r.status,
       createdAt: r.createdAt,
       invoiceNumber:  r.invoiceNumber,
+      sequenceNumber: r.sequenceNumber,
       invoiceType:    r.invoiceType,
       paymentType:    r.paymentType,
       partialAmount:  r.partialAmount,
@@ -183,22 +267,26 @@ class InvoiceRepository extends BaseRepository {
         .toList();
   }
 
-  Future<void> saveInvoice({
+  Future<Invoice> saveInvoice({
     required Invoice invoice,
     required List<InvoiceItem> items,
   }) async {
-    final invPayload = invoice.toJson();
+    var inv = invoice;
+    if (inv.status != 'draft' && inv.sequenceNumber == null) {
+      inv = inv.copyWith(sequenceNumber: await getNextSequenceNumber());
+    }
+    final invPayload = inv.toJson();
     if (isOnline) {
       await Supabase.instance.client.from('invoices').upsert(invPayload);
     } else {
       await syncService.enqueue(
         tableName: 'invoices',
-        recordId: invoice.id,
+        recordId: inv.id,
         operation: 'insert',
         payload: invPayload,
       );
     }
-    await trySaveLocal(() => _saveLocalInvoice(invoice));
+    await trySaveLocal(() => _saveLocalInvoice(inv));
 
     for (final item in items) {
       final itemPayload = item.toJson();
@@ -221,6 +309,8 @@ class InvoiceRepository extends BaseRepository {
         deltaPieces: -item.quantity,
       );
     }
+
+    return inv;
   }
 
   /// Deletes all items belonging to [invoiceId] without adjusting inventory.
@@ -279,12 +369,12 @@ class InvoiceRepository extends BaseRepository {
   /// Replaces a draft invoice's items with [items], marks it as [status]
   /// (typically 'printed'), and deducts inventory for the new items.
   /// The previous draft items are discarded without inventory adjustment.
-  Future<void> finalizeDraft({
+  Future<Invoice> finalizeDraft({
     required Invoice invoice,
     required List<InvoiceItem> items,
   }) async {
     await _clearItems(invoice.id);
-    await saveInvoice(invoice: invoice, items: items);
+    return saveInvoice(invoice: invoice, items: items);
   }
 
   /// Permanently deletes a draft invoice and its items. Drafts never affect
@@ -331,21 +421,25 @@ class InvoiceRepository extends BaseRepository {
     }
 
     // Update invoice record
-    final invPayload = invoice.toJson();
+    var inv = invoice;
+    if (inv.status != 'draft' && inv.sequenceNumber == null) {
+      inv = inv.copyWith(sequenceNumber: await getNextSequenceNumber());
+    }
+    final invPayload = inv.toJson();
     if (isOnline) {
       await Supabase.instance.client
           .from('invoices')
           .update(invPayload)
-          .eq('id', invoice.id);
+          .eq('id', inv.id);
     } else {
       await syncService.enqueue(
         tableName: 'invoices',
-        recordId: invoice.id,
+        recordId: inv.id,
         operation: 'update',
         payload: invPayload,
       );
     }
-    await trySaveLocal(() => _saveLocalInvoice(invoice));
+    await trySaveLocal(() => _saveLocalInvoice(inv));
 
     // Delete all old items and re-insert new ones
     if (isOnline) {
@@ -448,6 +542,7 @@ class InvoiceRepository extends BaseRepository {
           status: drift.Value(inv.status),
           createdAt: drift.Value(inv.createdAt),
           invoiceNumber: drift.Value(inv.invoiceNumber),
+          sequenceNumber: drift.Value(inv.sequenceNumber),
           invoiceType:   drift.Value(inv.invoiceType),
           paymentType:    drift.Value(inv.paymentType),
           partialAmount:  drift.Value(inv.partialAmount),

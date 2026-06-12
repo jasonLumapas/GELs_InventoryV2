@@ -57,6 +57,21 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
   String _searchQuery = '';
 
   @override
+  void initState() {
+    super.initState();
+    Future.microtask(() async {
+      final changed = await ref
+          .read(invoiceRepositoryProvider)
+          .backfillSequenceNumbers();
+      if (changed && mounted) {
+        ref.invalidate(invoicesListProvider);
+        ref.invalidate(filteredInvoicesProvider);
+        ref.invalidate(draftInvoicesProvider);
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _searchCtrl.dispose();
     super.dispose();
@@ -405,9 +420,10 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                         itemBuilder: (ctx, i) {
                           final inv = invoices[i];
                           final client = clientsMap[inv.clientId];
+                          final displayNumber = inv.displayNumber;
                           return ListTile(
                             leading: const Icon(Icons.receipt_long),
-                            title: Text(inv.displayNumber),
+                            title: Text(displayNumber),
                             subtitle: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisSize: MainAxisSize.min,
@@ -457,8 +473,8 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                                       : 'Delete',
                                   onPressed: () async {
                                     final msg = inv.status == 'printed'
-                                        ? 'Delete invoice ${inv.displayNumber}?\n\nOrdered stock will be restored to inventory.'
-                                        : 'Delete invoice ${inv.displayNumber}? This cannot be undone.';
+                                        ? 'Delete invoice $displayNumber?\n\nOrdered stock will be restored to inventory.'
+                                        : 'Delete invoice $displayNumber? This cannot be undone.';
                                     final ok = await showConfirmDialog(
                                       ctx,
                                       title: 'Delete Invoice',

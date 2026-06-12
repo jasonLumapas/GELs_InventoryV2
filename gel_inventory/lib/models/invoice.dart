@@ -6,6 +6,7 @@ class Invoice {
   final String status;       // draft | printed | cancelled
   final DateTime createdAt;
   final String? invoiceNumber;
+  final int? sequenceNumber; // permanent sequential display number (0, 1, 2, ...)
   final String invoiceType;  // delivery | walk_in
   final String paymentType;   // cash | check | credit | partial
   final double? partialAmount;
@@ -23,6 +24,7 @@ class Invoice {
     required this.status,
     required this.createdAt,
     this.invoiceNumber,
+    this.sequenceNumber,
     this.invoiceType = 'delivery',
     this.paymentType = 'cash',
     this.partialAmount,
@@ -41,6 +43,7 @@ class Invoice {
         status: j['status'] as String,
         createdAt: DateTime.parse(j['created_at'] as String),
         invoiceNumber: j['invoice_number'] as String?,
+        sequenceNumber: (j['sequence_number'] as num?)?.toInt(),
         invoiceType:    (j['invoice_type'] as String?) ?? 'delivery',
         paymentType:    (j['payment_type'] as String?) ?? 'cash',
         partialAmount:   (j['partial_amount'] as num?)?.toDouble(),
@@ -63,6 +66,7 @@ class Invoice {
         'status': status,
         'created_at': createdAt.toIso8601String(),
         'invoice_number': invoiceNumber,
+        'sequence_number': sequenceNumber,
         'invoice_type':   invoiceType,
         'payment_type':   paymentType,
         'partial_amount':  partialAmount,
@@ -73,8 +77,9 @@ class Invoice {
         'notes': notes,
       };
 
-  String get displayNumber =>
-      invoiceNumber ?? 'INV-${id.substring(0, 8).toUpperCase()}';
+  String get displayNumber => sequenceNumber != null
+      ? sequenceNumber!.toString().padLeft(8, '0')
+      : (invoiceNumber ?? 'INV-${id.substring(0, 8).toUpperCase()}');
 
   bool get isDelivery => invoiceType == 'delivery';
 
@@ -93,6 +98,7 @@ class Invoice {
     String? clientId,
     DateTime? invoiceDate,
     String? invoiceNumber,
+    Object? sequenceNumber = _sentinel,
     String? invoiceType,
     String? paymentType,
     Object? partialAmount  = _sentinel,
@@ -110,6 +116,9 @@ class Invoice {
         status: status ?? this.status,
         createdAt: createdAt,
         invoiceNumber: invoiceNumber ?? this.invoiceNumber,
+        sequenceNumber: sequenceNumber == _sentinel
+            ? this.sequenceNumber
+            : sequenceNumber as int?,
         invoiceType: invoiceType ?? this.invoiceType,
         paymentType: paymentType ?? this.paymentType,
         partialAmount: partialAmount == _sentinel

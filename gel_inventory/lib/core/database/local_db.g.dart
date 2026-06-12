@@ -2419,6 +2419,17 @@ class $InvoicesTable extends Invoices with TableInfo<$InvoicesTable, Invoice> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _sequenceNumberMeta = const VerificationMeta(
+    'sequenceNumber',
+  );
+  @override
+  late final GeneratedColumn<int> sequenceNumber = GeneratedColumn<int>(
+    'sequence_number',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _invoiceTypeMeta = const VerificationMeta(
     'invoiceType',
   );
@@ -2516,6 +2527,7 @@ class $InvoicesTable extends Invoices with TableInfo<$InvoicesTable, Invoice> {
     status,
     createdAt,
     invoiceNumber,
+    sequenceNumber,
     invoiceType,
     paymentType,
     partialAmount,
@@ -2586,6 +2598,15 @@ class $InvoicesTable extends Invoices with TableInfo<$InvoicesTable, Invoice> {
         invoiceNumber.isAcceptableOrUnknown(
           data['invoice_number']!,
           _invoiceNumberMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sequence_number')) {
+      context.handle(
+        _sequenceNumberMeta,
+        sequenceNumber.isAcceptableOrUnknown(
+          data['sequence_number']!,
+          _sequenceNumberMeta,
         ),
       );
     }
@@ -2695,6 +2716,10 @@ class $InvoicesTable extends Invoices with TableInfo<$InvoicesTable, Invoice> {
         DriftSqlType.string,
         data['${effectivePrefix}invoice_number'],
       ),
+      sequenceNumber: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sequence_number'],
+      ),
       invoiceType: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}invoice_type'],
@@ -2744,6 +2769,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
   final String status;
   final DateTime createdAt;
   final String? invoiceNumber;
+  final int? sequenceNumber;
   final String invoiceType;
   final String paymentType;
   final double? partialAmount;
@@ -2760,6 +2786,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     required this.status,
     required this.createdAt,
     this.invoiceNumber,
+    this.sequenceNumber,
     required this.invoiceType,
     required this.paymentType,
     this.partialAmount,
@@ -2780,6 +2807,9 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     map['created_at'] = Variable<DateTime>(createdAt);
     if (!nullToAbsent || invoiceNumber != null) {
       map['invoice_number'] = Variable<String>(invoiceNumber);
+    }
+    if (!nullToAbsent || sequenceNumber != null) {
+      map['sequence_number'] = Variable<int>(sequenceNumber);
     }
     map['invoice_type'] = Variable<String>(invoiceType);
     map['payment_type'] = Variable<String>(paymentType);
@@ -2815,6 +2845,9 @@ class Invoice extends DataClass implements Insertable<Invoice> {
       invoiceNumber: invoiceNumber == null && nullToAbsent
           ? const Value.absent()
           : Value(invoiceNumber),
+      sequenceNumber: sequenceNumber == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sequenceNumber),
       invoiceType: Value(invoiceType),
       paymentType: Value(paymentType),
       partialAmount: partialAmount == null && nullToAbsent
@@ -2851,6 +2884,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
       status: serializer.fromJson<String>(json['status']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       invoiceNumber: serializer.fromJson<String?>(json['invoiceNumber']),
+      sequenceNumber: serializer.fromJson<int?>(json['sequenceNumber']),
       invoiceType: serializer.fromJson<String>(json['invoiceType']),
       paymentType: serializer.fromJson<String>(json['paymentType']),
       partialAmount: serializer.fromJson<double?>(json['partialAmount']),
@@ -2872,6 +2906,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
       'status': serializer.toJson<String>(status),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'invoiceNumber': serializer.toJson<String?>(invoiceNumber),
+      'sequenceNumber': serializer.toJson<int?>(sequenceNumber),
       'invoiceType': serializer.toJson<String>(invoiceType),
       'paymentType': serializer.toJson<String>(paymentType),
       'partialAmount': serializer.toJson<double?>(partialAmount),
@@ -2891,6 +2926,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     String? status,
     DateTime? createdAt,
     Value<String?> invoiceNumber = const Value.absent(),
+    Value<int?> sequenceNumber = const Value.absent(),
     String? invoiceType,
     String? paymentType,
     Value<double?> partialAmount = const Value.absent(),
@@ -2909,6 +2945,9 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     invoiceNumber: invoiceNumber.present
         ? invoiceNumber.value
         : this.invoiceNumber,
+    sequenceNumber: sequenceNumber.present
+        ? sequenceNumber.value
+        : this.sequenceNumber,
     invoiceType: invoiceType ?? this.invoiceType,
     paymentType: paymentType ?? this.paymentType,
     partialAmount: partialAmount.present
@@ -2937,6 +2976,9 @@ class Invoice extends DataClass implements Insertable<Invoice> {
       invoiceNumber: data.invoiceNumber.present
           ? data.invoiceNumber.value
           : this.invoiceNumber,
+      sequenceNumber: data.sequenceNumber.present
+          ? data.sequenceNumber.value
+          : this.sequenceNumber,
       invoiceType: data.invoiceType.present
           ? data.invoiceType.value
           : this.invoiceType,
@@ -2972,6 +3014,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
           ..write('status: $status, ')
           ..write('createdAt: $createdAt, ')
           ..write('invoiceNumber: $invoiceNumber, ')
+          ..write('sequenceNumber: $sequenceNumber, ')
           ..write('invoiceType: $invoiceType, ')
           ..write('paymentType: $paymentType, ')
           ..write('partialAmount: $partialAmount, ')
@@ -2993,6 +3036,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     status,
     createdAt,
     invoiceNumber,
+    sequenceNumber,
     invoiceType,
     paymentType,
     partialAmount,
@@ -3013,6 +3057,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
           other.status == this.status &&
           other.createdAt == this.createdAt &&
           other.invoiceNumber == this.invoiceNumber &&
+          other.sequenceNumber == this.sequenceNumber &&
           other.invoiceType == this.invoiceType &&
           other.paymentType == this.paymentType &&
           other.partialAmount == this.partialAmount &&
@@ -3031,6 +3076,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
   final Value<String> status;
   final Value<DateTime> createdAt;
   final Value<String?> invoiceNumber;
+  final Value<int?> sequenceNumber;
   final Value<String> invoiceType;
   final Value<String> paymentType;
   final Value<double?> partialAmount;
@@ -3048,6 +3094,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     this.status = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.invoiceNumber = const Value.absent(),
+    this.sequenceNumber = const Value.absent(),
     this.invoiceType = const Value.absent(),
     this.paymentType = const Value.absent(),
     this.partialAmount = const Value.absent(),
@@ -3066,6 +3113,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     this.status = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.invoiceNumber = const Value.absent(),
+    this.sequenceNumber = const Value.absent(),
     this.invoiceType = const Value.absent(),
     this.paymentType = const Value.absent(),
     this.partialAmount = const Value.absent(),
@@ -3085,6 +3133,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     Expression<String>? status,
     Expression<DateTime>? createdAt,
     Expression<String>? invoiceNumber,
+    Expression<int>? sequenceNumber,
     Expression<String>? invoiceType,
     Expression<String>? paymentType,
     Expression<double>? partialAmount,
@@ -3103,6 +3152,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
       if (status != null) 'status': status,
       if (createdAt != null) 'created_at': createdAt,
       if (invoiceNumber != null) 'invoice_number': invoiceNumber,
+      if (sequenceNumber != null) 'sequence_number': sequenceNumber,
       if (invoiceType != null) 'invoice_type': invoiceType,
       if (paymentType != null) 'payment_type': paymentType,
       if (partialAmount != null) 'partial_amount': partialAmount,
@@ -3123,6 +3173,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     Value<String>? status,
     Value<DateTime>? createdAt,
     Value<String?>? invoiceNumber,
+    Value<int?>? sequenceNumber,
     Value<String>? invoiceType,
     Value<String>? paymentType,
     Value<double?>? partialAmount,
@@ -3141,6 +3192,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
       invoiceNumber: invoiceNumber ?? this.invoiceNumber,
+      sequenceNumber: sequenceNumber ?? this.sequenceNumber,
       invoiceType: invoiceType ?? this.invoiceType,
       paymentType: paymentType ?? this.paymentType,
       partialAmount: partialAmount ?? this.partialAmount,
@@ -3176,6 +3228,9 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     }
     if (invoiceNumber.present) {
       map['invoice_number'] = Variable<String>(invoiceNumber.value);
+    }
+    if (sequenceNumber.present) {
+      map['sequence_number'] = Variable<int>(sequenceNumber.value);
     }
     if (invoiceType.present) {
       map['invoice_type'] = Variable<String>(invoiceType.value);
@@ -3217,6 +3272,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
           ..write('status: $status, ')
           ..write('createdAt: $createdAt, ')
           ..write('invoiceNumber: $invoiceNumber, ')
+          ..write('sequenceNumber: $sequenceNumber, ')
           ..write('invoiceType: $invoiceType, ')
           ..write('paymentType: $paymentType, ')
           ..write('partialAmount: $partialAmount, ')
@@ -11951,6 +12007,7 @@ typedef $$InvoicesTableCreateCompanionBuilder =
       Value<String> status,
       Value<DateTime> createdAt,
       Value<String?> invoiceNumber,
+      Value<int?> sequenceNumber,
       Value<String> invoiceType,
       Value<String> paymentType,
       Value<double?> partialAmount,
@@ -11970,6 +12027,7 @@ typedef $$InvoicesTableUpdateCompanionBuilder =
       Value<String> status,
       Value<DateTime> createdAt,
       Value<String?> invoiceNumber,
+      Value<int?> sequenceNumber,
       Value<String> invoiceType,
       Value<String> paymentType,
       Value<double?> partialAmount,
@@ -12081,6 +12139,11 @@ class $$InvoicesTableFilterComposer
 
   ColumnFilters<String> get invoiceNumber => $composableBuilder(
     column: $table.invoiceNumber,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sequenceNumber => $composableBuilder(
+    column: $table.sequenceNumber,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -12237,6 +12300,11 @@ class $$InvoicesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get sequenceNumber => $composableBuilder(
+    column: $table.sequenceNumber,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get invoiceType => $composableBuilder(
     column: $table.invoiceType,
     builder: (column) => ColumnOrderings(column),
@@ -12331,6 +12399,11 @@ class $$InvoicesTableAnnotationComposer
 
   GeneratedColumn<String> get invoiceNumber => $composableBuilder(
     column: $table.invoiceNumber,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get sequenceNumber => $composableBuilder(
+    column: $table.sequenceNumber,
     builder: (column) => column,
   );
 
@@ -12485,6 +12558,7 @@ class $$InvoicesTableTableManager
                 Value<String> status = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<String?> invoiceNumber = const Value.absent(),
+                Value<int?> sequenceNumber = const Value.absent(),
                 Value<String> invoiceType = const Value.absent(),
                 Value<String> paymentType = const Value.absent(),
                 Value<double?> partialAmount = const Value.absent(),
@@ -12502,6 +12576,7 @@ class $$InvoicesTableTableManager
                 status: status,
                 createdAt: createdAt,
                 invoiceNumber: invoiceNumber,
+                sequenceNumber: sequenceNumber,
                 invoiceType: invoiceType,
                 paymentType: paymentType,
                 partialAmount: partialAmount,
@@ -12521,6 +12596,7 @@ class $$InvoicesTableTableManager
                 Value<String> status = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<String?> invoiceNumber = const Value.absent(),
+                Value<int?> sequenceNumber = const Value.absent(),
                 Value<String> invoiceType = const Value.absent(),
                 Value<String> paymentType = const Value.absent(),
                 Value<double?> partialAmount = const Value.absent(),
@@ -12538,6 +12614,7 @@ class $$InvoicesTableTableManager
                 status: status,
                 createdAt: createdAt,
                 invoiceNumber: invoiceNumber,
+                sequenceNumber: sequenceNumber,
                 invoiceType: invoiceType,
                 paymentType: paymentType,
                 partialAmount: partialAmount,

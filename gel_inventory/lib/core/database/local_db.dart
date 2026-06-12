@@ -97,6 +97,9 @@ class Invoices extends Table {
   DateTimeColumn get createdAt =>
       dateTime().withDefault(currentDateAndTime)();
   TextColumn get invoiceNumber => text().nullable()();
+  // Permanent sequential display number (0, 1, 2, ...), assigned once at
+  // creation/backfill time. Displayed zero-padded to 8 digits.
+  IntColumn get sequenceNumber => integer().nullable()();
   // invoice_type: 'delivery' | 'walk_in'
   TextColumn get invoiceType =>
       text().withDefault(const Constant('delivery'))();
@@ -329,7 +332,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 18;
+  int get schemaVersion => 19;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -413,6 +416,10 @@ class LocalDatabase extends _$LocalDatabase {
           if (from < 18) {
             await m.createTable(purchaseOrders);
             await m.createTable(purchaseOrderItems);
+          }
+          if (from < 19) {
+            await _addColumnIfMissing(
+                m.database, 'invoices', 'sequence_number', 'INTEGER');
           }
         },
       );

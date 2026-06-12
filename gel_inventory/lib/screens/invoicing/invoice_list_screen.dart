@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../core/services/app_settings_service.dart';
+import '../../models/client.dart';
+import '../../models/invoice.dart';
+import '../../models/product.dart';
 import '../../repositories/client_repository.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_repository.dart';
@@ -11,6 +14,7 @@ import '../../utils/currency_format.dart';
 import '../../utils/pdf_generator.dart';
 import '../../widgets/common/app_scaffold.dart';
 import '../../widgets/common/confirm_dialog.dart';
+import '../../widgets/common/search_picker.dart';
 
 enum _FilterType { day, week, month }
 
@@ -20,6 +24,23 @@ class _Financials {
   double get profit => grandTotal - capital;
   const _Financials(this.grandTotal, this.capital);
 }
+
+/// Returns the set of invoice ids (within [range]) that contain at least one
+/// item for the given product id.
+final _productInvoiceIdsProvider = FutureProvider.autoDispose
+    .family<Set<String>, (DateTime, DateTime, String)>((ref, args) async {
+  final (start, end, productId) = args;
+  final invoices = await ref.watch(filteredInvoicesProvider((start, end)).future);
+  final invoiceRepo = ref.read(invoiceRepositoryProvider);
+  final ids = <String>{};
+  for (final inv in invoices) {
+    final items = await invoiceRepo.getItems(inv.id);
+    if (items.any((it) => it.productId == productId)) {
+      ids.add(inv.id);
+    }
+  }
+  return ids;
+});
 
 final _financialsProvider = FutureProvider.autoDispose
     .family<_Financials, (DateTime, DateTime)>((ref, range) async {
@@ -55,6 +76,7 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
   DateTime _anchor = DateTime.now().add(const Duration(days: 1));
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
+  Product? _productFilter;
 
   @override
   void initState() {
@@ -148,6 +170,18 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
       lastDate: DateTime(2100),
     );
     if (picked != null) setState(() => _anchor = picked);
+  }
+
+  Future<void> _pickProductFilter() async {
+    final products = await ref.read(productsListProvider.future);
+    if (!mounted) return;
+    final picked = await showSearchPicker<Product>(
+      context: context,
+      title: 'Filter by Product',
+      items: products,
+      labelOf: (p) => p.name,
+    );
+    if (picked != null) setState(() => _productFilter = picked);
   }
 
   Future<void> _print() async {
@@ -351,24 +385,53 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
           // ── Search bar ────────────────────────────────────────────────
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
-            child: TextField(
-              controller: _searchCtrl,
-              decoration: InputDecoration(
-                hintText: 'Search by store, notes or date…',
-                prefixIcon: const Icon(Icons.search, size: 20),
-                isDense: true,
-                border: const OutlineInputBorder(),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, size: 18),
-                        onPressed: () => setState(() {
-                          _searchCtrl.clear();
-                          _searchQuery = '';
-                        }),
-                      )
-                    : null,
-              ),
-              onChanged: (v) => setState(() => _searchQuery = v.trim()),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _searchCtrl,
+                    decoration: InputDecoration(
+                      hintText: 'Search by store, notes or date…',
+                      prefixIcon: const Icon(Icons.search, size: 20),
+                      isDense: true,
+                      border: const OutlineInputBorder(),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, size: 18),
+                              onPressed: () => setState(() {
+                                _searchCtrl.clear();
+                                _searchQuery = '';
+                              }),
+                            )
+                          : null,
+                    ),
+                    onChanged: (v) => setState(() => _searchQuery = v.trim()),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  icon: Icon(
+                    _productFilter == null
+                        ? Icons.filter_alt_outlined
+                        : Icons.filter_alt,
+                    size: 18,
+                  ),
+                  label: Text(
+                    _productFilter?.name ?? 'Product',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  style: OutlinedButton.styleFrom(
+                      visualDensity: VisualDensity.compact),
+                  onPressed: _pickProductFilter,
+                ),
+                if (_productFilter != null)
+                  IconButton(
+                    icon: const Icon(Icons.clear, size: 18),
+                    tooltip: 'Clear product filter',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => setState(() => _productFilter = null),
+                  ),
+              ],
             ),
           ),
 
@@ -380,12 +443,12 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(child: Text('Error: $e')),
               data: (allInvoices) {
-                final clientsMap = {
+                final clientsMap = <String, Client>{
                   for (final c in clientsAsync.valueOrNull ?? []) c.id: c
                 };
 
                 // Client-side filter by store name, notes, or date.
-                final invoices = _searchQuery.isEmpty
+                final searchFiltered = _searchQuery.isEmpty
                     ? allInvoices
                     : () {
                         final q = _searchQuery.toLowerCase();
@@ -399,6 +462,40 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                         }).toList();
                       }();
 
+                // Filter by selected product, if any.
+                if (_productFilter != null) {
+                  final idsAsync = ref.watch(_productInvoiceIdsProvider(
+                      (_startDate, _endDate, _productFilter!.id)));
+                  return idsAsync.when(
+                    loading: () =>
+                        const Center(child: CircularProgressIndicator()),
+                    error: (e, _) => Center(child: Text('Error: $e')),
+                    data: (ids) {
+                      final filtered = searchFiltered
+                          .where((inv) => ids.contains(inv.id))
+                          .toList();
+                      return _buildInvoiceListBody(
+                          context, filtered, clientsMap, dateFmt);
+                    },
+                  );
+                }
+
+                return _buildInvoiceListBody(
+                    context, searchFiltered, clientsMap, dateFmt);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInvoiceListBody(
+    BuildContext context,
+    List<Invoice> invoices,
+    Map<String, Client> clientsMap,
+    DateFormat dateFmt,
+  ) {
                 if (invoices.isEmpty) {
                   return Center(
                     child: Text(_searchQuery.isEmpty
@@ -410,6 +507,10 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                 // Running total for the period
                 final periodTotal =
                     invoices.fold(0.0, (s, i) => s + i.totalAmount);
+                final actualTotal = invoices.fold(
+                    0.0, (s, i) => s + (i.actualAmount ?? 0));
+                final hasActual =
+                    invoices.any((i) => i.actualAmount != null);
 
                 return Column(
                   children: [
@@ -453,6 +554,14 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
+                                  ),
+                                if (inv.actualAmount != null)
+                                  Text(
+                                    'Actual: ${formatCurrency(inv.actualAmount!)}',
+                                    style: TextStyle(
+                                      color: Colors.grey.shade600,
+                                      fontSize: 12,
+                                    ),
                                   ),
                               ],
                             ),
@@ -516,7 +625,17 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                           Text('${invoices.length} invoice(s)',
                               style: const TextStyle(color: Colors.grey)),
                           const Spacer(),
-                          () {
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              if (hasActual)
+                                Text(
+                                  'Actual Total: ${formatCurrency(actualTotal)}',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey.shade700),
+                                ),
+                              () {
                             final showCapitalProfit = ref
                                     .watch(showCapitalProfitProvider)
                                     .valueOrNull ??
@@ -565,17 +684,13 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                                     ],
                                   ),
                                 );
-                          }(),
+                              }(),
+                            ],
+                          ),
                         ],
                       ),
                     ),
                   ],
                 );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

@@ -117,6 +117,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
   int? _displaySequenceNumber;
   final List<_LineItem> _lineItems = [];
   final _notesCtrl = TextEditingController();
+  final _actualAmountCtrl = TextEditingController();
   bool _loading = true;
   bool _saving = false;
 
@@ -185,6 +186,9 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
     _invoiceType = draft.invoiceType;
     _paymentType = draft.paymentType;
     _notesCtrl.text = draft.notes ?? '';
+    _actualAmountCtrl.text = draft.actualAmount != null
+        ? draft.actualAmount!.toStringAsFixed(2)
+        : '';
 
     final items = await _invoiceRepo.getItems(draftId);
     final productsById = {for (final p in products) p.id: p};
@@ -269,6 +273,9 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
   bool get _hasDraftContent =>
       _selectedClient != null && _lineItems.isNotEmpty;
 
+  double? get _actualAmount =>
+      double.tryParse(_actualAmountCtrl.text.trim());
+
   ({Invoice invoice, List<InvoiceItem> items}) _buildDraftPayload() {
     final invoice = Invoice(
       id: _invoiceId,
@@ -281,6 +288,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       invoiceType: _invoiceType,
       paymentType: _paymentType,
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+      actualAmount: _actualAmount,
     );
     final items = _lineItems.map((li) => InvoiceItem(
           id: const Uuid().v4(),
@@ -643,6 +651,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       invoiceType:  _invoiceType,
       paymentType:  _paymentType,
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+      actualAmount: _actualAmount,
     );
 
     final items = _lineItems.map((li) {
@@ -733,6 +742,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       _container?.invalidate(draftInvoicesProvider);
     }
     _notesCtrl.dispose();
+    _actualAmountCtrl.dispose();
     super.dispose();
   }
 
@@ -879,6 +889,27 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                       isDense: true,
                     ),
                     maxLines: 2,
+                    onChanged: (_) => _scheduleAutoSave(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Actual amount on referenced receipt (optional, internal only)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: TextField(
+                    controller: _actualAmountCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Actual Amount (referenced receipt, optional)',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(
+                          RegExp(r'^\d*\.?\d{0,2}')),
+                    ],
                     onChanged: (_) => _scheduleAutoSave(),
                   ),
                 ),

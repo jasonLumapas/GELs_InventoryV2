@@ -129,6 +129,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   final _checkRefCtrl      = TextEditingController();
   final _checkAmountCtrl   = TextEditingController();
   final _notesCtrl         = TextEditingController();
+  final _actualAmountCtrl  = TextEditingController();
   DateTime? _checkDueDate;
   DateTime? _partialDate;
   List<InvoicePayment> _payments = [];
@@ -155,6 +156,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     _checkRefCtrl.dispose();
     _checkAmountCtrl.dispose();
     _notesCtrl.dispose();
+    _actualAmountCtrl.dispose();
     super.dispose();
   }
 
@@ -187,6 +189,9 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
         : '';
     _checkDueDate = _invoice!.checkDueDate;
     _notesCtrl.text = _invoice!.notes ?? '';
+    _actualAmountCtrl.text = _invoice!.actualAmount != null
+        ? _invoice!.actualAmount!.toStringAsFixed(2)
+        : '';
     _payments = await ref
         .read(invoicePaymentRepositoryProvider)
         .getForInvoice(widget.invoiceId);
@@ -364,6 +369,9 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   double get _total =>
       _editItems.fold(0.0, (sum, item) => sum + item.subtotal);
 
+  double? get _actualAmount =>
+      double.tryParse(_actualAmountCtrl.text.trim());
+
   bool get _canSave {
     if (_selectedClient == null || _editItems.isEmpty) return false;
     return _editItems.every((item) {
@@ -393,6 +401,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
           : null,
       checkDueDate: _paymentType == 'check' ? _checkDueDate : null,
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+      actualAmount: _actualAmount,
     );
     final newItems = _editItems
         .map((li) => li.toInvoiceItem(widget.invoiceId))
@@ -432,6 +441,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
           : null,
       checkDueDate: _paymentType == 'check' ? _checkDueDate : null,
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+      actualAmount: _actualAmount,
     );
     final newItems = _editItems
         .map((li) => li.toInvoiceItem(widget.invoiceId))
@@ -970,7 +980,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
 
                   // Client selector
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 20),
+                    padding: const EdgeInsets.fromLTRB(12, 20, 12, 0),
                     child: InkWell(
                       onTap: _pickClient,
                       borderRadius: BorderRadius.circular(4),
@@ -994,11 +1004,14 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                   if (_selectedClient?.address != null &&
                       _selectedClient!.address!.isNotEmpty)
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
-                      child: Text(
-                        _selectedClient!.address!,
-                        style: TextStyle(
-                            fontSize: 12, color: Theme.of(context).hintColor),
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          _selectedClient!.address!,
+                          style: TextStyle(
+                              fontSize: 12, color: Theme.of(context).hintColor),
+                        ),
                       ),
                     ),
                   const SizedBox(height: 8),
@@ -1014,6 +1027,26 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                         isDense: true,
                       ),
                       maxLines: 2,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Actual amount on referenced receipt (optional, internal only)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: TextField(
+                      controller: _actualAmountCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Actual Amount (referenced receipt, optional)',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(
+                            RegExp(r'^\d*\.?\d{0,2}')),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 4),

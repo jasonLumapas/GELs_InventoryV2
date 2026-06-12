@@ -113,6 +113,8 @@ class Invoices extends Table {
   DateTimeColumn get checkDueDate => dateTime().nullable()();
   // Internal note — never included on the printed invoice.
   TextColumn get notes => text().nullable()();
+  // Optional: the actual amount shown on the referenced (physical) receipt.
+  RealColumn get actualAmount => real().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -332,7 +334,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 19;
+  int get schemaVersion => 20;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -420,6 +422,10 @@ class LocalDatabase extends _$LocalDatabase {
           if (from < 19) {
             await _addColumnIfMissing(
                 m.database, 'invoices', 'sequence_number', 'INTEGER');
+          }
+          if (from < 20) {
+            await _addColumnIfMissing(
+                m.database, 'invoices', 'actual_amount', 'REAL');
           }
         },
       );

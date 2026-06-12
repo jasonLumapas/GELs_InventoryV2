@@ -2518,6 +2518,17 @@ class $InvoicesTable extends Invoices with TableInfo<$InvoicesTable, Invoice> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _actualAmountMeta = const VerificationMeta(
+    'actualAmount',
+  );
+  @override
+  late final GeneratedColumn<double> actualAmount = GeneratedColumn<double>(
+    'actual_amount',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -2536,6 +2547,7 @@ class $InvoicesTable extends Invoices with TableInfo<$InvoicesTable, Invoice> {
     checkAmount,
     checkDueDate,
     notes,
+    actualAmount,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2679,6 +2691,15 @@ class $InvoicesTable extends Invoices with TableInfo<$InvoicesTable, Invoice> {
         notes.isAcceptableOrUnknown(data['notes']!, _notesMeta),
       );
     }
+    if (data.containsKey('actual_amount')) {
+      context.handle(
+        _actualAmountMeta,
+        actualAmount.isAcceptableOrUnknown(
+          data['actual_amount']!,
+          _actualAmountMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -2752,6 +2773,10 @@ class $InvoicesTable extends Invoices with TableInfo<$InvoicesTable, Invoice> {
         DriftSqlType.string,
         data['${effectivePrefix}notes'],
       ),
+      actualAmount: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}actual_amount'],
+      ),
     );
   }
 
@@ -2778,6 +2803,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
   final double? checkAmount;
   final DateTime? checkDueDate;
   final String? notes;
+  final double? actualAmount;
   const Invoice({
     required this.id,
     required this.clientId,
@@ -2795,6 +2821,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     this.checkAmount,
     this.checkDueDate,
     this.notes,
+    this.actualAmount,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2830,6 +2857,9 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     }
     if (!nullToAbsent || notes != null) {
       map['notes'] = Variable<String>(notes);
+    }
+    if (!nullToAbsent || actualAmount != null) {
+      map['actual_amount'] = Variable<double>(actualAmount);
     }
     return map;
   }
@@ -2868,6 +2898,9 @@ class Invoice extends DataClass implements Insertable<Invoice> {
       notes: notes == null && nullToAbsent
           ? const Value.absent()
           : Value(notes),
+      actualAmount: actualAmount == null && nullToAbsent
+          ? const Value.absent()
+          : Value(actualAmount),
     );
   }
 
@@ -2893,6 +2926,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
       checkAmount: serializer.fromJson<double?>(json['checkAmount']),
       checkDueDate: serializer.fromJson<DateTime?>(json['checkDueDate']),
       notes: serializer.fromJson<String?>(json['notes']),
+      actualAmount: serializer.fromJson<double?>(json['actualAmount']),
     );
   }
   @override
@@ -2915,6 +2949,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
       'checkAmount': serializer.toJson<double?>(checkAmount),
       'checkDueDate': serializer.toJson<DateTime?>(checkDueDate),
       'notes': serializer.toJson<String?>(notes),
+      'actualAmount': serializer.toJson<double?>(actualAmount),
     };
   }
 
@@ -2935,6 +2970,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     Value<double?> checkAmount = const Value.absent(),
     Value<DateTime?> checkDueDate = const Value.absent(),
     Value<String?> notes = const Value.absent(),
+    Value<double?> actualAmount = const Value.absent(),
   }) => Invoice(
     id: id ?? this.id,
     clientId: clientId ?? this.clientId,
@@ -2960,6 +2996,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     checkAmount: checkAmount.present ? checkAmount.value : this.checkAmount,
     checkDueDate: checkDueDate.present ? checkDueDate.value : this.checkDueDate,
     notes: notes.present ? notes.value : this.notes,
+    actualAmount: actualAmount.present ? actualAmount.value : this.actualAmount,
   );
   Invoice copyWithCompanion(InvoicesCompanion data) {
     return Invoice(
@@ -3001,6 +3038,9 @@ class Invoice extends DataClass implements Insertable<Invoice> {
           ? data.checkDueDate.value
           : this.checkDueDate,
       notes: data.notes.present ? data.notes.value : this.notes,
+      actualAmount: data.actualAmount.present
+          ? data.actualAmount.value
+          : this.actualAmount,
     );
   }
 
@@ -3022,7 +3062,8 @@ class Invoice extends DataClass implements Insertable<Invoice> {
           ..write('checkReference: $checkReference, ')
           ..write('checkAmount: $checkAmount, ')
           ..write('checkDueDate: $checkDueDate, ')
-          ..write('notes: $notes')
+          ..write('notes: $notes, ')
+          ..write('actualAmount: $actualAmount')
           ..write(')'))
         .toString();
   }
@@ -3045,6 +3086,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     checkAmount,
     checkDueDate,
     notes,
+    actualAmount,
   );
   @override
   bool operator ==(Object other) =>
@@ -3065,7 +3107,8 @@ class Invoice extends DataClass implements Insertable<Invoice> {
           other.checkReference == this.checkReference &&
           other.checkAmount == this.checkAmount &&
           other.checkDueDate == this.checkDueDate &&
-          other.notes == this.notes);
+          other.notes == this.notes &&
+          other.actualAmount == this.actualAmount);
 }
 
 class InvoicesCompanion extends UpdateCompanion<Invoice> {
@@ -3085,6 +3128,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
   final Value<double?> checkAmount;
   final Value<DateTime?> checkDueDate;
   final Value<String?> notes;
+  final Value<double?> actualAmount;
   final Value<int> rowid;
   const InvoicesCompanion({
     this.id = const Value.absent(),
@@ -3103,6 +3147,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     this.checkAmount = const Value.absent(),
     this.checkDueDate = const Value.absent(),
     this.notes = const Value.absent(),
+    this.actualAmount = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   InvoicesCompanion.insert({
@@ -3122,6 +3167,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     this.checkAmount = const Value.absent(),
     this.checkDueDate = const Value.absent(),
     this.notes = const Value.absent(),
+    this.actualAmount = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        clientId = Value(clientId);
@@ -3142,6 +3188,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     Expression<double>? checkAmount,
     Expression<DateTime>? checkDueDate,
     Expression<String>? notes,
+    Expression<double>? actualAmount,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -3161,6 +3208,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
       if (checkAmount != null) 'check_amount': checkAmount,
       if (checkDueDate != null) 'check_due_date': checkDueDate,
       if (notes != null) 'notes': notes,
+      if (actualAmount != null) 'actual_amount': actualAmount,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -3182,6 +3230,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     Value<double?>? checkAmount,
     Value<DateTime?>? checkDueDate,
     Value<String?>? notes,
+    Value<double?>? actualAmount,
     Value<int>? rowid,
   }) {
     return InvoicesCompanion(
@@ -3201,6 +3250,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
       checkAmount: checkAmount ?? this.checkAmount,
       checkDueDate: checkDueDate ?? this.checkDueDate,
       notes: notes ?? this.notes,
+      actualAmount: actualAmount ?? this.actualAmount,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -3256,6 +3306,9 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     if (notes.present) {
       map['notes'] = Variable<String>(notes.value);
     }
+    if (actualAmount.present) {
+      map['actual_amount'] = Variable<double>(actualAmount.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -3281,6 +3334,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
           ..write('checkAmount: $checkAmount, ')
           ..write('checkDueDate: $checkDueDate, ')
           ..write('notes: $notes, ')
+          ..write('actualAmount: $actualAmount, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -12016,6 +12070,7 @@ typedef $$InvoicesTableCreateCompanionBuilder =
       Value<double?> checkAmount,
       Value<DateTime?> checkDueDate,
       Value<String?> notes,
+      Value<double?> actualAmount,
       Value<int> rowid,
     });
 typedef $$InvoicesTableUpdateCompanionBuilder =
@@ -12036,6 +12091,7 @@ typedef $$InvoicesTableUpdateCompanionBuilder =
       Value<double?> checkAmount,
       Value<DateTime?> checkDueDate,
       Value<String?> notes,
+      Value<double?> actualAmount,
       Value<int> rowid,
     });
 
@@ -12184,6 +12240,11 @@ class $$InvoicesTableFilterComposer
 
   ColumnFilters<String> get notes => $composableBuilder(
     column: $table.notes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get actualAmount => $composableBuilder(
+    column: $table.actualAmount,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -12345,6 +12406,11 @@ class $$InvoicesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<double> get actualAmount => $composableBuilder(
+    column: $table.actualAmount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$ClientsTableOrderingComposer get clientId {
     final $$ClientsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -12444,6 +12510,11 @@ class $$InvoicesTableAnnotationComposer
 
   GeneratedColumn<String> get notes =>
       $composableBuilder(column: $table.notes, builder: (column) => column);
+
+  GeneratedColumn<double> get actualAmount => $composableBuilder(
+    column: $table.actualAmount,
+    builder: (column) => column,
+  );
 
   $$ClientsTableAnnotationComposer get clientId {
     final $$ClientsTableAnnotationComposer composer = $composerBuilder(
@@ -12567,6 +12638,7 @@ class $$InvoicesTableTableManager
                 Value<double?> checkAmount = const Value.absent(),
                 Value<DateTime?> checkDueDate = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
+                Value<double?> actualAmount = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => InvoicesCompanion(
                 id: id,
@@ -12585,6 +12657,7 @@ class $$InvoicesTableTableManager
                 checkAmount: checkAmount,
                 checkDueDate: checkDueDate,
                 notes: notes,
+                actualAmount: actualAmount,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -12605,6 +12678,7 @@ class $$InvoicesTableTableManager
                 Value<double?> checkAmount = const Value.absent(),
                 Value<DateTime?> checkDueDate = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
+                Value<double?> actualAmount = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => InvoicesCompanion.insert(
                 id: id,
@@ -12623,6 +12697,7 @@ class $$InvoicesTableTableManager
                 checkAmount: checkAmount,
                 checkDueDate: checkDueDate,
                 notes: notes,
+                actualAmount: actualAmount,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

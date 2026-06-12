@@ -15,6 +15,7 @@ class Invoice {
   final double?   checkAmount;
   final DateTime? checkDueDate;
   final String?   notes; // internal note — never shown on the printed invoice
+  final double?   actualAmount; // optional actual amount on referenced receipt
 
   const Invoice({
     required this.id,
@@ -33,6 +34,7 @@ class Invoice {
     this.checkAmount,
     this.checkDueDate,
     this.notes,
+    this.actualAmount,
   });
 
   factory Invoice.fromJson(Map<String, dynamic> j) => Invoice(
@@ -56,6 +58,7 @@ class Invoice {
             ? null
             : DateTime.parse(j['check_due_date'] as String),
         notes: j['notes'] as String?,
+        actualAmount: (j['actual_amount'] as num?)?.toDouble(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -75,6 +78,7 @@ class Invoice {
         'check_amount':    checkAmount,
         'check_due_date':  checkDueDate?.toIso8601String(),
         'notes': notes,
+        'actual_amount': actualAmount,
       };
 
   String get displayNumber => sequenceNumber != null
@@ -107,6 +111,7 @@ class Invoice {
     Object? checkAmount    = _sentinel,
     Object? checkDueDate   = _sentinel,
     Object? notes          = _sentinel,
+    Object? actualAmount   = _sentinel,
   }) =>
       Invoice(
         id: id,
@@ -137,6 +142,9 @@ class Invoice {
             ? this.checkDueDate
             : checkDueDate as DateTime?,
         notes: notes == _sentinel ? this.notes : notes as String?,
+        actualAmount: actualAmount == _sentinel
+            ? this.actualAmount
+            : actualAmount as double?,
       );
 }
 

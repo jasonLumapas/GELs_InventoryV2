@@ -180,6 +180,7 @@ class InvoiceRepository extends BaseRepository {
               checkAmount:    r.checkAmount,
               checkDueDate:   r.checkDueDate,
               notes: r.notes,
+              actualAmount: r.actualAmount,
             ))
         .toList();
   }
@@ -238,6 +239,7 @@ class InvoiceRepository extends BaseRepository {
       checkAmount:    r.checkAmount,
       checkDueDate:   r.checkDueDate,
       notes: r.notes,
+      actualAmount: r.actualAmount,
     );
   }
 
@@ -551,6 +553,7 @@ class InvoiceRepository extends BaseRepository {
           checkAmount:    drift.Value(inv.checkAmount),
           checkDueDate:   drift.Value(inv.checkDueDate),
           notes: drift.Value(inv.notes),
+          actualAmount: drift.Value(inv.actualAmount),
         ));
   }
 

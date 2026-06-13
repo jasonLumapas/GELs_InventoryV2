@@ -109,10 +109,12 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
   final Map<String, InventoryItem?> _inventoryCache = {};
   final Map<String, ProductDiscount?> _discountCache = {};
   Client? _selectedClient;
+  static DateTime _lastInvoiceDate =
+      DateTime.now().add(const Duration(days: 1));
+
   String _invoiceType  = 'delivery';
   String _paymentType  = 'cash';
-  DateTime _invoiceDate =
-      DateTime.now().add(const Duration(days: 1));
+  DateTime _invoiceDate = _lastInvoiceDate;
   String? _invoiceNumber;
   int? _displaySequenceNumber;
   final List<_LineItem> _lineItems = [];
@@ -333,6 +335,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
     );
     if (picked != null) {
       setState(() => _invoiceDate = picked);
+      _lastInvoiceDate = picked;
       final num = await ref
           .read(invoiceRepositoryProvider)
           .generateInvoiceNumber(picked);

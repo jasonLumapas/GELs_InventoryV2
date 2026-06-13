@@ -72,8 +72,10 @@ class InvoiceListScreen extends ConsumerStatefulWidget {
 }
 
 class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
+  static DateTime _lastAnchor = DateTime.now().add(const Duration(days: 1));
+
   _FilterType _filter = _FilterType.day;
-  DateTime _anchor = DateTime.now().add(const Duration(days: 1));
+  DateTime _anchor = _lastAnchor;
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
   Product? _productFilter;
@@ -140,27 +142,32 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
     }
   }
 
-  void _prev() => setState(() {
-        switch (_filter) {
-          case _FilterType.day:
-            _anchor = _anchor.subtract(const Duration(days: 1));
-          case _FilterType.week:
-            _anchor = _anchor.subtract(const Duration(days: 7));
-          case _FilterType.month:
-            _anchor = DateTime(_anchor.year, _anchor.month - 1, _anchor.day);
-        }
+  void _setAnchor(DateTime date) => setState(() {
+        _anchor = date;
+        _lastAnchor = date;
       });
 
-  void _next() => setState(() {
-        switch (_filter) {
-          case _FilterType.day:
-            _anchor = _anchor.add(const Duration(days: 1));
-          case _FilterType.week:
-            _anchor = _anchor.add(const Duration(days: 7));
-          case _FilterType.month:
-            _anchor = DateTime(_anchor.year, _anchor.month + 1, _anchor.day);
-        }
-      });
+  void _prev() {
+    switch (_filter) {
+      case _FilterType.day:
+        _setAnchor(_anchor.subtract(const Duration(days: 1)));
+      case _FilterType.week:
+        _setAnchor(_anchor.subtract(const Duration(days: 7)));
+      case _FilterType.month:
+        _setAnchor(DateTime(_anchor.year, _anchor.month - 1, _anchor.day));
+    }
+  }
+
+  void _next() {
+    switch (_filter) {
+      case _FilterType.day:
+        _setAnchor(_anchor.add(const Duration(days: 1)));
+      case _FilterType.week:
+        _setAnchor(_anchor.add(const Duration(days: 7)));
+      case _FilterType.month:
+        _setAnchor(DateTime(_anchor.year, _anchor.month + 1, _anchor.day));
+    }
+  }
 
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
@@ -169,7 +176,7 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
     );
-    if (picked != null) setState(() => _anchor = picked);
+    if (picked != null) _setAnchor(picked);
   }
 
   Future<void> _pickProductFilter() async {
@@ -372,8 +379,8 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
 
                 // Today shortcut
                 TextButton(
-                  onPressed: () => setState(() =>
-                      _anchor = DateTime.now().add(const Duration(days: 1))),
+                  onPressed: () => _setAnchor(
+                      DateTime.now().add(const Duration(days: 1))),
                   style: TextButton.styleFrom(
                       visualDensity: VisualDensity.compact),
                   child: const Text('Today'),

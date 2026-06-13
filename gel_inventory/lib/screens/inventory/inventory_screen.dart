@@ -37,6 +37,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   String? _selectedSupplierId;
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
+  DateTime _lastRefDate = DateTime.now();
 
   @override
   void dispose() {
@@ -101,11 +102,14 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
           // ── Inventory list ─────────────────────────────────────────
           Expanded(
-            child: viewAsync.when(
-              loading: () =>
-                  const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Error: $e')),
-              data: (allRows) {
+            child: Builder(builder: (_) {
+                final allRows = viewAsync.valueOrNull;
+                if (allRows == null) {
+                  if (viewAsync.hasError) {
+                    return Center(child: Text('Error: ${viewAsync.error}'));
+                  }
+                  return const Center(child: CircularProgressIndicator());
+                }
                 final q = _searchQuery.toLowerCase();
                 final rows = allRows.where((r) {
                   final matchesSupplier = _selectedSupplierId == null ||
@@ -120,6 +124,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       child: Text('No products found.'));
                 }
                 return ListView.separated(
+                  key: const PageStorageKey('inventory_list'),
                   itemCount: rows.length,
                   separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (ctx, i) {
@@ -174,8 +179,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     );
                   },
                 );
-              },
-            ),
+              }),
           ),
         ],
       ),
@@ -473,7 +477,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final piecesCtrl  = TextEditingController();
     final invCtrl     = TextEditingController();
     final commentCtrl = TextEditingController();
-    DateTime refDate  = DateTime.now();
+    DateTime refDate  = _lastRefDate;
 
     // Fetch withdrawal price for price-per-box display
     final price = isAdd
@@ -552,11 +556,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     );
                   }),
                 ],
-                if (isAdd) ...[
-                  const SizedBox(height: 16),
-                  const Divider(),
-                  const SizedBox(height: 4),
-                  const Text('Reference',
+                const SizedBox(height: 16),
+                const Divider(),
+                const SizedBox(height: 4),
+                const Text('Reference',
                       style: TextStyle(
                           fontWeight: FontWeight.w600, fontSize: 13)),
                   const SizedBox(height: 8),
@@ -570,6 +573,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       );
                       if (picked != null) {
                         setState(() => refDate = picked);
+                        _lastRefDate = picked;
                       }
                     },
                     child: InputDecorator(
@@ -604,7 +608,6 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     ),
                     maxLines: 2,
                   ),
-                ],
               ],
             ),
           ),

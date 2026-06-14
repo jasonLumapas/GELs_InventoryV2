@@ -17,6 +17,7 @@ class ClientFormScreen extends ConsumerStatefulWidget {
 class _ClientFormScreenState extends ConsumerState<ClientFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
+  final _contactCtrl = TextEditingController();
   final _addressCtrl = TextEditingController();
   bool _loading = false;
   Client? _existing;
@@ -35,6 +36,7 @@ class _ClientFormScreenState extends ConsumerState<ClientFormScreen> {
     _existing = all.where((c) => c.id == widget.clientId).firstOrNull;
     if (_existing != null) {
       _nameCtrl.text = _existing!.name;
+      _contactCtrl.text = _existing!.contact ?? '';
       _addressCtrl.text = _existing!.address ?? '';
     }
     setState(() => _loading = false);
@@ -43,6 +45,7 @@ class _ClientFormScreenState extends ConsumerState<ClientFormScreen> {
   @override
   void dispose() {
     _nameCtrl.dispose();
+    _contactCtrl.dispose();
     _addressCtrl.dispose();
     super.dispose();
   }
@@ -53,6 +56,8 @@ class _ClientFormScreenState extends ConsumerState<ClientFormScreen> {
     final client = Client(
       id: _existing?.id ?? const Uuid().v4(),
       name: _nameCtrl.text.trim(),
+      contact:
+          _contactCtrl.text.trim().isEmpty ? null : _contactCtrl.text.trim(),
       address:
           _addressCtrl.text.trim().isEmpty ? null : _addressCtrl.text.trim(),
       createdAt: _existing?.createdAt ?? DateTime.now(),
@@ -80,6 +85,13 @@ class _ClientFormScreenState extends ConsumerState<ClientFormScreen> {
                           const InputDecoration(labelText: 'Store / Client Name *'),
                       validator: (v) =>
                           v == null || v.trim().isEmpty ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _contactCtrl,
+                      decoration: const InputDecoration(
+                          labelText: 'Contact Number (optional)'),
+                      keyboardType: TextInputType.phone,
                     ),
                     const SizedBox(height: 12),
                     TextFormField(

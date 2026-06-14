@@ -55,6 +55,7 @@ class ClientRepository extends BaseRepository {
         .map((r) => Client(
               id: r.id,
               name: r.name,
+              contact: r.contact,
               address: r.address,
               createdAt: r.createdAt,
             ))
@@ -94,6 +95,7 @@ class ClientRepository extends BaseRepository {
     await db.into(db.clients).insertOnConflictUpdate(ClientsCompanion(
           id: drift.Value(c.id),
           name: drift.Value(c.name),
+          contact: drift.Value(c.contact),
           address: drift.Value(c.address),
           createdAt: drift.Value(c.createdAt),
         ));

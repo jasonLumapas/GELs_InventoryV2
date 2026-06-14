@@ -1,29 +1,83 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../models/client.dart';
 import '../../models/product.dart';
 import '../../models/product_price.dart';
 import '../../models/supplier.dart';
+import '../../repositories/client_repository.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../repositories/supplier_repository.dart';
 import '../../widgets/common/app_scaffold.dart';
 
-class CsvImportScreen extends ConsumerStatefulWidget {
+// Reads a CSV file's contents, tolerating files that aren't valid UTF-8
+// (e.g. exported from Excel as "CSV (Comma delimited)", which is typically
+// Windows-1252 / Latin-1). Falls back to Latin-1 and strips a UTF-8 BOM.
+Future<String> _readCsvFile(File file) async {
+  final bytes = await file.readAsBytes();
+  try {
+    final text = utf8.decode(bytes);
+    return text.startsWith('﻿') ? text.substring(1) : text;
+  } catch (_) {
+    return latin1.decode(bytes);
+  }
+}
+
+class CsvImportScreen extends StatelessWidget {
   const CsvImportScreen({super.key});
 
   @override
-  ConsumerState<CsvImportScreen> createState() => _CsvImportScreenState();
+  Widget build(BuildContext context) {
+    return AppScaffold(
+      title: 'Import CSV',
+      body: DefaultTabController(
+        length: 2,
+        child: Column(
+          children: [
+            const TabBar(
+              tabs: [
+                Tab(text: 'Supplier Products'),
+                Tab(text: 'Clients'),
+              ],
+            ),
+            const Expanded(
+              child: TabBarView(
+                children: [
+                  _SupplierProductImportTab(),
+                  _ClientImportTab(),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
-class _CsvImportScreenState extends ConsumerState<CsvImportScreen> {
+// ════════════════════════════════════════════════════════════════════════════
+// Supplier Products tab
+// ════════════════════════════════════════════════════════════════════════════
+
+class _SupplierProductImportTab extends ConsumerStatefulWidget {
+  const _SupplierProductImportTab();
+
+  @override
+  ConsumerState<_SupplierProductImportTab> createState() =>
+      _SupplierProductImportTabState();
+}
+
+class _SupplierProductImportTabState
+    extends ConsumerState<_SupplierProductImportTab> {
   final _pathCtrl = TextEditingController();
   bool _importing = false;
   final List<_LogEntry> _log = [];
-  _ImportSummary? _summary;
+  _ProductImportSummary? _summary;
 
   @override
   void initState() {
@@ -100,7 +154,7 @@ class _CsvImportScreenState extends ConsumerState<CsvImportScreen> {
     });
 
     try {
-      final content = await file.readAsString();
+      final content = await _readCsvFile(file);
       final allRows = _parseCsv(content);
 
       if (allRows.isEmpty) {
@@ -244,7 +298,7 @@ class _CsvImportScreenState extends ConsumerState<CsvImportScreen> {
       }
 
       setState(() {
-        _summary = _ImportSummary(
+        _summary = _ProductImportSummary(
           suppliersCreated: suppliersCreated,
           productsCreated:  productsCreated,
           inventoryUpdated: inventoryUpdated,
@@ -264,101 +318,98 @@ class _CsvImportScreenState extends ConsumerState<CsvImportScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return AppScaffold(
-      title: 'Import CSV',
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── File path ───────────────────────────────────────────────────
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _pathCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'CSV File Path',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.folder_open),
-                    ),
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── File path ───────────────────────────────────────────────────
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _pathCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'CSV File Path',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.folder_open),
                   ),
                 ),
-                const SizedBox(width: 12),
-                FilledButton.icon(
-                  icon: _importing
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.upload),
-                  label: const Text('Import'),
-                  onPressed: _importing ? null : _import,
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Expected columns: A=supplier  B=product  C=pieces_per_box  '
-              'D=withdrawal_price  E=selling_price  H=stock (total pcs)  '
-              'I=product_code',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-            ),
-            const SizedBox(height: 12),
+              ),
+              const SizedBox(width: 12),
+              FilledButton.icon(
+                icon: _importing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.upload),
+                label: const Text('Import'),
+                onPressed: _importing ? null : _import,
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Expected columns: A=supplier  B=product  C=pieces_per_box  '
+            'D=withdrawal_price  E=selling_price  H=stock (total pcs)  '
+            'I=product_code',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 12),
 
-            // ── Summary card ────────────────────────────────────────────────
-            if (_summary != null) _SummaryCard(summary: _summary!),
+          // ── Summary card ────────────────────────────────────────────────
+          if (_summary != null) _ProductSummaryCard(summary: _summary!),
 
-            const Divider(height: 20),
+          const Divider(height: 20),
 
-            // ── Log output ──────────────────────────────────────────────────
-            Expanded(
-              child: _log.isEmpty
-                  ? Center(
-                      child: Text('Set the file path and press Import.',
-                          style: TextStyle(color: Colors.grey.shade500)))
-                  : ListView.builder(
-                      itemCount: _log.length,
-                      itemBuilder: (_, i) {
-                        final entry = _log[i];
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 1),
-                          child: Text(
-                            entry.message,
-                            style: TextStyle(
-                              fontFamily: 'Courier New',
-                              fontSize: 12,
-                              color: switch (entry.level) {
-                                _LogLevel.error   => Colors.red.shade700,
-                                _LogLevel.warn    => Colors.orange.shade800,
-                                _LogLevel.success => Colors.green.shade700,
-                                _LogLevel.info    => null,
-                              },
-                            ),
+          // ── Log output ──────────────────────────────────────────────────
+          Expanded(
+            child: _log.isEmpty
+                ? Center(
+                    child: Text('Set the file path and press Import.',
+                        style: TextStyle(color: Colors.grey.shade500)))
+                : ListView.builder(
+                    itemCount: _log.length,
+                    itemBuilder: (_, i) {
+                      final entry = _log[i];
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 1),
+                        child: Text(
+                          entry.message,
+                          style: TextStyle(
+                            fontFamily: 'Courier New',
+                            fontSize: 12,
+                            color: switch (entry.level) {
+                              _LogLevel.error   => Colors.red.shade700,
+                              _LogLevel.warn    => Colors.orange.shade800,
+                              _LogLevel.success => Colors.green.shade700,
+                              _LogLevel.info    => null,
+                            },
                           ),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }
 }
 
-// ── Summary card ──────────────────────────────────────────────────────────────
+// ── Summary card (Supplier Products) ──────────────────────────────────────────
 
-class _ImportSummary {
+class _ProductImportSummary {
   final int suppliersCreated;
   final int productsCreated;
   final int inventoryUpdated;
   final int skipped;
   final int errors;
 
-  const _ImportSummary({
+  const _ProductImportSummary({
     required this.suppliersCreated,
     required this.productsCreated,
     required this.inventoryUpdated,
@@ -367,9 +418,9 @@ class _ImportSummary {
   });
 }
 
-class _SummaryCard extends StatelessWidget {
-  final _ImportSummary summary;
-  const _SummaryCard({required this.summary});
+class _ProductSummaryCard extends StatelessWidget {
+  final _ProductImportSummary summary;
+  const _ProductSummaryCard({required this.summary});
 
   @override
   Widget build(BuildContext context) {
@@ -391,6 +442,336 @@ class _SummaryCard extends StatelessWidget {
   }
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// Clients tab
+// ════════════════════════════════════════════════════════════════════════════
+
+class _ClientImportTab extends ConsumerStatefulWidget {
+  const _ClientImportTab();
+
+  @override
+  ConsumerState<_ClientImportTab> createState() => _ClientImportTabState();
+}
+
+class _ClientImportTabState extends ConsumerState<_ClientImportTab> {
+  final _pathCtrl = TextEditingController();
+  bool _importing = false;
+  final List<_LogEntry> _log = [];
+  _ClientImportSummary? _summary;
+
+  @override
+  void initState() {
+    super.initState();
+    final home = Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        '';
+    _pathCtrl.text = '$home\\Desktop\\VSM_Daily_Route_Plan_Master.csv';
+  }
+
+  @override
+  void dispose() {
+    _pathCtrl.dispose();
+    super.dispose();
+  }
+
+  void _addLog(String msg, {_LogLevel level = _LogLevel.info}) =>
+      setState(() => _log.add(_LogEntry(msg, level)));
+
+  // ── CSV parser ────────────────────────────────────────────────────────────
+  // Handles double-quoted fields that may contain commas.
+  List<List<String>> _parseCsv(String content) {
+    final rows = <List<String>>[];
+    for (var line in content.split('\n')) {
+      line = line.trim();
+      if (line.isEmpty) continue;
+      final fields = <String>[];
+      bool inQuotes = false;
+      final buf = StringBuffer();
+      for (int i = 0; i < line.length; i++) {
+        final ch = line[i];
+        if (ch == '"') {
+          inQuotes = !inQuotes;
+        } else if (ch == ',' && !inQuotes) {
+          fields.add(buf.toString().trim());
+          buf.clear();
+        } else {
+          buf.write(ch);
+        }
+      }
+      fields.add(buf.toString().trim());
+      rows.add(fields);
+    }
+    return rows;
+  }
+
+  String _field(List<String> row, int col) =>
+      col >= 0 && row.length > col ? row[col].trim() : '';
+
+  // Finds the column index whose header matches any of [names]
+  // (case-insensitive, ignoring extra whitespace).
+  int _findColumn(List<String> header, List<String> names) {
+    final normalized = header
+        .map((h) => h.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim())
+        .toList();
+    for (final name in names) {
+      final target =
+          name.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
+      final idx = normalized.indexOf(target);
+      if (idx != -1) return idx;
+    }
+    return -1;
+  }
+
+  // ── Import logic ──────────────────────────────────────────────────────────
+
+  Future<void> _import() async {
+    final path = _pathCtrl.text.trim();
+    final file = File(path);
+    if (!file.existsSync()) {
+      _addLog('File not found: $path', level: _LogLevel.error);
+      return;
+    }
+
+    setState(() {
+      _importing = true;
+      _log.clear();
+      _summary = null;
+    });
+
+    try {
+      final content = await _readCsvFile(file);
+      final allRows = _parseCsv(content);
+
+      if (allRows.isEmpty) {
+        _addLog('File is empty.', level: _LogLevel.error);
+        return;
+      }
+
+      final header = allRows.first;
+      _addLog('${allRows.length - 1} data rows  |  ${header.length} columns');
+
+      final nameCol = _findColumn(header, ['CUSTOMER NAME']);
+      final barangayCol = _findColumn(header, ['Barangay']);
+      final cityCol =
+          _findColumn(header, ['Municipality/City', 'Municipality / City']);
+      final provinceCol = _findColumn(header, ['Province']);
+      final contactCol = _findColumn(header, [
+        'TELEPHONE / CONTACT NUMBER',
+        'TELEPHONE/CONTACT NUMBER',
+        'CONTACT NUMBER',
+        'TELEPHONE',
+      ]);
+
+      if (nameCol == -1) {
+        _addLog('Could not find "CUSTOMER NAME" column.',
+            level: _LogLevel.error);
+        return;
+      }
+      _addLog('Mapped columns — Name: ${nameCol + 1}, '
+          'Barangay: ${barangayCol + 1}, City: ${cityCol + 1}, '
+          'Province: ${provinceCol + 1}, Contact: ${contactCol + 1}');
+
+      final dataRows = allRows.skip(1).toList();
+      final clientRepo = ref.read(clientRepositoryProvider);
+      final existing = await clientRepo.getAll();
+      final byName = <String, Client>{
+        for (final c in existing) c.name.toLowerCase(): c,
+      };
+
+      int created = 0;
+      int updated = 0;
+      int skipped = 0;
+      int errors = 0;
+
+      for (int i = 0; i < dataRows.length; i++) {
+        final row = dataRows[i];
+        final name = _field(row, nameCol);
+        if (name.isEmpty) {
+          skipped++;
+          continue;
+        }
+
+        final addressParts = [
+          _field(row, barangayCol),
+          _field(row, cityCol),
+          _field(row, provinceCol),
+        ].where((s) => s.isNotEmpty).toList();
+        final address = addressParts.isEmpty ? null : addressParts.join(', ');
+        final contactRaw = _field(row, contactCol);
+        final contact = contactRaw.isEmpty ? null : contactRaw;
+
+        try {
+          final key = name.toLowerCase();
+          final existingClient = byName[key];
+          if (existingClient != null) {
+            final updatedClient = existingClient.copyWith(
+              contact: contact,
+              address: address,
+            );
+            await clientRepo.upsert(updatedClient);
+            byName[key] = updatedClient;
+            updated++;
+          } else {
+            final newClient = Client(
+              id: const Uuid().v4(),
+              name: name,
+              contact: contact,
+              address: address,
+              createdAt: DateTime.now(),
+            );
+            await clientRepo.upsert(newClient);
+            byName[key] = newClient;
+            created++;
+          }
+        } catch (e) {
+          _addLog('Row ${i + 2} ($name): $e', level: _LogLevel.error);
+          errors++;
+        }
+      }
+
+      ref.invalidate(clientsListProvider);
+
+      setState(() {
+        _summary = _ClientImportSummary(
+          created: created,
+          updated: updated,
+          skipped: skipped,
+          errors: errors,
+        );
+      });
+      _addLog('Import complete.', level: _LogLevel.success);
+    } catch (e) {
+      _addLog('Fatal error: $e', level: _LogLevel.error);
+    } finally {
+      setState(() => _importing = false);
+    }
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _pathCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'CSV File Path',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.folder_open),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              FilledButton.icon(
+                icon: _importing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.upload),
+                label: const Text('Import'),
+                onPressed: _importing ? null : _import,
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Maps CUSTOMER NAME -> name; Barangay, Municipality/City, '
+            'Province -> address (comma-separated); '
+            'TELEPHONE / CONTACT NUMBER -> contact number. '
+            'Existing clients are matched by name and updated.',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 12),
+
+          if (_summary != null) _ClientSummaryCard(summary: _summary!),
+
+          const Divider(height: 20),
+
+          Expanded(
+            child: _log.isEmpty
+                ? Center(
+                    child: Text('Set the file path and press Import.',
+                        style: TextStyle(color: Colors.grey.shade500)))
+                : ListView.builder(
+                    itemCount: _log.length,
+                    itemBuilder: (_, i) {
+                      final entry = _log[i];
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 1),
+                        child: Text(
+                          entry.message,
+                          style: TextStyle(
+                            fontFamily: 'Courier New',
+                            fontSize: 12,
+                            color: switch (entry.level) {
+                              _LogLevel.error => Colors.red.shade700,
+                              _LogLevel.warn => Colors.orange.shade800,
+                              _LogLevel.success => Colors.green.shade700,
+                              _LogLevel.info => null,
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Summary card (Clients) ─────────────────────────────────────────────────────
+
+class _ClientImportSummary {
+  final int created;
+  final int updated;
+  final int skipped;
+  final int errors;
+
+  const _ClientImportSummary({
+    required this.created,
+    required this.updated,
+    required this.skipped,
+    required this.errors,
+  });
+}
+
+class _ClientSummaryCard extends StatelessWidget {
+  final _ClientImportSummary summary;
+  const _ClientSummaryCard({required this.summary});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _Stat('Created', summary.created, Colors.green.shade700),
+            _Stat('Updated', summary.updated, Colors.blue.shade700),
+            _Stat('Skipped', summary.skipped, Colors.grey),
+            _Stat('Errors', summary.errors, Colors.red.shade700),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Shared widgets/helpers ─────────────────────────────────────────────────────
+
 class _Stat extends StatelessWidget {
   final String label;
   final int value;
@@ -409,8 +790,6 @@ class _Stat extends StatelessWidget {
     );
   }
 }
-
-// ── Log helpers ───────────────────────────────────────────────────────────────
 
 enum _LogLevel { info, success, warn, error }
 

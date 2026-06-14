@@ -380,6 +380,17 @@ class $ClientsTable extends Clients with TableInfo<$ClientsTable, Client> {
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _contactMeta = const VerificationMeta(
+    'contact',
+  );
+  @override
+  late final GeneratedColumn<String> contact = GeneratedColumn<String>(
+    'contact',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _addressMeta = const VerificationMeta(
     'address',
   );
@@ -404,7 +415,7 @@ class $ClientsTable extends Clients with TableInfo<$ClientsTable, Client> {
     defaultValue: currentDateAndTime,
   );
   @override
-  List<GeneratedColumn> get $columns => [id, name, address, createdAt];
+  List<GeneratedColumn> get $columns => [id, name, contact, address, createdAt];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -429,6 +440,12 @@ class $ClientsTable extends Clients with TableInfo<$ClientsTable, Client> {
       );
     } else if (isInserting) {
       context.missing(_nameMeta);
+    }
+    if (data.containsKey('contact')) {
+      context.handle(
+        _contactMeta,
+        contact.isAcceptableOrUnknown(data['contact']!, _contactMeta),
+      );
     }
     if (data.containsKey('address')) {
       context.handle(
@@ -459,6 +476,10 @@ class $ClientsTable extends Clients with TableInfo<$ClientsTable, Client> {
         DriftSqlType.string,
         data['${effectivePrefix}name'],
       )!,
+      contact: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}contact'],
+      ),
       address: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}address'],
@@ -479,11 +500,13 @@ class $ClientsTable extends Clients with TableInfo<$ClientsTable, Client> {
 class Client extends DataClass implements Insertable<Client> {
   final String id;
   final String name;
+  final String? contact;
   final String? address;
   final DateTime createdAt;
   const Client({
     required this.id,
     required this.name,
+    this.contact,
     this.address,
     required this.createdAt,
   });
@@ -492,6 +515,9 @@ class Client extends DataClass implements Insertable<Client> {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['name'] = Variable<String>(name);
+    if (!nullToAbsent || contact != null) {
+      map['contact'] = Variable<String>(contact);
+    }
     if (!nullToAbsent || address != null) {
       map['address'] = Variable<String>(address);
     }
@@ -503,6 +529,9 @@ class Client extends DataClass implements Insertable<Client> {
     return ClientsCompanion(
       id: Value(id),
       name: Value(name),
+      contact: contact == null && nullToAbsent
+          ? const Value.absent()
+          : Value(contact),
       address: address == null && nullToAbsent
           ? const Value.absent()
           : Value(address),
@@ -518,6 +547,7 @@ class Client extends DataClass implements Insertable<Client> {
     return Client(
       id: serializer.fromJson<String>(json['id']),
       name: serializer.fromJson<String>(json['name']),
+      contact: serializer.fromJson<String?>(json['contact']),
       address: serializer.fromJson<String?>(json['address']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
@@ -528,6 +558,7 @@ class Client extends DataClass implements Insertable<Client> {
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'name': serializer.toJson<String>(name),
+      'contact': serializer.toJson<String?>(contact),
       'address': serializer.toJson<String?>(address),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
@@ -536,11 +567,13 @@ class Client extends DataClass implements Insertable<Client> {
   Client copyWith({
     String? id,
     String? name,
+    Value<String?> contact = const Value.absent(),
     Value<String?> address = const Value.absent(),
     DateTime? createdAt,
   }) => Client(
     id: id ?? this.id,
     name: name ?? this.name,
+    contact: contact.present ? contact.value : this.contact,
     address: address.present ? address.value : this.address,
     createdAt: createdAt ?? this.createdAt,
   );
@@ -548,6 +581,7 @@ class Client extends DataClass implements Insertable<Client> {
     return Client(
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
+      contact: data.contact.present ? data.contact.value : this.contact,
       address: data.address.present ? data.address.value : this.address,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
@@ -558,6 +592,7 @@ class Client extends DataClass implements Insertable<Client> {
     return (StringBuffer('Client(')
           ..write('id: $id, ')
           ..write('name: $name, ')
+          ..write('contact: $contact, ')
           ..write('address: $address, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
@@ -565,13 +600,14 @@ class Client extends DataClass implements Insertable<Client> {
   }
 
   @override
-  int get hashCode => Object.hash(id, name, address, createdAt);
+  int get hashCode => Object.hash(id, name, contact, address, createdAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is Client &&
           other.id == this.id &&
           other.name == this.name &&
+          other.contact == this.contact &&
           other.address == this.address &&
           other.createdAt == this.createdAt);
 }
@@ -579,12 +615,14 @@ class Client extends DataClass implements Insertable<Client> {
 class ClientsCompanion extends UpdateCompanion<Client> {
   final Value<String> id;
   final Value<String> name;
+  final Value<String?> contact;
   final Value<String?> address;
   final Value<DateTime> createdAt;
   final Value<int> rowid;
   const ClientsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
+    this.contact = const Value.absent(),
     this.address = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -592,6 +630,7 @@ class ClientsCompanion extends UpdateCompanion<Client> {
   ClientsCompanion.insert({
     required String id,
     required String name,
+    this.contact = const Value.absent(),
     this.address = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -600,6 +639,7 @@ class ClientsCompanion extends UpdateCompanion<Client> {
   static Insertable<Client> custom({
     Expression<String>? id,
     Expression<String>? name,
+    Expression<String>? contact,
     Expression<String>? address,
     Expression<DateTime>? createdAt,
     Expression<int>? rowid,
@@ -607,6 +647,7 @@ class ClientsCompanion extends UpdateCompanion<Client> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (name != null) 'name': name,
+      if (contact != null) 'contact': contact,
       if (address != null) 'address': address,
       if (createdAt != null) 'created_at': createdAt,
       if (rowid != null) 'rowid': rowid,
@@ -616,6 +657,7 @@ class ClientsCompanion extends UpdateCompanion<Client> {
   ClientsCompanion copyWith({
     Value<String>? id,
     Value<String>? name,
+    Value<String?>? contact,
     Value<String?>? address,
     Value<DateTime>? createdAt,
     Value<int>? rowid,
@@ -623,6 +665,7 @@ class ClientsCompanion extends UpdateCompanion<Client> {
     return ClientsCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
+      contact: contact ?? this.contact,
       address: address ?? this.address,
       createdAt: createdAt ?? this.createdAt,
       rowid: rowid ?? this.rowid,
@@ -637,6 +680,9 @@ class ClientsCompanion extends UpdateCompanion<Client> {
     }
     if (name.present) {
       map['name'] = Variable<String>(name.value);
+    }
+    if (contact.present) {
+      map['contact'] = Variable<String>(contact.value);
     }
     if (address.present) {
       map['address'] = Variable<String>(address.value);
@@ -655,6 +701,7 @@ class ClientsCompanion extends UpdateCompanion<Client> {
     return (StringBuffer('ClientsCompanion(')
           ..write('id: $id, ')
           ..write('name: $name, ')
+          ..write('contact: $contact, ')
           ..write('address: $address, ')
           ..write('createdAt: $createdAt, ')
           ..write('rowid: $rowid')
@@ -9421,6 +9468,7 @@ typedef $$ClientsTableCreateCompanionBuilder =
     ClientsCompanion Function({
       required String id,
       required String name,
+      Value<String?> contact,
       Value<String?> address,
       Value<DateTime> createdAt,
       Value<int> rowid,
@@ -9429,6 +9477,7 @@ typedef $$ClientsTableUpdateCompanionBuilder =
     ClientsCompanion Function({
       Value<String> id,
       Value<String> name,
+      Value<String?> contact,
       Value<String?> address,
       Value<DateTime> createdAt,
       Value<int> rowid,
@@ -9492,6 +9541,11 @@ class $$ClientsTableFilterComposer
 
   ColumnFilters<String> get name => $composableBuilder(
     column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get contact => $composableBuilder(
+    column: $table.contact,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9575,6 +9629,11 @@ class $$ClientsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get contact => $composableBuilder(
+    column: $table.contact,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get address => $composableBuilder(
     column: $table.address,
     builder: (column) => ColumnOrderings(column),
@@ -9600,6 +9659,9 @@ class $$ClientsTableAnnotationComposer
 
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get contact =>
+      $composableBuilder(column: $table.contact, builder: (column) => column);
 
   GeneratedColumn<String> get address =>
       $composableBuilder(column: $table.address, builder: (column) => column);
@@ -9688,12 +9750,14 @@ class $$ClientsTableTableManager
               ({
                 Value<String> id = const Value.absent(),
                 Value<String> name = const Value.absent(),
+                Value<String?> contact = const Value.absent(),
                 Value<String?> address = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ClientsCompanion(
                 id: id,
                 name: name,
+                contact: contact,
                 address: address,
                 createdAt: createdAt,
                 rowid: rowid,
@@ -9702,12 +9766,14 @@ class $$ClientsTableTableManager
               ({
                 required String id,
                 required String name,
+                Value<String?> contact = const Value.absent(),
                 Value<String?> address = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ClientsCompanion.insert(
                 id: id,
                 name: name,
+                contact: contact,
                 address: address,
                 createdAt: createdAt,
                 rowid: rowid,

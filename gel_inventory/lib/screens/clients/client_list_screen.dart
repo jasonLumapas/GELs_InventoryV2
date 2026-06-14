@@ -16,6 +16,11 @@ class ClientListScreen extends ConsumerWidget {
       title: 'Clients / Stores',
       actions: [
         IconButton(
+          icon: const Icon(Icons.upload_file),
+          tooltip: 'Import clients from CSV',
+          onPressed: () => context.go('/import-csv'),
+        ),
+        IconButton(
           icon: const Icon(Icons.add),
           tooltip: 'Add client',
           onPressed: () => context.go('/clients/new'),
@@ -31,10 +36,18 @@ class ClientListScreen extends ConsumerWidget {
                 separatorBuilder: (_, _) => const Divider(height: 1),
                 itemBuilder: (ctx, i) {
                   final c = clients[i];
+                  final subtitleParts = [
+                    if (c.contact != null && c.contact!.isNotEmpty)
+                      c.contact!,
+                    if (c.address != null && c.address!.isNotEmpty)
+                      c.address!,
+                  ];
                   return ListTile(
                     leading: const Icon(Icons.store),
                     title: Text(c.name),
-                    subtitle: c.address != null ? Text(c.address!) : null,
+                    subtitle: subtitleParts.isEmpty
+                        ? null
+                        : Text(subtitleParts.join('  •  ')),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [

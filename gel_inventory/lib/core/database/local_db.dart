@@ -23,6 +23,7 @@ class Suppliers extends Table {
 class Clients extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
+  TextColumn get contact => text().nullable()();
   TextColumn get address => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
@@ -334,7 +335,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 20;
+  int get schemaVersion => 21;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -426,6 +427,10 @@ class LocalDatabase extends _$LocalDatabase {
           if (from < 20) {
             await _addColumnIfMissing(
                 m.database, 'invoices', 'actual_amount', 'REAL');
+          }
+          if (from < 21) {
+            await _addColumnIfMissing(
+                m.database, 'clients', 'contact', 'TEXT');
           }
         },
       );

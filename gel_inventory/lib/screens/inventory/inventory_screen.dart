@@ -12,6 +12,7 @@ import '../../repositories/stock_movement_repository.dart';
 import '../../repositories/supplier_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../widgets/common/app_scaffold.dart';
+import '../../widgets/common/confirm_dialog.dart';
 
 // Combines all products with their current inventory quantity.
 // Products with no inventory record show as 0 stock.
@@ -54,6 +55,13 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
     return AppScaffold(
       title: 'Inventory',
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.delete_sweep),
+          tooltip: 'Clear all stock quantities',
+          onPressed: _confirmClearAllStock,
+        ),
+      ],
       body: Column(
         children: [
           // ── Search + supplier filter ───────────────────────────────
@@ -465,6 +473,40 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _confirmClearAllStock() async {
+    final ok = await showConfirmDialog(
+      context,
+      title: 'Clear All Stock',
+      message:
+          'This will set the remaining quantity of every product to 0. '
+          'Transaction history will NOT be affected. Continue?',
+      confirmLabel: 'Clear Stock',
+    );
+    if (!ok) return;
+
+    final items = await ref.read(inventoryListProvider.future);
+    final inventoryRepo = ref.read(inventoryRepositoryProvider);
+    final stockMovementRepo = ref.read(stockMovementRepositoryProvider);
+    final now = DateTime.now();
+
+    for (final item in items) {
+      if (item.quantityPieces == 0) continue;
+      await inventoryRepo.adjust(
+          productId: item.productId, deltaPieces: -item.quantityPieces);
+      await stockMovementRepo.save(StockMovement(
+        id: const Uuid().v4(),
+        productId: item.productId,
+        movementType: 'out',
+        quantityPieces: item.quantityPieces,
+        referenceDate: now,
+        comments: 'Bulk clear all stock',
+        createdAt: now,
+      ));
+    }
+
+    ref.invalidate(inventoryListProvider);
   }
 
   Future<void> _showAdjustDialog(

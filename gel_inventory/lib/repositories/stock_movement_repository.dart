@@ -238,21 +238,26 @@ class StockMovementRepository extends BaseRepository {
   static bool _isBadOrder(String? invoiceNumber) =>
       invoiceNumber != null && invoiceNumber.startsWith('BO-');
 
-  /// Splits 'out' movements for [date] into (non-bad-order, bad-order) totals
-  /// per product, based on whether `invoice_number` starts with `BO-`.
-  Future<(Map<String, int>, Map<String, int>)> sumOutSplitForDate(
+  static bool _isBulkClear(String? comments) =>
+      comments == 'Bulk clear all stock';
+
+  /// Splits 'out' movements for [date] into (non-bad-order, bad-order,
+  /// bulk-clear) totals per product, based on whether `invoice_number`
+  /// starts with `BO-` or `comments` marks a bulk clear.
+  Future<(Map<String, int>, Map<String, int>, Map<String, int>)> sumOutSplitForDate(
       DateTime date) async {
     final dayStr = '${date.year}-'
         '${date.month.toString().padLeft(2, '0')}-'
         '${date.day.toString().padLeft(2, '0')}';
     final nonBO = <String, int>{};
     final bo = <String, int>{};
+    final bulkClear = <String, int>{};
 
     if (isOnline) {
       try {
         final data = await Supabase.instance.client
             .from('stock_movements')
-            .select('product_id, quantity_pieces, reference_date, invoice_number')
+            .select('product_id, quantity_pieces, reference_date, invoice_number, comments')
             .eq('movement_type', 'out');
         for (final m in data as List) {
           final refStr = m['reference_date'] as String?;
@@ -261,11 +266,13 @@ class StockMovementRepository extends BaseRepository {
           if (storedDay == dayStr) {
             final pid = m['product_id'] as String;
             final qty = (m['quantity_pieces'] as num).toInt();
-            final target = _isBadOrder(m['invoice_number'] as String?) ? bo : nonBO;
+            final target = _isBulkClear(m['comments'] as String?)
+                ? bulkClear
+                : (_isBadOrder(m['invoice_number'] as String?) ? bo : nonBO);
             target[pid] = (target[pid] ?? 0) + qty;
           }
         }
-        return (nonBO, bo);
+        return (nonBO, bo, bulkClear);
       } catch (e) {
         debugPrint('sumOutSplitForDate Supabase query failed: $e. Falling back to local.');
       }
@@ -279,16 +286,19 @@ class StockMovementRepository extends BaseRepository {
     for (final r in rows) {
       final rd = r.referenceDate;
       if (rd != null && !rd.isBefore(dayStart) && rd.isBefore(dayEnd)) {
-        final target = _isBadOrder(r.invoiceNumber) ? bo : nonBO;
+        final target = _isBulkClear(r.comments)
+            ? bulkClear
+            : (_isBadOrder(r.invoiceNumber) ? bo : nonBO);
         target[r.productId] = (target[r.productId] ?? 0) + r.quantityPieces;
       }
     }
-    return (nonBO, bo);
+    return (nonBO, bo, bulkClear);
   }
 
-  /// Splits 'out' movements in [from, to) into (non-bad-order, bad-order)
-  /// totals per product, based on whether `invoice_number` starts with `BO-`.
-  Future<(Map<String, int>, Map<String, int>)> sumOutSplitForRange(
+  /// Splits 'out' movements in [from, to) into (non-bad-order, bad-order,
+  /// bulk-clear) totals per product, based on whether `invoice_number`
+  /// starts with `BO-` or `comments` marks a bulk clear.
+  Future<(Map<String, int>, Map<String, int>, Map<String, int>)> sumOutSplitForRange(
       DateTime from, DateTime to) async {
     final fromStr = '${from.year}-'
         '${from.month.toString().padLeft(2, '0')}-'
@@ -298,12 +308,13 @@ class StockMovementRepository extends BaseRepository {
         '${to.day.toString().padLeft(2, '0')}';
     final nonBO = <String, int>{};
     final bo = <String, int>{};
+    final bulkClear = <String, int>{};
 
     if (isOnline) {
       try {
         final data = await Supabase.instance.client
             .from('stock_movements')
-            .select('product_id, quantity_pieces, reference_date, invoice_number')
+            .select('product_id, quantity_pieces, reference_date, invoice_number, comments')
             .eq('movement_type', 'out');
         for (final m in data as List) {
           final refStr = m['reference_date'] as String?;
@@ -312,11 +323,13 @@ class StockMovementRepository extends BaseRepository {
           if (storedDay.compareTo(fromStr) >= 0 && storedDay.compareTo(toStr) < 0) {
             final pid = m['product_id'] as String;
             final qty = (m['quantity_pieces'] as num).toInt();
-            final target = _isBadOrder(m['invoice_number'] as String?) ? bo : nonBO;
+            final target = _isBulkClear(m['comments'] as String?)
+                ? bulkClear
+                : (_isBadOrder(m['invoice_number'] as String?) ? bo : nonBO);
             target[pid] = (target[pid] ?? 0) + qty;
           }
         }
-        return (nonBO, bo);
+        return (nonBO, bo, bulkClear);
       } catch (e) {
         debugPrint('sumOutSplitForRange Supabase query failed: $e. Falling back to local.');
       }
@@ -328,11 +341,13 @@ class StockMovementRepository extends BaseRepository {
     for (final r in rows) {
       final rd = r.referenceDate;
       if (rd != null && !rd.isBefore(from) && rd.isBefore(to)) {
-        final target = _isBadOrder(r.invoiceNumber) ? bo : nonBO;
+        final target = _isBulkClear(r.comments)
+            ? bulkClear
+            : (_isBadOrder(r.invoiceNumber) ? bo : nonBO);
         target[r.productId] = (target[r.productId] ?? 0) + r.quantityPieces;
       }
     }
-    return (nonBO, bo);
+    return (nonBO, bo, bulkClear);
   }
 
   Future<List<StockMovement>> getForProduct(String productId) async {

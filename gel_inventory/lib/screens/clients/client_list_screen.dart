@@ -16,11 +16,6 @@ class ClientListScreen extends ConsumerWidget {
       title: 'Clients / Stores',
       actions: [
         IconButton(
-          icon: const Icon(Icons.upload_file),
-          tooltip: 'Import clients from CSV',
-          onPressed: () => context.go('/import-csv'),
-        ),
-        IconButton(
           icon: const Icon(Icons.add),
           tooltip: 'Add client',
           onPressed: () => context.go('/clients/new'),

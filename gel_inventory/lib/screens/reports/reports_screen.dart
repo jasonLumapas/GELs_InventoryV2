@@ -341,6 +341,7 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
   String? _selectedSupplierId; // null = all suppliers
   bool? _endingSortAscending; // null = unsorted (original product order)
   bool _showOnlyWithEnding = false;
+  bool _showOnlyWithBulkClear = false;
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
 
@@ -402,6 +403,11 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
     if (_showOnlyWithEnding) {
       products = products.where((p) => (data.ending[p.id] ?? 0) > 0).toList();
     }
+    if (_showOnlyWithBulkClear) {
+      products = products
+          .where((p) => (data.stockOutBulkClear[p.id] ?? 0) > 0)
+          .toList();
+    }
 
     final showSelling =
         ref.read(inventoryReportShowSellingProvider).valueOrNull ?? false;
@@ -423,6 +429,7 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                 stockIn: data.stockIn[p.id] ?? 0,
                 stockOutInvoices: data.stockOutInvoices[p.id] ?? 0,
                 stockOutBO: data.stockOutBO[p.id] ?? 0,
+                stockOutBulkClear: data.stockOutBulkClear[p.id] ?? 0,
                 ending: data.ending[p.id] ?? 0,
               ))
           .toList(),
@@ -558,6 +565,22 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
             ],
           ),
         ),
+        // ── With-bulk-clear-only toggle ───────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+          child: Row(
+            children: [
+              Switch(
+                value: _showOnlyWithBulkClear,
+                onChanged: (v) => setState(() => _showOnlyWithBulkClear = v),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              const SizedBox(width: 6),
+              const Text('Show only rows with Stock Out - Bulk Clear',
+                  style: TextStyle(fontSize: 13)),
+            ],
+          ),
+        ),
         const Divider(height: 1),
 
         // ── Table ─────────────────────────────────────────────────────
@@ -592,6 +615,11 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                     .where((p) => (data.ending[p.id] ?? 0) > 0)
                     .toList();
               }
+              if (_showOnlyWithBulkClear) {
+                sortedProducts = sortedProducts
+                    .where((p) => (data.stockOutBulkClear[p.id] ?? 0) > 0)
+                    .toList();
+              }
               const colWidths = {
                 0: FlexColumnWidth(4),
                 1: FlexColumnWidth(1.5),
@@ -604,6 +632,8 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                 8: FlexColumnWidth(1.5),
                 9: FlexColumnWidth(1.5),
                 10: FlexColumnWidth(1.5),
+                11: FlexColumnWidth(1.5),
+                12: FlexColumnWidth(1.5),
               };
               final headerBorder = TableBorder(
                 left: BorderSide(color: Colors.grey.shade400),
@@ -664,7 +694,7 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                                 ),
                               ),
                               Expanded(
-                                flex: 6,
+                                flex: 9,
                                 child: Container(
                                   color: _outDark,
                                   padding: const EdgeInsets.symmetric(vertical: 8),
@@ -736,6 +766,16 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                                 ),
                               ),
+                              Expanded(
+                                flex: 3,
+                                child: Container(
+                                  color: _bcMid,
+                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                  child: const Text('Bulk Clear',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                ),
+                              ),
                               Expanded(flex: 3, child: Container(color: _endDark, child: const Text(''))),
                             ],
                           ),
@@ -755,6 +795,8 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                               _cell('Pcs',   _outMid, bold: true, center: true),
                               _cell('Boxes', _boMid,  bold: true, center: true),
                               _cell('Pcs',   _boMid,  bold: true, center: true),
+                              _cell('Boxes', _bcMid,  bold: true, center: true),
+                              _cell('Pcs',   _bcMid,  bold: true, center: true),
                               _cell('Boxes', _endMid, bold: true, center: true),
                               _cell('Pcs',   _endMid, bold: true, center: true),
                             ]),
@@ -779,6 +821,7 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                                 final inn = data.stockIn[p.id]  ?? 0;
                                 final outInv = data.stockOutInvoices[p.id] ?? 0;
                                 final outBO  = data.stockOutBO[p.id] ?? 0;
+                                final outBC  = data.stockOutBulkClear[p.id] ?? 0;
                                 final end = data.ending[p.id]   ?? 0;
                                 return TableRow(children: [
                                   _cell(p.name, null),
@@ -790,6 +833,8 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                                   _cell(_fmt(outInv % p.piecesPerBox),  _outLight, center: true),
                                   _cell(_fmt(outBO ~/ p.piecesPerBox), _boLight, center: true),
                                   _cell(_fmt(outBO % p.piecesPerBox),  _boLight, center: true),
+                                  _cell(_fmt(outBC ~/ p.piecesPerBox), _bcLight, center: true),
+                                  _cell(_fmt(outBC % p.piecesPerBox),  _bcLight, center: true),
                                   _cell(_fmt(end ~/ p.piecesPerBox), _endLight, center: true),
                                   _cell(_fmt(end % p.piecesPerBox),  _endLight, center: true),
                                 ]);
@@ -817,7 +862,7 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                                     ),
                                   ),
                                 ),
-                                Expanded(flex: 6, child: const SizedBox()),
+                                Expanded(flex: 9, child: const SizedBox()),
                                 Expanded(flex: 3, child: const SizedBox()),
                               ],
                             ),
@@ -869,6 +914,9 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
 
   static final _boMid    = Colors.amber.shade100;
   static final _boLight  = Colors.amber.shade50;
+
+  static final _bcMid    = Colors.purple.shade100;
+  static final _bcLight  = Colors.purple.shade50;
 
   static final _endDark  = Colors.green.shade200;
   static final _endMid   = Colors.green.shade100;
@@ -943,11 +991,12 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
     // Pieces sold + van-out + manually-removed stock ON the selected date → Stock Out
     final invoiceOut    = await _sumSold(ref, dayStart, dayEnd);
     final vanOutOnDate  = await sumVan('out', dayStart, dayEnd);
-    final (movOutOnDate, badOrderOutOnDate) =
+    final (movOutOnDate, badOrderOutOnDate, bulkClearOutOnDate) =
         await ref.read(stockMovementRepositoryProvider).sumOutSplitForDate(date);
     final stockOutInvoices = merge(merge(invoiceOut, vanOutOnDate), movOutOnDate);
-    final stockOutBO       = badOrderOutOnDate;
-    final onDate           = merge(stockOutInvoices, stockOutBO);
+    final stockOutBO        = badOrderOutOnDate;
+    final stockOutBulkClear = bulkClearOutOnDate;
+    final onDate = merge(merge(stockOutInvoices, stockOutBO), stockOutBulkClear);
 
     // Pieces sold + van-out + manually-removed stock AFTER the selected date
     final Map<String, int> invoiceOutAfter;
@@ -956,9 +1005,9 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
     if (dayEnd.isBefore(nowEnd)) {
       invoiceOutAfter = await _sumSold(ref, dayEnd, nowEnd);
       vanOutAfter     = await sumVan('out', dayEnd, nowEnd);
-      final (nonBOAfter, boAfter) =
+      final (nonBOAfter, boAfter, bulkClearAfter) =
           await ref.read(stockMovementRepositoryProvider).sumOutSplitForRange(dayEnd, nowEnd);
-      movOutAfter = merge(nonBOAfter, boAfter);
+      movOutAfter = merge(merge(nonBOAfter, boAfter), bulkClearAfter);
     } else {
       invoiceOutAfter = {};
       vanOutAfter     = {};
@@ -1024,6 +1073,7 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
         stockIn: stockIn,
         stockOutInvoices: stockOutInvoices,
         stockOutBO: stockOutBO,
+        stockOutBulkClear: stockOutBulkClear,
         ending: ending,
         totalEndingValue: totalEndingValue,
         totalEndingSellingValue: totalEndingSellingValue,
@@ -1055,6 +1105,7 @@ class _InvData {
   final Map<String, int> stockIn;
   final Map<String, int> stockOutInvoices;
   final Map<String, int> stockOutBO;
+  final Map<String, int> stockOutBulkClear;
   final Map<String, int> ending;
   final double totalEndingValue;
   final double totalEndingSellingValue;
@@ -1066,6 +1117,7 @@ class _InvData {
     required this.stockIn,
     required this.stockOutInvoices,
     required this.stockOutBO,
+    required this.stockOutBulkClear,
     required this.ending,
     required this.totalEndingValue,
     required this.totalEndingSellingValue,

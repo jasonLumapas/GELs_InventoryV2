@@ -189,6 +189,23 @@ class VanStocks extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Unfinished Loading / Stocks Return popups, auto-saved so they can be
+/// resumed later.
+class VanStockDrafts extends Table {
+  TextColumn get id => text()();
+  // type: 'out' (Loading) | 'in' (Stocks Return)
+  TextColumn get type => text()();
+  TextColumn get areaId => text().nullable()();
+  DateTimeColumn get txDate => dateTime().withDefault(currentDateAndTime)();
+  // JSON-encoded list of {product_id, unit_type, quantity}
+  TextColumn get itemsJson => text()();
+  DateTimeColumn get createdAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// Manual stock-in/out movements with optional references.
 class StockMovements extends Table {
   TextColumn get id => text()();
@@ -324,6 +341,7 @@ class SyncQueue extends Table {
   BadOrderItems,
   VanAreas,
   VanStocks,
+  VanStockDrafts,
   StockMovements,
   InvoicePayments,
   SupplierReceivedInvoices,
@@ -336,7 +354,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 22;
+  int get schemaVersion => 23;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -436,6 +454,9 @@ class LocalDatabase extends _$LocalDatabase {
           if (from < 22) {
             await _addColumnIfMissing(m.database, 'supplier_received_invoice_items',
                 'is_free', 'INTEGER NOT NULL DEFAULT 0');
+          }
+          if (from < 23) {
+            await m.createTable(vanStockDrafts);
           }
         },
       );

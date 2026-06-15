@@ -1,11 +1,14 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart' as drift;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
-import '../core/database/local_db.dart' hide VanStock;
+import '../core/database/local_db.dart' hide VanStock, VanStockDraft;
 import '../core/services/connectivity_service.dart';
 import '../core/services/sync_service.dart';
 import '../models/van_stock.dart';
+import '../models/van_stock_draft.dart';
 import 'base_repository.dart';
 import 'inventory_repository.dart';
 
@@ -211,6 +214,84 @@ class VanStockRepository extends BaseRepository {
       deltaPieces: tx.isOut ? tx.quantityPieces : -tx.quantityPieces,
     );
   }
+
+  // ── Drafts (auto-saved unfinished Loading / Stocks Return popups) ───────
+
+  Future<List<VanStockDraft>> getDrafts(String type) async {
+    if (isOnline) {
+      try {
+        final data = await Supabase.instance.client
+            .from('van_stock_drafts')
+            .select()
+            .eq('type', type)
+            .order('created_at', ascending: false);
+        return (data as List).map((j) => VanStockDraft.fromJson(j)).toList();
+      } catch (_) {}
+    }
+    final rows = await (db.select(db.vanStockDrafts)
+          ..where((t) => t.type.equals(type))
+          ..orderBy([(t) => drift.OrderingTerm.desc(t.createdAt)]))
+        .get();
+    return rows
+        .map((r) => VanStockDraft(
+              id: r.id,
+              type: r.type,
+              areaId: r.areaId,
+              txDate: r.txDate,
+              items: (jsonDecode(r.itemsJson) as List)
+                  .map((e) =>
+                      VanStockDraftItem.fromJson(e as Map<String, dynamic>))
+                  .toList(),
+              createdAt: r.createdAt,
+            ))
+        .toList();
+  }
+
+  Future<void> saveDraft(VanStockDraft draft) async {
+    final payload = draft.toJson();
+    if (isOnline) {
+      await Supabase.instance.client
+          .from('van_stock_drafts')
+          .upsert(payload);
+    } else {
+      await syncService.enqueue(
+        tableName: 'van_stock_drafts',
+        recordId: draft.id,
+        operation: 'insert',
+        payload: payload,
+      );
+    }
+    await trySaveLocal(() => db.into(db.vanStockDrafts).insertOnConflictUpdate(
+          VanStockDraftsCompanion(
+            id: drift.Value(draft.id),
+            type: drift.Value(draft.type),
+            areaId: drift.Value(draft.areaId),
+            txDate: drift.Value(draft.txDate),
+            itemsJson: drift.Value(
+                jsonEncode(draft.items.map((i) => i.toJson()).toList())),
+            createdAt: drift.Value(draft.createdAt),
+          ),
+        ));
+  }
+
+  Future<void> discardDraft(String id) async {
+    if (isOnline) {
+      try {
+        await Supabase.instance.client
+            .from('van_stock_drafts')
+            .delete()
+            .eq('id', id);
+      } catch (_) {}
+    } else {
+      await syncService.enqueue(
+        tableName: 'van_stock_drafts',
+        recordId: id,
+        operation: 'delete',
+        payload: {'id': id},
+      );
+    }
+    await (db.delete(db.vanStockDrafts)..where((t) => t.id.equals(id))).go();
+  }
 }
 
 final vanStockRepositoryProvider = Provider<VanStockRepository>((ref) {
@@ -220,4 +301,9 @@ final vanStockRepositoryProvider = Provider<VanStockRepository>((ref) {
     syncService: ref.watch(syncServiceProvider),
     inventoryRepo: ref.watch(inventoryRepositoryProvider),
   );
+});
+
+final vanStockDraftsProvider =
+    FutureProvider.family<List<VanStockDraft>, String>((ref, type) {
+  return ref.watch(vanStockRepositoryProvider).getDrafts(type);
 });

@@ -5397,6 +5397,407 @@ class VanStocksCompanion extends UpdateCompanion<VanStock> {
   }
 }
 
+class $VanStockDraftsTable extends VanStockDrafts
+    with TableInfo<$VanStockDraftsTable, VanStockDraft> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $VanStockDraftsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _typeMeta = const VerificationMeta('type');
+  @override
+  late final GeneratedColumn<String> type = GeneratedColumn<String>(
+    'type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _areaIdMeta = const VerificationMeta('areaId');
+  @override
+  late final GeneratedColumn<String> areaId = GeneratedColumn<String>(
+    'area_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _txDateMeta = const VerificationMeta('txDate');
+  @override
+  late final GeneratedColumn<DateTime> txDate = GeneratedColumn<DateTime>(
+    'tx_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _itemsJsonMeta = const VerificationMeta(
+    'itemsJson',
+  );
+  @override
+  late final GeneratedColumn<String> itemsJson = GeneratedColumn<String>(
+    'items_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    type,
+    areaId,
+    txDate,
+    itemsJson,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'van_stock_drafts';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<VanStockDraft> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('type')) {
+      context.handle(
+        _typeMeta,
+        type.isAcceptableOrUnknown(data['type']!, _typeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_typeMeta);
+    }
+    if (data.containsKey('area_id')) {
+      context.handle(
+        _areaIdMeta,
+        areaId.isAcceptableOrUnknown(data['area_id']!, _areaIdMeta),
+      );
+    }
+    if (data.containsKey('tx_date')) {
+      context.handle(
+        _txDateMeta,
+        txDate.isAcceptableOrUnknown(data['tx_date']!, _txDateMeta),
+      );
+    }
+    if (data.containsKey('items_json')) {
+      context.handle(
+        _itemsJsonMeta,
+        itemsJson.isAcceptableOrUnknown(data['items_json']!, _itemsJsonMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_itemsJsonMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  VanStockDraft map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return VanStockDraft(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      type: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}type'],
+      )!,
+      areaId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}area_id'],
+      ),
+      txDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}tx_date'],
+      )!,
+      itemsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}items_json'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $VanStockDraftsTable createAlias(String alias) {
+    return $VanStockDraftsTable(attachedDatabase, alias);
+  }
+}
+
+class VanStockDraft extends DataClass implements Insertable<VanStockDraft> {
+  final String id;
+  final String type;
+  final String? areaId;
+  final DateTime txDate;
+  final String itemsJson;
+  final DateTime createdAt;
+  const VanStockDraft({
+    required this.id,
+    required this.type,
+    this.areaId,
+    required this.txDate,
+    required this.itemsJson,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['type'] = Variable<String>(type);
+    if (!nullToAbsent || areaId != null) {
+      map['area_id'] = Variable<String>(areaId);
+    }
+    map['tx_date'] = Variable<DateTime>(txDate);
+    map['items_json'] = Variable<String>(itemsJson);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  VanStockDraftsCompanion toCompanion(bool nullToAbsent) {
+    return VanStockDraftsCompanion(
+      id: Value(id),
+      type: Value(type),
+      areaId: areaId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(areaId),
+      txDate: Value(txDate),
+      itemsJson: Value(itemsJson),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory VanStockDraft.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return VanStockDraft(
+      id: serializer.fromJson<String>(json['id']),
+      type: serializer.fromJson<String>(json['type']),
+      areaId: serializer.fromJson<String?>(json['areaId']),
+      txDate: serializer.fromJson<DateTime>(json['txDate']),
+      itemsJson: serializer.fromJson<String>(json['itemsJson']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'type': serializer.toJson<String>(type),
+      'areaId': serializer.toJson<String?>(areaId),
+      'txDate': serializer.toJson<DateTime>(txDate),
+      'itemsJson': serializer.toJson<String>(itemsJson),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  VanStockDraft copyWith({
+    String? id,
+    String? type,
+    Value<String?> areaId = const Value.absent(),
+    DateTime? txDate,
+    String? itemsJson,
+    DateTime? createdAt,
+  }) => VanStockDraft(
+    id: id ?? this.id,
+    type: type ?? this.type,
+    areaId: areaId.present ? areaId.value : this.areaId,
+    txDate: txDate ?? this.txDate,
+    itemsJson: itemsJson ?? this.itemsJson,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  VanStockDraft copyWithCompanion(VanStockDraftsCompanion data) {
+    return VanStockDraft(
+      id: data.id.present ? data.id.value : this.id,
+      type: data.type.present ? data.type.value : this.type,
+      areaId: data.areaId.present ? data.areaId.value : this.areaId,
+      txDate: data.txDate.present ? data.txDate.value : this.txDate,
+      itemsJson: data.itemsJson.present ? data.itemsJson.value : this.itemsJson,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VanStockDraft(')
+          ..write('id: $id, ')
+          ..write('type: $type, ')
+          ..write('areaId: $areaId, ')
+          ..write('txDate: $txDate, ')
+          ..write('itemsJson: $itemsJson, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, type, areaId, txDate, itemsJson, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is VanStockDraft &&
+          other.id == this.id &&
+          other.type == this.type &&
+          other.areaId == this.areaId &&
+          other.txDate == this.txDate &&
+          other.itemsJson == this.itemsJson &&
+          other.createdAt == this.createdAt);
+}
+
+class VanStockDraftsCompanion extends UpdateCompanion<VanStockDraft> {
+  final Value<String> id;
+  final Value<String> type;
+  final Value<String?> areaId;
+  final Value<DateTime> txDate;
+  final Value<String> itemsJson;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const VanStockDraftsCompanion({
+    this.id = const Value.absent(),
+    this.type = const Value.absent(),
+    this.areaId = const Value.absent(),
+    this.txDate = const Value.absent(),
+    this.itemsJson = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  VanStockDraftsCompanion.insert({
+    required String id,
+    required String type,
+    this.areaId = const Value.absent(),
+    this.txDate = const Value.absent(),
+    required String itemsJson,
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       type = Value(type),
+       itemsJson = Value(itemsJson);
+  static Insertable<VanStockDraft> custom({
+    Expression<String>? id,
+    Expression<String>? type,
+    Expression<String>? areaId,
+    Expression<DateTime>? txDate,
+    Expression<String>? itemsJson,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (type != null) 'type': type,
+      if (areaId != null) 'area_id': areaId,
+      if (txDate != null) 'tx_date': txDate,
+      if (itemsJson != null) 'items_json': itemsJson,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  VanStockDraftsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? type,
+    Value<String?>? areaId,
+    Value<DateTime>? txDate,
+    Value<String>? itemsJson,
+    Value<DateTime>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return VanStockDraftsCompanion(
+      id: id ?? this.id,
+      type: type ?? this.type,
+      areaId: areaId ?? this.areaId,
+      txDate: txDate ?? this.txDate,
+      itemsJson: itemsJson ?? this.itemsJson,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (type.present) {
+      map['type'] = Variable<String>(type.value);
+    }
+    if (areaId.present) {
+      map['area_id'] = Variable<String>(areaId.value);
+    }
+    if (txDate.present) {
+      map['tx_date'] = Variable<DateTime>(txDate.value);
+    }
+    if (itemsJson.present) {
+      map['items_json'] = Variable<String>(itemsJson.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VanStockDraftsCompanion(')
+          ..write('id: $id, ')
+          ..write('type: $type, ')
+          ..write('areaId: $areaId, ')
+          ..write('txDate: $txDate, ')
+          ..write('itemsJson: $itemsJson, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $StockMovementsTable extends StockMovements
     with TableInfo<$StockMovementsTable, StockMovement> {
   @override
@@ -8955,6 +9356,7 @@ abstract class _$LocalDatabase extends GeneratedDatabase {
   late final $BadOrderItemsTable badOrderItems = $BadOrderItemsTable(this);
   late final $VanAreasTable vanAreas = $VanAreasTable(this);
   late final $VanStocksTable vanStocks = $VanStocksTable(this);
+  late final $VanStockDraftsTable vanStockDrafts = $VanStockDraftsTable(this);
   late final $StockMovementsTable stockMovements = $StockMovementsTable(this);
   late final $InvoicePaymentsTable invoicePayments = $InvoicePaymentsTable(
     this,
@@ -8984,6 +9386,7 @@ abstract class _$LocalDatabase extends GeneratedDatabase {
     badOrderItems,
     vanAreas,
     vanStocks,
+    vanStockDrafts,
     stockMovements,
     invoicePayments,
     supplierReceivedInvoices,
@@ -14755,6 +15158,231 @@ typedef $$VanStocksTableProcessedTableManager =
       VanStock,
       PrefetchHooks Function({bool productId})
     >;
+typedef $$VanStockDraftsTableCreateCompanionBuilder =
+    VanStockDraftsCompanion Function({
+      required String id,
+      required String type,
+      Value<String?> areaId,
+      Value<DateTime> txDate,
+      required String itemsJson,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+typedef $$VanStockDraftsTableUpdateCompanionBuilder =
+    VanStockDraftsCompanion Function({
+      Value<String> id,
+      Value<String> type,
+      Value<String?> areaId,
+      Value<DateTime> txDate,
+      Value<String> itemsJson,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+
+class $$VanStockDraftsTableFilterComposer
+    extends Composer<_$LocalDatabase, $VanStockDraftsTable> {
+  $$VanStockDraftsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get areaId => $composableBuilder(
+    column: $table.areaId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get txDate => $composableBuilder(
+    column: $table.txDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get itemsJson => $composableBuilder(
+    column: $table.itemsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$VanStockDraftsTableOrderingComposer
+    extends Composer<_$LocalDatabase, $VanStockDraftsTable> {
+  $$VanStockDraftsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get areaId => $composableBuilder(
+    column: $table.areaId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get txDate => $composableBuilder(
+    column: $table.txDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get itemsJson => $composableBuilder(
+    column: $table.itemsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$VanStockDraftsTableAnnotationComposer
+    extends Composer<_$LocalDatabase, $VanStockDraftsTable> {
+  $$VanStockDraftsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get type =>
+      $composableBuilder(column: $table.type, builder: (column) => column);
+
+  GeneratedColumn<String> get areaId =>
+      $composableBuilder(column: $table.areaId, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get txDate =>
+      $composableBuilder(column: $table.txDate, builder: (column) => column);
+
+  GeneratedColumn<String> get itemsJson =>
+      $composableBuilder(column: $table.itemsJson, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$VanStockDraftsTableTableManager
+    extends
+        RootTableManager<
+          _$LocalDatabase,
+          $VanStockDraftsTable,
+          VanStockDraft,
+          $$VanStockDraftsTableFilterComposer,
+          $$VanStockDraftsTableOrderingComposer,
+          $$VanStockDraftsTableAnnotationComposer,
+          $$VanStockDraftsTableCreateCompanionBuilder,
+          $$VanStockDraftsTableUpdateCompanionBuilder,
+          (
+            VanStockDraft,
+            BaseReferences<
+              _$LocalDatabase,
+              $VanStockDraftsTable,
+              VanStockDraft
+            >,
+          ),
+          VanStockDraft,
+          PrefetchHooks Function()
+        > {
+  $$VanStockDraftsTableTableManager(
+    _$LocalDatabase db,
+    $VanStockDraftsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$VanStockDraftsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$VanStockDraftsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$VanStockDraftsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> type = const Value.absent(),
+                Value<String?> areaId = const Value.absent(),
+                Value<DateTime> txDate = const Value.absent(),
+                Value<String> itemsJson = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => VanStockDraftsCompanion(
+                id: id,
+                type: type,
+                areaId: areaId,
+                txDate: txDate,
+                itemsJson: itemsJson,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String type,
+                Value<String?> areaId = const Value.absent(),
+                Value<DateTime> txDate = const Value.absent(),
+                required String itemsJson,
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => VanStockDraftsCompanion.insert(
+                id: id,
+                type: type,
+                areaId: areaId,
+                txDate: txDate,
+                itemsJson: itemsJson,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$VanStockDraftsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LocalDatabase,
+      $VanStockDraftsTable,
+      VanStockDraft,
+      $$VanStockDraftsTableFilterComposer,
+      $$VanStockDraftsTableOrderingComposer,
+      $$VanStockDraftsTableAnnotationComposer,
+      $$VanStockDraftsTableCreateCompanionBuilder,
+      $$VanStockDraftsTableUpdateCompanionBuilder,
+      (
+        VanStockDraft,
+        BaseReferences<_$LocalDatabase, $VanStockDraftsTable, VanStockDraft>,
+      ),
+      VanStockDraft,
+      PrefetchHooks Function()
+    >;
 typedef $$StockMovementsTableCreateCompanionBuilder =
     StockMovementsCompanion Function({
       required String id,
@@ -17785,6 +18413,8 @@ class $LocalDatabaseManager {
       $$VanAreasTableTableManager(_db, _db.vanAreas);
   $$VanStocksTableTableManager get vanStocks =>
       $$VanStocksTableTableManager(_db, _db.vanStocks);
+  $$VanStockDraftsTableTableManager get vanStockDrafts =>
+      $$VanStockDraftsTableTableManager(_db, _db.vanStockDrafts);
   $$StockMovementsTableTableManager get stockMovements =>
       $$StockMovementsTableTableManager(_db, _db.stockMovements);
   $$InvoicePaymentsTableTableManager get invoicePayments =>

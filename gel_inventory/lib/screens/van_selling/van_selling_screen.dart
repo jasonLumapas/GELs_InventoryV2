@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
 import '../../models/product.dart';
 import '../../models/van_stock.dart';
 import '../../models/van_area.dart';
+import '../../models/van_stock_draft.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../repositories/supplier_repository.dart';
@@ -13,6 +17,7 @@ import '../../repositories/van_stock_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../utils/pdf_generator.dart';
 import '../../widgets/common/app_scaffold.dart';
+import '../../widgets/common/confirm_dialog.dart';
 import '../../widgets/common/search_picker.dart';
 
 class _VanLineItem {
@@ -295,14 +300,59 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
     nameCtrl.dispose();
   }
 
-  Future<void> _showTransactionDialog({required bool isOut}) async {
+  Future<void> _showTransactionDialog({
+    required bool isOut,
+    VanStockDraft? draft,
+  }) async {
     if (!mounted) return;
 
-    String? selectedAreaId = isOut ? _lastOutAreaId : null;
-    DateTime txDate = isOut ? _outTxDate : _inTxDate;
+    String? selectedAreaId = draft?.areaId ?? (isOut ? _lastOutAreaId : null);
+    DateTime txDate = draft?.txDate ?? (isOut ? _outTxDate : _inTxDate);
     final lineItems = <_VanLineItem>[];
+    if (draft != null) {
+      final productsById = {for (final p in _products) p.id: p};
+      for (final it in draft.items) {
+        final product = productsById[it.productId];
+        if (product == null) continue;
+        lineItems.add(_VanLineItem(product)
+          ..unitType = it.unitType
+          ..quantity = it.quantity);
+      }
+    }
     var loadedQty   = <String, int>{};
     var loadedLabel = '';
+
+    final draftId = draft?.id ?? const Uuid().v4();
+    final draftCreatedAt = draft?.createdAt ?? DateTime.now();
+    var draftPersisted = draft != null;
+    var finalized = false;
+    Timer? autoSaveTimer;
+
+    Future<void> persistDraft() async {
+      if (!isOut || !mounted) return;
+      await ref.read(vanStockRepositoryProvider).saveDraft(VanStockDraft(
+            id: draftId,
+            type: 'out',
+            areaId: selectedAreaId,
+            txDate: txDate,
+            items: lineItems
+                .map((li) => VanStockDraftItem(
+                      productId: li.product.id,
+                      unitType: li.unitType,
+                      quantity: li.quantity,
+                    ))
+                .toList(),
+            createdAt: draftCreatedAt,
+          ));
+      draftPersisted = true;
+      ref.invalidate(vanStockDraftsProvider('out'));
+    }
+
+    void scheduleAutoSave() {
+      if (!isOut) return;
+      autoSaveTimer?.cancel();
+      autoSaveTimer = Timer(const Duration(seconds: 2), persistDraft);
+    }
 
     await showDialog<void>(
       context: context,
@@ -388,6 +438,7 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
               onSelected: (p) {
                 if (lineItems.any((li) => li.product.id == p.id)) return;
                 setD(() => lineItems.add(_VanLineItem(p)));
+                scheduleAutoSave();
               },
               filters: supplierFilters,
             );
@@ -421,6 +472,7 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
                           loadedQty = {};
                         }
                         setD(() => txDate = picked);
+                        scheduleAutoSave();
                       }
                     },
                     child: InputDecorator(
@@ -459,6 +511,7 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
                                 loadedQty = {};
                               }
                               setD(() => selectedAreaId = v);
+                              scheduleAutoSave();
                             },
                           ),
                         ),
@@ -504,9 +557,14 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
                                 isOut: isOut,
                                 stockOk: li.quantity == 0 ||
                                     li.pieces <= avail,
-                                onRemove: () =>
-                                    setD(() => lineItems.removeAt(i)),
-                                onChanged: () => setD(() {}),
+                                onRemove: () {
+                                  setD(() => lineItems.removeAt(i));
+                                  scheduleAutoSave();
+                                },
+                                onChanged: () {
+                                  setD(() {});
+                                  scheduleAutoSave();
+                                },
                               );
                             },
                           ),
@@ -532,6 +590,7 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
                                 areaId: selectedAreaId,
                               );
                         }
+                        finalized = true;
                         if (ctx.mounted) Navigator.pop(ctx);
                         ref.invalidate(inventoryListProvider);
                         _load();
@@ -544,6 +603,18 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
         },
       ),
     );
+
+    autoSaveTimer?.cancel();
+    if (isOut) {
+      if (finalized || lineItems.isEmpty) {
+        if (draftPersisted) {
+          await ref.read(vanStockRepositoryProvider).discardDraft(draftId);
+        }
+        ref.invalidate(vanStockDraftsProvider('out'));
+      } else {
+        await persistDraft();
+      }
+    }
   }
 
   // ── Print Loading / Stocks Return ─────────────────────────────────────
@@ -707,6 +778,85 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
 
     return Column(
       children: [
+        // ── Draft loadings banner ────────────────────────────────────────
+        if (isOut)
+          ref.watch(vanStockDraftsProvider('out')).when(
+                loading: () => const SizedBox.shrink(),
+                error: (_, _) => const SizedBox.shrink(),
+                data: (drafts) {
+                  if (drafts.isEmpty) return const SizedBox.shrink();
+                  return Container(
+                    width: double.infinity,
+                    color: Colors.amber.shade100,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            '${drafts.length} unfinished loading(s)',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                        ),
+                        ...drafts.map((d) {
+                          final area = _areas
+                              .where((a) => a.id == d.areaId)
+                              .firstOrNull;
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 2),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.edit_note, size: 18),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    '${area?.name ?? 'No area'}'
+                                    '  •  ${dateFmt.format(d.txDate)}'
+                                    '  •  ${d.items.length} item(s)',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: () =>
+                                      _showTransactionDialog(
+                                          isOut: true, draft: d),
+                                  child: const Text('Resume'),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline,
+                                      color: Colors.red, size: 20),
+                                  tooltip: 'Discard draft',
+                                  onPressed: () async {
+                                    final ok = await showConfirmDialog(
+                                      context,
+                                      title: 'Discard Draft',
+                                      message:
+                                          'Discard this unfinished loading? This cannot be undone.',
+                                      confirmLabel: 'Discard',
+                                    );
+                                    if (ok) {
+                                      await ref
+                                          .read(vanStockRepositoryProvider)
+                                          .discardDraft(d.id);
+                                      ref.invalidate(
+                                          vanStockDraftsProvider('out'));
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
+                  );
+                },
+              ),
+
         // Action button + date navigation
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 10, 8, 6),

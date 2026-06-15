@@ -76,6 +76,10 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
   // Persisted area selection for Loading dialog
   String? _lastOutAreaId;
 
+  // Persisted supplier filter + scroll position for the "Add Product"
+  // picker in the Loading dialog.
+  final _outAddProductPickerState = SearchPickerState();
+
   // Van Stock tab — separate date-filtered Out / In lists
   DateTime _outDate   = DateTime.now();
   DateTime _inDate    = DateTime.now();
@@ -361,6 +365,7 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
               items: visibleProducts,
               labelOf: (p) => p.name,
               searchableOf: (p) => '${p.name} ${p.productCode ?? ''}',
+              state: isOut ? _outAddProductPickerState : null,
               subtitleOf: (p) {
                 if (!isOut) {
                   final ppb = p.piecesPerBox;

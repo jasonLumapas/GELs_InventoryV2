@@ -9,6 +9,14 @@ class SearchFilter<T> {
   const SearchFilter({required this.label, required this.test});
 }
 
+/// Holds picker UI state (selected supplier filter + list scroll position)
+/// across repeated openings of [showSearchPicker], so callers can keep a
+/// long-lived instance and pass it back in on every call.
+class SearchPickerState {
+  String? filterLabel;
+  double scrollOffset = 0;
+}
+
 /// Shows a dialog with a live-filter search field above a scrollable list.
 ///
 /// Single-pick mode (default): returns the selected [T] or null if dismissed.
@@ -32,6 +40,9 @@ Future<T?> showSearchPicker<T>({
   // for duplicate checking. Return the new item to insert it into the list,
   // or null to cancel.
   Future<T?> Function(List<T> existing)? onAdd,
+  // Persists the selected supplier filter and scroll position across
+  // repeated openings of this picker.
+  SearchPickerState? state,
 }) async {
   return showDialog<T>(
     context: context,
@@ -47,6 +58,7 @@ Future<T?> showSearchPicker<T>({
       onSelected: onSelected,
       filters: filters,
       onAdd: onAdd,
+      state: state,
     ),
   );
 }
@@ -63,6 +75,7 @@ class _SearchPickerDialog<T> extends StatefulWidget {
   final void Function(T)? onSelected;
   final List<SearchFilter<T>>? filters;
   final Future<T?> Function(List<T> existing)? onAdd;
+  final SearchPickerState? state;
 
   const _SearchPickerDialog({
     required this.title,
@@ -76,6 +89,7 @@ class _SearchPickerDialog<T> extends StatefulWidget {
     this.onSelected,
     this.filters,
     this.onAdd,
+    this.state,
   });
 
   @override
@@ -84,6 +98,7 @@ class _SearchPickerDialog<T> extends StatefulWidget {
 
 class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
   final _ctrl = TextEditingController();
+  late ScrollController _scrollCtrl;
   late List<T> _remaining;
   List<T> _filtered = [];
   final _selected = <T>{};
@@ -97,11 +112,26 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
     _remaining = List.of(widget.items);
     _filtered  = List.of(_remaining);
     _ctrl.addListener(_onSearch);
+
+    final savedFilterLabel = widget.state?.filterLabel;
+    if (savedFilterLabel != null) {
+      _activeFilter = widget.filters
+          ?.where((f) => f.label == savedFilterLabel)
+          .firstOrNull;
+      if (_activeFilter != null) _onSearch();
+    }
+
+    _scrollCtrl = ScrollController(
+        initialScrollOffset: widget.state?.scrollOffset ?? 0);
+    _scrollCtrl.addListener(() {
+      widget.state?.scrollOffset = _scrollCtrl.offset;
+    });
   }
 
   @override
   void dispose() {
     _ctrl.dispose();
+    _scrollCtrl.dispose();
     super.dispose();
   }
 
@@ -197,6 +227,7 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
                         ],
                         onChanged: (f) {
                           setState(() => _activeFilter = f);
+                          widget.state?.filterLabel = f?.label;
                           _onSearch();
                         },
                       ),
@@ -210,6 +241,7 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
               child: _filtered.isEmpty
                   ? const Center(child: Text('No results'))
                   : ListView.separated(
+                      controller: _scrollCtrl,
                       itemCount: _filtered.length,
                       separatorBuilder: (_, _) => const Divider(height: 1),
                       itemBuilder: (_, i) {

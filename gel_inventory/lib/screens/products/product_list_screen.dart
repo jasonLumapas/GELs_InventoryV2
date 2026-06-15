@@ -14,13 +14,29 @@ class ProductListScreen extends ConsumerStatefulWidget {
 }
 
 class _ProductListScreenState extends ConsumerState<ProductListScreen> {
-  String? _selectedSupplierId;
+  // Persisted across navigations away from and back to this screen.
+  static String? _persistedSupplierId;
+  static double _persistedScrollOffset = 0;
+
+  late String? _selectedSupplierId;
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
+  late ScrollController _scrollCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedSupplierId = _persistedSupplierId;
+    _scrollCtrl = ScrollController(initialScrollOffset: _persistedScrollOffset);
+    _scrollCtrl.addListener(() {
+      _persistedScrollOffset = _scrollCtrl.offset;
+    });
+  }
 
   @override
   void dispose() {
     _searchCtrl.dispose();
+    _scrollCtrl.dispose();
     super.dispose();
   }
 
@@ -77,8 +93,10 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                         ...suppliers.map((s) => DropdownMenuItem(
                             value: s.id, child: Text(s.name))),
                       ],
-                      onChanged: (v) =>
-                          setState(() => _selectedSupplierId = v),
+                      onChanged: (v) => setState(() {
+                        _selectedSupplierId = v;
+                        _persistedSupplierId = v;
+                      }),
                     ),
                   ),
                 ],
@@ -109,6 +127,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                   return const Center(child: Text('No products found.'));
                 }
                 return ListView.separated(
+                  controller: _scrollCtrl,
                   itemCount: products.length,
                   separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (ctx, i) {

@@ -229,6 +229,55 @@ class StockMovementRepository extends BaseRepository {
   Future<Map<String, int>> sumInForRange(DateTime from, DateTime to) =>
       _sumForTypeAndRange('in', from, to);
 
+  /// Sum of 'in' movements on [date] that were created by re-importing a
+  /// "Bulk Clear" export (`comments == 'Bulk clear restock import'`).
+  Future<Map<String, int>> sumBulkClearRestockForDate(DateTime date) async {
+    final dayStr = '${date.year}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
+    final totals = <String, int>{};
+
+    if (isOnline) {
+      try {
+        final data = await Supabase.instance.client
+            .from('stock_movements')
+            .select('product_id, quantity_pieces, reference_date, comments')
+            .eq('movement_type', 'in');
+        for (final m in data as List) {
+          if (!_isBulkClearRestock(m['comments'] as String?)) continue;
+          final refStr = m['reference_date'] as String?;
+          if (refStr == null) continue;
+          final storedDay = refStr.length >= 10 ? refStr.substring(0, 10) : refStr;
+          if (storedDay == dayStr) {
+            final pid = m['product_id'] as String;
+            final qty = (m['quantity_pieces'] as num).toInt();
+            totals[pid] = (totals[pid] ?? 0) + qty;
+          }
+        }
+        return totals;
+      } catch (e) {
+        debugPrint('sumBulkClearRestockForDate Supabase query failed: $e. Falling back to local.');
+      }
+    }
+
+    final dayStart = DateTime(date.year, date.month, date.day);
+    final dayEnd   = dayStart.add(const Duration(days: 1));
+    final rows = await (db.select(db.stockMovements)
+          ..where((t) => t.movementType.equals('in')))
+        .get();
+    for (final r in rows) {
+      if (!_isBulkClearRestock(r.comments)) continue;
+      final rd = r.referenceDate;
+      if (rd != null && !rd.isBefore(dayStart) && rd.isBefore(dayEnd)) {
+        totals[r.productId] = (totals[r.productId] ?? 0) + r.quantityPieces;
+      }
+    }
+    return totals;
+  }
+
+  static bool _isBulkClearRestock(String? comments) =>
+      comments == 'Bulk clear restock import';
+
   Future<Map<String, int>> sumOutForDate(DateTime date) =>
       _sumForTypeAndDate('out', date);
 

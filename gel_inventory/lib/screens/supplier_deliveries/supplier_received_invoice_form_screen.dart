@@ -939,7 +939,7 @@ class _LineItemTileState extends State<_LineItemTile> {
                   ),
                 ),
                 SizedBox(
-                  width: 130,
+                  width: 170,
                   child: TextField(
                     controller: item.supplierPriceCtrl,
                     enabled: widget.enabled,
@@ -956,7 +956,7 @@ class _LineItemTileState extends State<_LineItemTile> {
                 ),
                 const SizedBox(width: 8),
                 SizedBox(
-                  width: 70,
+                  width: 100,
                   child: TextField(
                     controller: _qtyCtrl,
                     enabled: widget.enabled,

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -436,6 +438,33 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
     );
   }
 
+  Future<void> _exportBulkClearCsv(_InvData data) async {
+    final products = data.products
+        .where((p) => (data.stockOutBulkClear[p.id] ?? 0) > 0)
+        .toList();
+
+    final buffer = StringBuffer('Product Name,Boxes,Pcs\r\n');
+    for (final p in products) {
+      final qty = data.stockOutBulkClear[p.id] ?? 0;
+      final boxes = qty ~/ p.piecesPerBox;
+      final pcs = qty % p.piecesPerBox;
+      final name = p.name.contains(',') ? '"${p.name}"' : p.name;
+      buffer.write('$name,$boxes,$pcs\r\n');
+    }
+
+    final home = Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        '';
+    final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
+    final file = File('$home\\Desktop\\bulk_clear_$dateStr.csv');
+    await file.writeAsString(buffer.toString());
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Exported to ${file.path}')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final dateFmt = DateFormat('MMMM dd, yyyy');
@@ -490,6 +519,15 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                 onPressed: () async {
                   final data = await _future;
                   if (mounted) await _print(data);
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.file_download),
+                tooltip: 'Export Bulk Clear to CSV (Desktop)',
+                visualDensity: VisualDensity.compact,
+                onPressed: () async {
+                  final data = await _future;
+                  if (mounted) await _exportBulkClearCsv(data);
                 },
               ),
             ],
@@ -915,8 +953,8 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
   static final _boMid    = Colors.amber.shade100;
   static final _boLight  = Colors.amber.shade50;
 
-  static final _bcMid    = Colors.purple.shade100;
-  static final _bcLight  = Colors.purple.shade50;
+  static final _bcMid    = const Color.fromARGB(255, 250, 228, 149);
+  static final _bcLight  = const Color.fromARGB(255, 247, 234, 195);
 
   static final _endDark  = Colors.green.shade200;
   static final _endMid   = Colors.green.shade100;
@@ -1046,6 +1084,24 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
       beginning[p.id] = beg.clamp(0, 999999);
     }
 
+    // A "Bulk clear restock import" merely undoes a same-date "Bulk clear all
+    // stock" out-movement, so for *display* purposes the two cancel each
+    // other out (up to their overlap) — otherwise Stock In would appear to
+    // double-count stock that was only ever cleared and restored the same
+    // day. Beginning/Ending above are computed from the raw totals and are
+    // unaffected.
+    final bcRestockOnDate =
+        await ref.read(stockMovementRepositoryProvider).sumBulkClearRestockForDate(date);
+    final stockInDisplay = <String, int>{};
+    final stockOutBulkClearDisplay = <String, int>{};
+    for (final p in products) {
+      final restock = bcRestockOnDate[p.id] ?? 0;
+      final bulkClear = stockOutBulkClear[p.id] ?? 0;
+      final overlap = restock < bulkClear ? restock : bulkClear;
+      stockInDisplay[p.id] = (stockIn[p.id] ?? 0) - overlap;
+      stockOutBulkClearDisplay[p.id] = bulkClear - overlap;
+    }
+
     // Total ending inventory value = ending pieces × withdrawal price
     // Total stock-in value = stock-in pieces × withdrawal price
     double totalEndingValue        = 0;
@@ -1061,7 +1117,7 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
         totalEndingValue        += price.withdrawalPrice * endPieces;
         totalEndingSellingValue += price.sellingPrice * endPieces;
       }
-      final inPieces = stockIn[p.id] ?? 0;
+      final inPieces = stockInDisplay[p.id] ?? 0;
       if (inPieces > 0) {
         totalStockInValue += price.withdrawalPrice * inPieces;
       }
@@ -1070,10 +1126,10 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
     return _InvData(
         products: products,
         beginning: beginning,
-        stockIn: stockIn,
+        stockIn: stockInDisplay,
         stockOutInvoices: stockOutInvoices,
         stockOutBO: stockOutBO,
-        stockOutBulkClear: stockOutBulkClear,
+        stockOutBulkClear: stockOutBulkClearDisplay,
         ending: ending,
         totalEndingValue: totalEndingValue,
         totalEndingSellingValue: totalEndingSellingValue,

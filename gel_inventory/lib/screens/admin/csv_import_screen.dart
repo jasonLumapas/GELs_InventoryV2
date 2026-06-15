@@ -8,10 +8,12 @@ import 'package:uuid/uuid.dart';
 import '../../models/client.dart';
 import '../../models/product.dart';
 import '../../models/product_price.dart';
+import '../../models/stock_movement.dart';
 import '../../models/supplier.dart';
 import '../../repositories/client_repository.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/product_repository.dart';
+import '../../repositories/stock_movement_repository.dart';
 import '../../repositories/supplier_repository.dart';
 import '../../widgets/common/app_scaffold.dart';
 
@@ -36,13 +38,14 @@ class CsvImportScreen extends StatelessWidget {
     return AppScaffold(
       title: 'Import CSV',
       body: DefaultTabController(
-        length: 2,
+        length: 3,
         child: Column(
           children: [
             const TabBar(
               tabs: [
                 Tab(text: 'Supplier Products'),
                 Tab(text: 'Clients'),
+                Tab(text: 'Bulk Clear Restock'),
               ],
             ),
             const Expanded(
@@ -50,6 +53,7 @@ class CsvImportScreen extends StatelessWidget {
                 children: [
                   _SupplierProductImportTab(),
                   _ClientImportTab(),
+                  _BulkClearImportTab(),
                 ],
               ),
             ),
@@ -763,6 +767,302 @@ class _ClientSummaryCard extends StatelessWidget {
             _Stat('Updated', summary.updated, Colors.blue.shade700),
             _Stat('Skipped', summary.skipped, Colors.grey),
             _Stat('Errors', summary.errors, Colors.red.shade700),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Bulk Clear Restock tab
+// ════════════════════════════════════════════════════════════════════════════
+
+class _BulkClearImportTab extends ConsumerStatefulWidget {
+  const _BulkClearImportTab();
+
+  @override
+  ConsumerState<_BulkClearImportTab> createState() =>
+      _BulkClearImportTabState();
+}
+
+class _BulkClearImportTabState extends ConsumerState<_BulkClearImportTab> {
+  final _pathCtrl = TextEditingController();
+  bool _importing = false;
+  final List<_LogEntry> _log = [];
+  _BulkClearImportSummary? _summary;
+
+  @override
+  void initState() {
+    super.initState();
+    final home = Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        '';
+    final dateStr = DateTime.now().toIso8601String().substring(0, 10);
+    _pathCtrl.text = '$home\\Desktop\\bulk_clear_$dateStr.csv';
+  }
+
+  @override
+  void dispose() {
+    _pathCtrl.dispose();
+    super.dispose();
+  }
+
+  void _addLog(String msg, {_LogLevel level = _LogLevel.info}) =>
+      setState(() => _log.add(_LogEntry(msg, level)));
+
+  // ── CSV parser ────────────────────────────────────────────────────────────
+  // Handles double-quoted fields that may contain commas.
+  List<List<String>> _parseCsv(String content) {
+    final rows = <List<String>>[];
+    for (var line in content.split('\n')) {
+      line = line.trim();
+      if (line.isEmpty) continue;
+      final fields = <String>[];
+      bool inQuotes = false;
+      final buf = StringBuffer();
+      for (int i = 0; i < line.length; i++) {
+        final ch = line[i];
+        if (ch == '"') {
+          inQuotes = !inQuotes;
+        } else if (ch == ',' && !inQuotes) {
+          fields.add(buf.toString().trim());
+          buf.clear();
+        } else {
+          buf.write(ch);
+        }
+      }
+      fields.add(buf.toString().trim());
+      rows.add(fields);
+    }
+    return rows;
+  }
+
+  String _field(List<String> row, int col) =>
+      row.length > col ? row[col].trim() : '';
+
+  int _fieldInt(List<String> row, int col) {
+    final s = _field(row, col);
+    return int.tryParse(s) ?? (double.tryParse(s)?.round() ?? 0);
+  }
+
+  // ── Import logic ──────────────────────────────────────────────────────────
+
+  Future<void> _import() async {
+    final path = _pathCtrl.text.trim();
+    final file = File(path);
+    if (!file.existsSync()) {
+      _addLog('File not found: $path', level: _LogLevel.error);
+      return;
+    }
+
+    setState(() {
+      _importing = true;
+      _log.clear();
+      _summary = null;
+    });
+
+    try {
+      final content = await _readCsvFile(file);
+      final allRows = _parseCsv(content);
+
+      if (allRows.isEmpty) {
+        _addLog('File is empty.', level: _LogLevel.error);
+        return;
+      }
+
+      final header = allRows.first;
+      _addLog('${allRows.length - 1} data rows  |  ${header.length} columns');
+
+      final dataRows = allRows.skip(1).toList();
+
+      final productRepo   = ref.read(productRepositoryProvider);
+      final inventoryRepo = ref.read(inventoryRepositoryProvider);
+      final stockMovementRepo = ref.read(stockMovementRepositoryProvider);
+
+      final existingProducts = await productRepo.getAll();
+      final productByName = <String, Product>{
+        for (final p in existingProducts) p.name.toLowerCase(): p,
+      };
+
+      final now = DateTime.now();
+      int restocked = 0;
+      int skipped   = 0;
+      int errors    = 0;
+
+      for (int i = 0; i < dataRows.length; i++) {
+        final row = dataRows[i];
+        final productName = _field(row, 0);
+        if (productName.isEmpty) {
+          skipped++;
+          continue;
+        }
+
+        final product = productByName[productName.toLowerCase()];
+        if (product == null) {
+          _addLog('Row ${i + 2}: product not found: "$productName"',
+              level: _LogLevel.warn);
+          skipped++;
+          continue;
+        }
+
+        final boxes = _fieldInt(row, 1);
+        final pcs   = _fieldInt(row, 2);
+        final quantity = boxes * product.piecesPerBox + pcs;
+        if (quantity <= 0) {
+          skipped++;
+          continue;
+        }
+
+        try {
+          await inventoryRepo.adjust(
+              productId: product.id, deltaPieces: quantity);
+          await stockMovementRepo.save(StockMovement(
+            id: const Uuid().v4(),
+            productId: product.id,
+            movementType: 'in',
+            quantityPieces: quantity,
+            referenceDate: now,
+            comments: 'Bulk clear restock import',
+            createdAt: now,
+          ));
+          restocked++;
+        } catch (e) {
+          _addLog('Row ${i + 2} ($productName): $e', level: _LogLevel.error);
+          errors++;
+        }
+      }
+
+      ref.invalidate(inventoryListProvider);
+
+      setState(() {
+        _summary = _BulkClearImportSummary(
+          restocked: restocked,
+          skipped: skipped,
+          errors: errors,
+        );
+      });
+      _addLog('Import complete.', level: _LogLevel.success);
+    } catch (e) {
+      _addLog('Fatal error: $e', level: _LogLevel.error);
+    } finally {
+      setState(() => _importing = false);
+    }
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _pathCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'CSV File Path',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.folder_open),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              FilledButton.icon(
+                icon: _importing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.upload),
+                label: const Text('Import'),
+                onPressed: _importing ? null : _import,
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Expected columns: A=Product Name  B=Boxes  C=Pcs. '
+            'Adds (Boxes × pieces-per-box + Pcs) back into inventory for the '
+            'matching product and records a "Bulk clear restock import" '
+            'stock-in movement. Products not found by name are skipped.',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 12),
+
+          if (_summary != null) _BulkClearSummaryCard(summary: _summary!),
+
+          const Divider(height: 20),
+
+          Expanded(
+            child: _log.isEmpty
+                ? Center(
+                    child: Text('Set the file path and press Import.',
+                        style: TextStyle(color: Colors.grey.shade500)))
+                : ListView.builder(
+                    itemCount: _log.length,
+                    itemBuilder: (_, i) {
+                      final entry = _log[i];
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 1),
+                        child: Text(
+                          entry.message,
+                          style: TextStyle(
+                            fontFamily: 'Courier New',
+                            fontSize: 12,
+                            color: switch (entry.level) {
+                              _LogLevel.error => Colors.red.shade700,
+                              _LogLevel.warn => Colors.orange.shade800,
+                              _LogLevel.success => Colors.green.shade700,
+                              _LogLevel.info => null,
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Summary card (Bulk Clear Restock) ──────────────────────────────────────────
+
+class _BulkClearImportSummary {
+  final int restocked;
+  final int skipped;
+  final int errors;
+
+  const _BulkClearImportSummary({
+    required this.restocked,
+    required this.skipped,
+    required this.errors,
+  });
+}
+
+class _BulkClearSummaryCard extends StatelessWidget {
+  final _BulkClearImportSummary summary;
+  const _BulkClearSummaryCard({required this.summary});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _Stat('Restocked', summary.restocked, Colors.teal.shade700),
+            _Stat('Skipped',   summary.skipped,    Colors.grey),
+            _Stat('Errors',    summary.errors,     Colors.red.shade700),
           ],
         ),
       ),

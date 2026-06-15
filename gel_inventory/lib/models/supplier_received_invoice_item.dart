@@ -8,6 +8,7 @@ class SupplierReceivedInvoiceItem {
   final double supplierPrice;
   final double subtotalSystem;
   final double subtotalSupplier;
+  final bool isFree;
 
   const SupplierReceivedInvoiceItem({
     required this.id,
@@ -19,6 +20,7 @@ class SupplierReceivedInvoiceItem {
     required this.supplierPrice,
     required this.subtotalSystem,
     required this.subtotalSupplier,
+    this.isFree = false,
   });
 
   factory SupplierReceivedInvoiceItem.fromJson(Map<String, dynamic> j) =>
@@ -32,6 +34,7 @@ class SupplierReceivedInvoiceItem {
         supplierPrice: (j['supplier_price'] as num).toDouble(),
         subtotalSystem: (j['subtotal_system'] as num).toDouble(),
         subtotalSupplier: (j['subtotal_supplier'] as num).toDouble(),
+        isFree: (j['is_free'] as bool?) ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -44,5 +47,6 @@ class SupplierReceivedInvoiceItem {
         'supplier_price': supplierPrice,
         'subtotal_system': subtotalSystem,
         'subtotal_supplier': subtotalSupplier,
+        'is_free': isFree,
       };
 }

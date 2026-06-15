@@ -22,8 +22,14 @@ create table if not exists public.supplier_received_invoice_items (
   system_price numeric not null,
   supplier_price numeric not null,
   subtotal_system numeric not null,
-  subtotal_supplier numeric not null
+  subtotal_supplier numeric not null,
+  is_free boolean not null default false
 );
+
+-- If the table already exists from a previous version of this script, add
+-- the new column:
+alter table public.supplier_received_invoice_items
+  add column if not exists is_free boolean not null default false;
 
 -- Helpful indexes
 create index if not exists idx_sri_supplier_id on public.supplier_received_invoices(supplier_id);

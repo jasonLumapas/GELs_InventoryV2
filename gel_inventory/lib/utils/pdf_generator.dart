@@ -1385,7 +1385,10 @@ Future<void> printSupplierReceivedInvoice({
         pw.Padding(
           padding: const pw.EdgeInsets.symmetric(vertical: 1.5),
           child: pw.Row(children: [
-            col(productsById[items[i].productId]?.name ?? items[i].productId, prodW),
+            col(
+                (productsById[items[i].productId]?.name ?? items[i].productId) +
+                    (items[i].isFree ? ' (FREE)' : ''),
+                prodW),
             col(qtyLabel(items[i]), qtyW, align: pw.TextAlign.center),
             col(_n(items[i].systemPrice), priceW, align: pw.TextAlign.right),
             col(_n(items[i].supplierPrice), priceW, align: pw.TextAlign.right),

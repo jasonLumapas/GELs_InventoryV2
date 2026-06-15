@@ -256,6 +256,7 @@ class SupplierReceivedInvoiceItems extends Table {
   RealColumn get supplierPrice => real()();
   RealColumn get subtotalSystem => real()();
   RealColumn get subtotalSupplier => real()();
+  BoolColumn get isFree => boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -335,7 +336,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 21;
+  int get schemaVersion => 22;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -431,6 +432,10 @@ class LocalDatabase extends _$LocalDatabase {
           if (from < 21) {
             await _addColumnIfMissing(
                 m.database, 'clients', 'contact', 'TEXT');
+          }
+          if (from < 22) {
+            await _addColumnIfMissing(m.database, 'supplier_received_invoice_items',
+                'is_free', 'INTEGER NOT NULL DEFAULT 0');
           }
         },
       );

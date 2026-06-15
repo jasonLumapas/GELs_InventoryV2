@@ -136,6 +136,7 @@ class SupplierReceivedInvoiceRepository extends BaseRepository {
               supplierPrice: r.supplierPrice,
               subtotalSystem: r.subtotalSystem,
               subtotalSupplier: r.subtotalSupplier,
+              isFree: r.isFree,
             ))
         .toList();
   }
@@ -467,6 +468,7 @@ class SupplierReceivedInvoiceRepository extends BaseRepository {
             supplierPrice: drift.Value(item.supplierPrice),
             subtotalSystem: drift.Value(item.subtotalSystem),
             subtotalSupplier: drift.Value(item.subtotalSupplier),
+            isFree: drift.Value(item.isFree),
           ),
         );
   }

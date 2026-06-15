@@ -26,19 +26,24 @@ class _LineItem {
   final Product product;
   final double systemPrice;
   int quantity;
+  int quantityPieces;
+  bool isFree;
   final TextEditingController supplierPriceCtrl;
 
   _LineItem({
     required this.product,
     required this.systemPrice,
     this.quantity = 0,
+    this.quantityPieces = 0,
+    this.isFree = false,
     double? supplierPrice,
   }) : supplierPriceCtrl = TextEditingController(
           text: ((supplierPrice ?? systemPrice) * product.piecesPerBox)
               .toStringAsFixed(2),
         );
 
-  int get quantityInPieces => quantity * product.piecesPerBox;
+  int get quantityInPieces =>
+      quantity * product.piecesPerBox + quantityPieces;
 
   double get systemPricePerBox => systemPrice * product.piecesPerBox;
 
@@ -47,8 +52,9 @@ class _LineItem {
           product.piecesPerBox
       : (double.tryParse(supplierPriceCtrl.text) ?? systemPrice);
 
-  double get subtotalSystem => quantityInPieces * systemPrice;
-  double get subtotalSupplier => quantityInPieces * supplierPrice;
+  double get subtotalSystem => isFree ? 0 : quantityInPieces * systemPrice;
+  double get subtotalSupplier =>
+      isFree ? 0 : quantityInPieces * supplierPrice;
 
   bool get pricesDiffer => supplierPrice != systemPrice;
 }
@@ -161,6 +167,10 @@ class _SupplierReceivedInvoiceFormScreenState
             quantity: product.piecesPerBox > 0
                 ? it.quantity ~/ product.piecesPerBox
                 : it.quantity,
+            quantityPieces: product.piecesPerBox > 0
+                ? it.quantity % product.piecesPerBox
+                : 0,
+            isFree: it.isFree,
             supplierPrice: it.supplierPrice,
           ));
         }
@@ -444,7 +454,7 @@ class _SupplierReceivedInvoiceFormScreenState
       _status != 'cancelled' &&
       _selectedSupplier != null &&
       _lineItems.isNotEmpty &&
-      _lineItems.every((item) => item.quantity > 0);
+      _lineItems.every((item) => item.quantityInPieces > 0);
 
   ({SupplierReceivedInvoice invoice, List<SupplierReceivedInvoiceItem> items})
       _buildPayload() {
@@ -472,6 +482,7 @@ class _SupplierReceivedInvoiceFormScreenState
               supplierPrice: li.supplierPrice,
               subtotalSystem: li.subtotalSystem,
               subtotalSupplier: li.subtotalSupplier,
+              isFree: li.isFree,
             ))
         .toList();
     return (invoice: invoice, items: items);
@@ -506,6 +517,7 @@ class _SupplierReceivedInvoiceFormScreenState
               supplierPrice: li.supplierPrice,
               subtotalSystem: li.subtotalSystem,
               subtotalSupplier: li.subtotalSupplier,
+              isFree: li.isFree,
             ))
         .toList();
     return (invoice: invoice, items: items);
@@ -888,6 +900,7 @@ class _LineItemTile extends StatefulWidget {
 
 class _LineItemTileState extends State<_LineItemTile> {
   late TextEditingController _qtyCtrl;
+  late TextEditingController _qtyPiecesCtrl;
 
   @override
   void initState() {
@@ -895,11 +908,17 @@ class _LineItemTileState extends State<_LineItemTile> {
     _qtyCtrl = TextEditingController(
       text: widget.item.quantity > 0 ? widget.item.quantity.toString() : '',
     );
+    _qtyPiecesCtrl = TextEditingController(
+      text: widget.item.quantityPieces > 0
+          ? widget.item.quantityPieces.toString()
+          : '',
+    );
   }
 
   @override
   void dispose() {
     _qtyCtrl.dispose();
+    _qtyPiecesCtrl.dispose();
     super.dispose();
   }
 
@@ -972,24 +991,70 @@ class _LineItemTileState extends State<_LineItemTile> {
                     },
                   ),
                 ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 100,
+                  child: TextField(
+                    controller: _qtyPiecesCtrl,
+                    enabled: widget.enabled,
+                    decoration: const InputDecoration(
+                        labelText: 'Qty (pcs)', isDense: true),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly
+                    ],
+                    onChanged: (v) {
+                      item.quantityPieces = int.tryParse(v) ?? 0;
+                      widget.onChanged();
+                    },
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 4),
             Row(
               children: [
-                Text(
-                  'Subtotal (System): ${formatCurrency(item.subtotalSystem)}',
-                  style: const TextStyle(fontSize: 12),
+                Expanded(
+                  child: item.isFree
+                      ? const Text(
+                          'FREE — not included in totals',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green),
+                        )
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Subtotal (System): ${formatCurrency(item.subtotalSystem)}',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            const SizedBox(width: 16),
+                            Text(
+                              'Subtotal (Supplier): ${formatCurrency(item.subtotalSupplier)}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: item.pricesDiffer
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                                color: item.pricesDiffer
+                                    ? Colors.orange.shade800
+                                    : null,
+                              ),
+                            ),
+                          ],
+                        ),
                 ),
-                const SizedBox(width: 16),
-                Text(
-                  'Subtotal (Supplier): ${formatCurrency(item.subtotalSupplier)}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight:
-                        item.pricesDiffer ? FontWeight.bold : FontWeight.normal,
-                    color: item.pricesDiffer ? Colors.orange.shade800 : null,
-                  ),
+                const Text('Free', style: TextStyle(fontSize: 12)),
+                Switch(
+                  value: item.isFree,
+                  onChanged: widget.enabled
+                      ? (v) {
+                          setState(() => item.isFree = v);
+                          widget.onChanged();
+                        }
+                      : null,
                 ),
               ],
             ),

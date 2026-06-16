@@ -460,13 +460,15 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       return;
     }
 
-    await Future.wait(available.map((p) async {
-      if (!_inventoryCache.containsKey(p.id)) {
-        _inventoryCache[p.id] = await ref
-            .read(inventoryRepositoryProvider)
-            .getByProductId(p.id);
+    if (available.any((p) => !_inventoryCache.containsKey(p.id))) {
+      final allInv = await ref.read(inventoryRepositoryProvider).getAll();
+      final invMap = {for (final i in allInv) i.productId: i};
+      for (final p in available) {
+        if (!_inventoryCache.containsKey(p.id)) {
+          _inventoryCache[p.id] = invMap[p.id];
+        }
       }
-    }));
+    }
 
     if (!mounted) return;
 

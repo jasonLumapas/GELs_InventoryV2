@@ -135,28 +135,29 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    _products = await ref.read(productRepositoryProvider).getAll();
-    _areas    = await ref.read(vanAreaRepositoryProvider).getAll();
 
-    // Build productId → supplierName map
-    final suppliers = await ref.read(supplierRepositoryProvider).getAll();
-    final suppMap   = {for (final s in suppliers) s.id: s.name};
-    final prodSupp  = <String, String>{};
-    for (final p in _products) {
-      prodSupp[p.id] = suppMap[p.supplierId] ?? 'Unknown';
-    }
-    _supplierNames = prodSupp;
+    // Kick off all independent fetches concurrently.
+    final productRepo = ref.read(productRepositoryProvider);
+    final productsFuture   = productRepo.getAll();
+    final areasFuture      = ref.read(vanAreaRepositoryProvider).getAll();
+    final suppliersFuture  = ref.read(supplierRepositoryProvider).getAll();
+    final invFuture        = ref.read(inventoryRepositoryProvider).getAll();
+    final pricesFuture     = productRepo.getAllCurrentPrices();
 
-    final invItems = await ref.read(inventoryRepositoryProvider).getAll();
+    final products  = await productsFuture;
+    final areas     = await areasFuture;
+    final suppliers = await suppliersFuture;
+    final invItems  = await invFuture;
+    final prices    = await pricesFuture;
+
+    final suppMap = {for (final s in suppliers) s.id: s.name};
+    _products      = products;
+    _areas         = areas;
+    _supplierNames = {for (final p in products) p.id: suppMap[p.supplierId] ?? 'Unknown'};
     _inventoryQty  = {for (final i in invItems) i.productId: i.quantityPieces};
-
-    // Load selling prices for grand total calculation
-    for (final p in _products) {
-      final price = await ref
-          .read(productRepositoryProvider)
-          .getCurrentPrice(p.id);
-      if (price != null) _sellingPrices[p.id] = price.sellingPrice;
-    }
+    _sellingPrices
+      ..clear()
+      ..addAll(prices);
 
     setState(() => _loading = false);
 

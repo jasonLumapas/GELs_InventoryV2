@@ -132,29 +132,35 @@ class ProductRepository extends BaseRepository {
     );
   }
 
-  /// Returns the latest selling price per product as a `Map<productId, sellingPrice>`.
+  /// Returns productId → current selling price for every product in one round-trip.
   Future<Map<String, double>> getAllCurrentPrices() async {
-    final prices = <String, double>{};
+    List<ProductPrice> all;
     if (isOnline) {
       final data = await Supabase.instance.client
           .from('product_prices')
           .select()
           .order('effective_from', ascending: false);
-      for (final row in (data as List)) {
-        final id = row['product_id'] as String;
-        if (!prices.containsKey(id)) {
-          prices[id] = (row['selling_price'] as num).toDouble();
-        }
-      }
+      all = (data as List).map((j) => ProductPrice.fromJson(j)).toList();
     } else {
       final rows = await (db.select(db.productPrices)
             ..orderBy([(t) => drift.OrderingTerm.desc(t.effectiveFrom)]))
           .get();
-      for (final r in rows) {
-        prices.putIfAbsent(r.productId, () => r.sellingPrice);
-      }
+      all = rows
+          .map((r) => ProductPrice(
+                id: r.id,
+                productId: r.productId,
+                withdrawalPrice: r.withdrawalPrice,
+                sellingPrice: r.sellingPrice,
+                effectiveFrom: r.effectiveFrom,
+              ))
+          .toList();
     }
-    return prices;
+    // Rows are already newest-first; putIfAbsent keeps only the latest per product.
+    final result = <String, double>{};
+    for (final p in all) {
+      result.putIfAbsent(p.productId, () => p.sellingPrice);
+    }
+    return result;
   }
 
   Future<List<ProductPrice>> getPriceHistory(String productId) async {

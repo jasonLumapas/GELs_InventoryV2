@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../models/client.dart';
@@ -82,6 +83,7 @@ class _SupplierProductImportTabState
   bool _importing = false;
   final List<_LogEntry> _log = [];
   _ProductImportSummary? _summary;
+  DateTime _selectedDate = DateTime.now();
 
   @override
   void initState() {
@@ -189,9 +191,11 @@ class _SupplierProductImportTabState
       // Data rows (skip header)
       final dataRows = allRows.skip(1).toList();
 
-      final supplierRepo  = ref.read(supplierRepositoryProvider);
-      final productRepo   = ref.read(productRepositoryProvider);
-      final inventoryRepo = ref.read(inventoryRepositoryProvider);
+      final supplierRepo       = ref.read(supplierRepositoryProvider);
+      final productRepo        = ref.read(productRepositoryProvider);
+      final inventoryRepo      = ref.read(inventoryRepositoryProvider);
+      final stockMovementRepo  = ref.read(stockMovementRepositoryProvider);
+      final importDate         = _selectedDate;
 
       // Pre-load existing records
       final existingSuppliers = await supplierRepo.getAll();
@@ -292,6 +296,17 @@ class _SupplierProductImportTabState
           if (delta != 0 || current == null) {
             await inventoryRepo.adjust(
                 productId: productId, deltaPieces: delta);
+            if (delta != 0) {
+              await stockMovementRepo.save(StockMovement(
+                id: const Uuid().v4(),
+                productId: productId,
+                movementType: delta > 0 ? 'in' : 'out',
+                quantityPieces: delta.abs(),
+                referenceDate: importDate,
+                comments: 'CSV import',
+                createdAt: DateTime.now(),
+              ));
+            }
             inventoryUpdated++;
           }
         } catch (e) {
@@ -327,6 +342,29 @@ class _SupplierProductImportTabState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Reference date ──────────────────────────────────────────────
+          InkWell(
+            onTap: () async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: _selectedDate,
+                firstDate: DateTime(2020),
+                lastDate: DateTime(2100),
+              );
+              if (picked != null) setState(() => _selectedDate = picked);
+            },
+            child: InputDecorator(
+              decoration: const InputDecoration(
+                labelText: 'Reference Date',
+                suffixIcon: Icon(Icons.calendar_today, size: 18),
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              child: Text(DateFormat('MMM dd, yyyy').format(_selectedDate)),
+            ),
+          ),
+          const SizedBox(height: 10),
+
           // ── File path ───────────────────────────────────────────────────
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,

@@ -627,6 +627,8 @@ class InventoryReportRow {
   final int beginning;
   final int stockIn;
   final int stockOutInvoices;
+  final int stockOutVan;
+  final int stockOutManual;
   final int stockOutBO;
   final int stockOutBulkClear;
   final int ending;
@@ -637,6 +639,8 @@ class InventoryReportRow {
     required this.beginning,
     required this.stockIn,
     required this.stockOutInvoices,
+    required this.stockOutVan,
+    required this.stockOutManual,
     required this.stockOutBO,
     required this.stockOutBulkClear,
     required this.ending,
@@ -648,6 +652,10 @@ class InventoryReportRow {
   int get inPcs    => stockIn % piecesPerBox;
   int get outInvBoxes => stockOutInvoices ~/ piecesPerBox;
   int get outInvPcs   => stockOutInvoices % piecesPerBox;
+  int get outVanBoxes => stockOutVan ~/ piecesPerBox;
+  int get outVanPcs   => stockOutVan % piecesPerBox;
+  int get outManBoxes => stockOutManual ~/ piecesPerBox;
+  int get outManPcs   => stockOutManual % piecesPerBox;
   int get outBOBoxes  => stockOutBO ~/ piecesPerBox;
   int get outBOPcs    => stockOutBO % piecesPerBox;
   int get outBCBoxes  => stockOutBulkClear ~/ piecesPerBox;
@@ -675,7 +683,7 @@ Future<void> printInventoryReport({
   );
   final usableW = pageFormat.availableWidth;
   final prodW = usableW * 0.28;
-  final numW  = (usableW - prodW) / 12;
+  final numW  = (usableW - prodW) / 16;
 
   final font     = pw.Font.helvetica();
   final fontBold = pw.Font.helveticaBold();
@@ -721,7 +729,7 @@ Future<void> printInventoryReport({
         pw.SizedBox(width: prodW),
         groupHeader('Beginning', numW * 2),
         groupHeader('Stock In',  numW * 2),
-        groupHeader('Stock Out', numW * 6),
+        groupHeader('Stock Out', numW * 10),
         groupHeader('Ending',    numW * 2),
       ]),
       // Stock-out sub-group header row
@@ -730,13 +738,20 @@ Future<void> printInventoryReport({
         pw.SizedBox(width: numW * 2),
         pw.SizedBox(width: numW * 2),
         groupHeader('Invoices',   numW * 2),
+        groupHeader('Off-site',   numW * 2),
         groupHeader('BO',         numW * 2),
         groupHeader('Bulk Clear', numW * 2),
+        groupHeader('Manual',     numW * 2),
         pw.SizedBox(width: numW * 2),
       ]),
       // Column header row
+      // Column labels: Beg | In | Inv | Off-site | BO | BC | Manual | End
       pw.Row(children: [
         col('Product', prodW, bold: true, size: fsHead - 1),
+        col('Boxes', numW, bold: true, align: pw.TextAlign.center, size: fsHead - 1),
+        col('Pcs',   numW, bold: true, align: pw.TextAlign.center, size: fsHead - 1),
+        col('Boxes', numW, bold: true, align: pw.TextAlign.center, size: fsHead - 1),
+        col('Pcs',   numW, bold: true, align: pw.TextAlign.center, size: fsHead - 1),
         col('Boxes', numW, bold: true, align: pw.TextAlign.center, size: fsHead - 1),
         col('Pcs',   numW, bold: true, align: pw.TextAlign.center, size: fsHead - 1),
         col('Boxes', numW, bold: true, align: pw.TextAlign.center, size: fsHead - 1),
@@ -764,10 +779,14 @@ Future<void> printInventoryReport({
             col(fmt(rows[i].inPcs),    numW, align: pw.TextAlign.center),
             col(fmt(rows[i].outInvBoxes), numW, align: pw.TextAlign.center),
             col(fmt(rows[i].outInvPcs),   numW, align: pw.TextAlign.center),
+            col(fmt(rows[i].outVanBoxes), numW, align: pw.TextAlign.center),
+            col(fmt(rows[i].outVanPcs),   numW, align: pw.TextAlign.center),
             col(fmt(rows[i].outBOBoxes),  numW, align: pw.TextAlign.center),
             col(fmt(rows[i].outBOPcs),    numW, align: pw.TextAlign.center),
             col(fmt(rows[i].outBCBoxes),  numW, align: pw.TextAlign.center),
             col(fmt(rows[i].outBCPcs),    numW, align: pw.TextAlign.center),
+            col(fmt(rows[i].outManBoxes), numW, align: pw.TextAlign.center),
+            col(fmt(rows[i].outManPcs),   numW, align: pw.TextAlign.center),
             col(fmt(rows[i].endBoxes), numW, align: pw.TextAlign.center),
             col(fmt(rows[i].endPcs),   numW, align: pw.TextAlign.center),
           ]),

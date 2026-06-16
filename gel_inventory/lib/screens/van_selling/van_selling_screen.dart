@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/product.dart';
 import '../../models/van_stock.dart';
@@ -78,6 +80,11 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
   String? _outAreaFilter;
   String? _inAreaFilter;
 
+  // Loading tab search + inline editing
+  final _outSearchCtrl = TextEditingController();
+  String _outSearchQuery = '';
+  final Map<String, int> _pendingEdits = {};
+
   // Persisted area selection for Loading dialog
   String? _lastOutAreaId;
 
@@ -115,6 +122,7 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
   void dispose() {
     _tabs.removeListener(_onTabChange);
     _tabs.dispose();
+    _outSearchCtrl.dispose();
     super.dispose();
   }
 
@@ -158,10 +166,22 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
   }
 
   Future<void> _loadOutItems() async {
-    setState(() => _outLoading = true);
+    setState(() { _outLoading = true; _pendingEdits.clear(); });
     final all = await ref.read(vanStockRepositoryProvider).getAll(date: _outDate);
     _outItems = all.where((t) => t.type == 'out').toList();
     setState(() => _outLoading = false);
+  }
+
+  Future<void> _savePendingEdits() async {
+    final repo = ref.read(vanStockRepositoryProvider);
+    for (final entry in List.of(_pendingEdits.entries)) {
+      final tx = _outItems.where((t) => t.id == entry.key).firstOrNull;
+      if (tx == null || entry.value == tx.quantityPieces) continue;
+      await repo.updateRecord(tx, entry.value);
+    }
+    _pendingEdits.clear();
+    ref.invalidate(inventoryListProvider);
+    await _loadOutItems();
   }
 
   Future<void> _loadInItems() async {
@@ -650,6 +670,67 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
     );
   }
 
+  // ── Export Loading tab to CSV ──────────────────────────────────────────
+
+  Future<void> _exportOutItems() async {
+    final productsById = {for (final p in _products) p.id: p};
+    final areasById    = {for (final a in _areas) a.id: a.name};
+    final rows = (_outAreaFilter == null
+            ? _outItems
+            : _outItems.where((t) => t.areaId == _outAreaFilter).toList())
+        .where((t) {
+      if (_outSearchQuery.isEmpty) return true;
+      final name = (productsById[t.productId]?.name ?? '').toLowerCase();
+      return name.contains(_outSearchQuery);
+    }).toList();
+
+    if (rows.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No data to export.')));
+      }
+      return;
+    }
+
+    final buf = StringBuffer();
+    buf.writeln('Date,Product Code,Product Name,Supplier,Area,Boxes,Pieces,Total Pieces');
+    final dateFmt = DateFormat('yyyy-MM-dd');
+    for (final tx in rows) {
+      final p   = productsById[tx.productId];
+      final ppb = p?.piecesPerBox ?? 1;
+      String csv(String? v) {
+        final s = (v ?? '').replaceAll('"', '""');
+        return s.contains(',') || s.contains('"') || s.contains('\n')
+            ? '"$s"'
+            : s;
+      }
+      buf.writeln([
+        dateFmt.format(tx.date),
+        csv(p?.productCode),
+        csv(p?.name ?? tx.productId),
+        csv(_supplierNames[tx.productId]),
+        csv(areasById[tx.areaId]),
+        '${tx.quantityPieces ~/ ppb}',
+        '${tx.quantityPieces % ppb}',
+        '${tx.quantityPieces}',
+      ].join(','));
+    }
+
+    final home = (await getApplicationDocumentsDirectory()).parent.path;
+    final dateStr = DateFormat('yyyy-MM-dd').format(_outDate);
+    final file = File('$home\\Desktop\\off_site_loading_$dateStr.csv');
+    await file.writeAsString(buf.toString());
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Exported to ${file.path}'),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
   // ── Print Loading Report ───────────────────────────────────────────────
 
   Future<void> _printReport() async {
@@ -729,6 +810,7 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
           );
           if (p != null) _setOutDate(p);
         },
+        onExport: _exportOutItems,
       );
 
   // ── In page ────────────────────────────────────────────────────────────
@@ -767,12 +849,21 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
     required VoidCallback onNext,
     required VoidCallback onToday,
     required VoidCallback onPickDate,
+    VoidCallback? onExport,
   }) {
     final dateFmt      = DateFormat('MMM dd, yyyy');
     final productsById = {for (final p in _products) p.id: p};
-    final filtered     = areaFilter == null
+    final areaFiltered = areaFilter == null
         ? items
         : items.where((t) => t.areaId == areaFilter).toList();
+    final filtered = (isOut && _outSearchQuery.isNotEmpty)
+        ? areaFiltered.where((t) {
+            final p = productsById[t.productId];
+            return (p?.name ?? t.productId)
+                .toLowerCase()
+                .contains(_outSearchQuery);
+          }).toList()
+        : areaFiltered;
     final totalAmount  = filtered.fold(0.0,
         (s, t) => s + t.quantityPieces * (_sellingPrices[t.productId] ?? 0));
 
@@ -884,6 +975,12 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
                     visualDensity: VisualDensity.compact),
                 child: const Text('Today'),
               ),
+              if (onExport != null)
+                IconButton(
+                  icon: const Icon(Icons.download),
+                  tooltip: 'Export to CSV',
+                  onPressed: _outItems.isEmpty ? null : onExport,
+                ),
               IconButton(
                 icon: const Icon(Icons.print),
                 tooltip: 'Print',
@@ -911,6 +1008,30 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
               ],
             ),
           ),
+        if (isOut)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
+            child: TextField(
+              controller: _outSearchCtrl,
+              decoration: InputDecoration(
+                hintText: 'Search products...',
+                isDense: true,
+                prefixIcon: const Icon(Icons.search, size: 18),
+                suffixIcon: _outSearchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          _outSearchCtrl.clear();
+                          setState(() => _outSearchQuery = '');
+                        },
+                      )
+                    : null,
+                border: const OutlineInputBorder(),
+              ),
+              onChanged: (v) =>
+                  setState(() => _outSearchQuery = v.toLowerCase()),
+            ),
+          ),
         const Divider(height: 1),
 
         // List
@@ -929,14 +1050,35 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
                         final tx  = filtered[i];
                         final p   = productsById[tx.productId];
                         final ppb = p?.piecesPerBox ?? 1;
+                        final sub = [
+                          _supplierNames[tx.productId],
+                          _areas.where((a) => a.id == tx.areaId)
+                              .map((a) => a.name).firstOrNull,
+                        ].whereType<String>().join('  •  ');
+                        if (isOut) {
+                          return _EditableVanStockTile(
+                            key: ValueKey(tx.id),
+                            tx: tx,
+                            productName: p?.name ?? tx.productId,
+                            subtitle: sub,
+                            piecesPerBox: ppb,
+                            currentQtyPieces:
+                                _pendingEdits[tx.id] ?? tx.quantityPieces,
+                            onChanged: (newPcs) =>
+                                setState(() => _pendingEdits[tx.id] = newPcs),
+                            onDelete: () async {
+                              await ref
+                                  .read(vanStockRepositoryProvider)
+                                  .delete(tx);
+                              ref.invalidate(inventoryListProvider);
+                              _loadOutItems();
+                            },
+                          );
+                        }
                         return ListTile(
                           leading: Icon(icon, color: color, size: 22),
                           title: Text(p?.name ?? tx.productId),
-                          subtitle: Text([
-                            _supplierNames[tx.productId],
-                            _areas.where((a) => a.id == tx.areaId)
-                                .map((a) => a.name).firstOrNull,
-                          ].whereType<String>().join('  •  ')),
+                          subtitle: Text(sub),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -954,7 +1096,7 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
                                       .read(vanStockRepositoryProvider)
                                       .delete(tx);
                                   ref.invalidate(inventoryListProvider);
-                                  isOut ? _loadOutItems() : _loadInItems();
+                                  _loadInItems();
                                 },
                               ),
                             ],
@@ -963,6 +1105,26 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
                       },
                     ),
         ),
+
+        // Save pending edits footer
+        if (isOut && _pendingEdits.isNotEmpty)
+          Container(
+            color: Colors.blue.shade50,
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                Text('${_pendingEdits.length} item(s) edited',
+                    style: TextStyle(color: Colors.blue.shade700)),
+                const Spacer(),
+                FilledButton.icon(
+                  icon: const Icon(Icons.save, size: 16),
+                  label: const Text('Save Changes'),
+                  onPressed: _savePendingEdits,
+                ),
+              ],
+            ),
+          ),
 
         // Grand total footer
         if (!loading && filtered.isNotEmpty)
@@ -1191,6 +1353,114 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
                         ),
         ),
       ],
+    );
+  }
+}
+
+// ── Editable van-stock tile (Loading tab list) ────────────────────────────────
+
+class _EditableVanStockTile extends StatefulWidget {
+  final VanStock tx;
+  final String productName;
+  final String subtitle;
+  final int piecesPerBox;
+  final int currentQtyPieces;
+  final void Function(int newQtyPieces) onChanged;
+  final VoidCallback onDelete;
+
+  const _EditableVanStockTile({
+    super.key,
+    required this.tx,
+    required this.productName,
+    required this.subtitle,
+    required this.piecesPerBox,
+    required this.currentQtyPieces,
+    required this.onChanged,
+    required this.onDelete,
+  });
+
+  @override
+  State<_EditableVanStockTile> createState() => _EditableVanStockTileState();
+}
+
+class _EditableVanStockTileState extends State<_EditableVanStockTile> {
+  late final TextEditingController _boxCtrl;
+  late final TextEditingController _pcCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    final ppb = widget.piecesPerBox;
+    _boxCtrl =
+        TextEditingController(text: '${widget.currentQtyPieces ~/ ppb}');
+    _pcCtrl =
+        TextEditingController(text: '${widget.currentQtyPieces % ppb}');
+  }
+
+  @override
+  void dispose() {
+    _boxCtrl.dispose();
+    _pcCtrl.dispose();
+    super.dispose();
+  }
+
+  void _notify() {
+    final boxes = int.tryParse(_boxCtrl.text) ?? 0;
+    final pcs   = int.tryParse(_pcCtrl.text) ?? 0;
+    widget.onChanged(boxes * widget.piecesPerBox + pcs);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        children: [
+          const Icon(Icons.arrow_upward, color: Colors.red, size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(widget.productName,
+                    style: const TextStyle(fontWeight: FontWeight.w500)),
+                if (widget.subtitle.isNotEmpty)
+                  Text(widget.subtitle,
+                      style: const TextStyle(
+                          color: Colors.grey, fontSize: 12)),
+              ],
+            ),
+          ),
+          SizedBox(
+            width: 64,
+            child: TextField(
+              controller: _boxCtrl,
+              decoration:
+                  const InputDecoration(labelText: 'Boxes', isDense: true),
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              onChanged: (_) => _notify(),
+            ),
+          ),
+          const SizedBox(width: 6),
+          SizedBox(
+            width: 52,
+            child: TextField(
+              controller: _pcCtrl,
+              decoration:
+                  const InputDecoration(labelText: 'Pcs', isDense: true),
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              onChanged: (_) => _notify(),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline,
+                color: Colors.red, size: 20),
+            onPressed: widget.onDelete,
+          ),
+        ],
+      ),
     );
   }
 }

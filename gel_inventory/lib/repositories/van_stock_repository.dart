@@ -189,6 +189,35 @@ class VanStockRepository extends BaseRepository {
     );
   }
 
+  Future<void> updateRecord(VanStock old, int newQuantityPieces) async {
+    // Reverse old inventory effect, apply new one
+    await inventoryRepo.adjust(
+      productId: old.productId,
+      deltaPieces: old.isOut ? old.quantityPieces : -old.quantityPieces,
+    );
+    if (isOnline) {
+      await Supabase.instance.client
+          .from('van_stocks')
+          .update({'quantity_pieces': newQuantityPieces})
+          .eq('id', old.id);
+    } else {
+      await syncService.enqueue(
+        tableName: 'van_stocks',
+        recordId: old.id,
+        operation: 'update',
+        payload: {'id': old.id, 'quantity_pieces': newQuantityPieces},
+      );
+    }
+    await (db.update(db.vanStocks)..where((t) => t.id.equals(old.id)))
+        .write(VanStocksCompanion(
+          quantityPieces: drift.Value(newQuantityPieces),
+        ));
+    await inventoryRepo.adjust(
+      productId: old.productId,
+      deltaPieces: old.isOut ? -newQuantityPieces : newQuantityPieces,
+    );
+  }
+
   Future<void> delete(VanStock tx) async {
     if (isOnline) {
       try {

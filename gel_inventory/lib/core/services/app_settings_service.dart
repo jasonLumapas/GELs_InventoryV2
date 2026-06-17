@@ -12,6 +12,9 @@ class AppSettingsService {
       'settings_inventory_report_show_selling';
   static const _keyAllowBadOrderNoClient =
       'settings_allow_bad_order_no_client';
+  static const _keyInventoryAllowAddStock    = 'settings_inventory_allow_add_stock';
+  static const _keyInventoryAllowRemoveStock = 'settings_inventory_allow_remove_stock';
+  static const _keyInventoryShowHistory      = 'settings_inventory_show_history';
 
   static Future<bool> _getFlag(String key, {bool defaultValue = true}) async {
     final prefs = await SharedPreferences.getInstance();
@@ -49,6 +52,21 @@ class AppSettingsService {
       _getFlag(_keyAllowBadOrderNoClient, defaultValue: false);
   static Future<void> setAllowBadOrderNoClient(bool value) =>
       _setFlag(_keyAllowBadOrderNoClient, value);
+
+  static Future<bool> getInventoryAllowAddStock() =>
+      _getFlag(_keyInventoryAllowAddStock);
+  static Future<void> setInventoryAllowAddStock(bool value) =>
+      _setFlag(_keyInventoryAllowAddStock, value);
+
+  static Future<bool> getInventoryAllowRemoveStock() =>
+      _getFlag(_keyInventoryAllowRemoveStock);
+  static Future<void> setInventoryAllowRemoveStock(bool value) =>
+      _setFlag(_keyInventoryAllowRemoveStock, value);
+
+  static Future<bool> getInventoryShowHistory() =>
+      _getFlag(_keyInventoryShowHistory);
+  static Future<void> setInventoryShowHistory(bool value) =>
+      _setFlag(_keyInventoryShowHistory, value);
 }
 
 final showCapitalProfitProvider =
@@ -65,3 +83,12 @@ final inventoryReportShowSellingProvider = FutureProvider<bool>(
 
 final allowBadOrderNoClientProvider = FutureProvider<bool>(
     (ref) => AppSettingsService.getAllowBadOrderNoClient());
+
+final inventoryAllowAddStockProvider = FutureProvider<bool>(
+    (ref) => AppSettingsService.getInventoryAllowAddStock());
+
+final inventoryAllowRemoveStockProvider = FutureProvider<bool>(
+    (ref) => AppSettingsService.getInventoryAllowRemoveStock());
+
+final inventoryShowHistoryProvider = FutureProvider<bool>(
+    (ref) => AppSettingsService.getInventoryShowHistory());

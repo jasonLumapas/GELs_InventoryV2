@@ -161,6 +161,97 @@ class BadOrderRepository extends BaseRepository {
     }
   }
 
+  /// Edits a single item's unit type / quantity and adjusts inventory accordingly.
+  Future<void> updateItem({
+    required BadOrder order,
+    required BadOrderItem oldItem,
+    required String newUnitType,
+    required int newQuantity,
+    required int piecesPerBox,
+  }) async {
+    final oldPieces =
+        oldItem.unitType == 'box' ? oldItem.quantity * piecesPerBox : oldItem.quantity;
+    final newPieces =
+        newUnitType == 'box' ? newQuantity * piecesPerBox : newQuantity;
+
+    // Reverse old effect then apply new effect.
+    final reverseDelta = order.isReturn ? -oldPieces : oldPieces;
+    await inventoryRepo.adjust(productId: oldItem.productId, deltaPieces: reverseDelta);
+
+    await stockMovementRepo.deleteOneByInvoiceNumberAndProduct(
+        'BO-${order.id}', oldItem.productId);
+
+    final newDelta = order.isReturn ? newPieces : -newPieces;
+    await inventoryRepo.adjust(productId: oldItem.productId, deltaPieces: newDelta);
+
+    await stockMovementRepo.save(StockMovement(
+      id: const Uuid().v4(),
+      productId: oldItem.productId,
+      movementType: order.isReturn ? 'in' : 'out',
+      quantityPieces: newPieces,
+      referenceDate: order.date,
+      invoiceNumber: 'BO-${order.id}',
+      comments: order.isReturn ? 'Return' : 'Bad order',
+      createdAt: DateTime.now(),
+    ));
+
+    final payload = {
+      'id': oldItem.id,
+      'bad_order_id': oldItem.badOrderId,
+      'product_id': oldItem.productId,
+      'unit_type': newUnitType,
+      'quantity': newQuantity,
+    };
+    if (isOnline) {
+      await Supabase.instance.client
+          .from('bad_order_items')
+          .update({'unit_type': newUnitType, 'quantity': newQuantity})
+          .eq('id', oldItem.id);
+    } else {
+      await syncService.enqueue(
+        tableName: 'bad_order_items',
+        recordId: oldItem.id,
+        operation: 'update',
+        payload: payload,
+      );
+    }
+    await (db.update(db.badOrderItems)..where((t) => t.id.equals(oldItem.id)))
+        .write(BadOrderItemsCompanion(
+      unitType: drift.Value(newUnitType),
+      quantity: drift.Value(newQuantity),
+    ));
+  }
+
+  /// Deletes a single item from a bad order/return and reverses its inventory effect.
+  Future<void> deleteItem({
+    required BadOrder order,
+    required BadOrderItem item,
+    required int piecesPerBox,
+  }) async {
+    final pieces =
+        item.unitType == 'box' ? item.quantity * piecesPerBox : item.quantity;
+    final reverseDelta = order.isReturn ? -pieces : pieces;
+    await inventoryRepo.adjust(
+        productId: item.productId, deltaPieces: reverseDelta);
+    await stockMovementRepo.deleteOneByInvoiceNumberAndProduct(
+        'BO-${order.id}', item.productId);
+    if (isOnline) {
+      await Supabase.instance.client
+          .from('bad_order_items')
+          .delete()
+          .eq('id', item.id);
+    } else {
+      await syncService.enqueue(
+        tableName: 'bad_order_items',
+        recordId: item.id,
+        operation: 'delete',
+        payload: {'id': item.id},
+      );
+    }
+    await (db.delete(db.badOrderItems)..where((t) => t.id.equals(item.id)))
+        .go();
+  }
+
   /// Deletes the bad order/return and reverses its inventory effect.
   Future<void> delete(String id) async {
     final items = await getItems(id);

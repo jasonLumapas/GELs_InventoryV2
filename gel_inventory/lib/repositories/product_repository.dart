@@ -130,6 +130,31 @@ class ProductRepository extends BaseRepository {
     );
   }
 
+  /// Returns the latest selling price per product as a `Map<productId, sellingPrice>`.
+  Future<Map<String, double>> getAllCurrentPrices() async {
+    final prices = <String, double>{};
+    if (isOnline) {
+      final data = await Supabase.instance.client
+          .from('product_prices')
+          .select()
+          .order('effective_from', ascending: false);
+      for (final row in (data as List)) {
+        final id = row['product_id'] as String;
+        if (!prices.containsKey(id)) {
+          prices[id] = (row['selling_price'] as num).toDouble();
+        }
+      }
+    } else {
+      final rows = await (db.select(db.productPrices)
+            ..orderBy([(t) => drift.OrderingTerm.desc(t.effectiveFrom)]))
+          .get();
+      for (final r in rows) {
+        prices.putIfAbsent(r.productId, () => r.sellingPrice);
+      }
+    }
+    return prices;
+  }
+
   Future<List<ProductPrice>> getPriceHistory(String productId) async {
     if (isOnline) {
       final data = await Supabase.instance.client

@@ -70,6 +70,35 @@ class StockMovementRepository extends BaseRepository {
         .go());
   }
 
+  Future<void> deleteOneByInvoiceNumberAndProduct(
+      String invoiceNumber, String productId) async {
+    String? targetId;
+    if (isOnline) {
+      try {
+        final data = await Supabase.instance.client
+            .from('stock_movements')
+            .select('id')
+            .eq('invoice_number', invoiceNumber)
+            .eq('product_id', productId)
+            .limit(1);
+        if ((data as List).isNotEmpty) {
+          targetId = data.first['id'] as String;
+        }
+      } catch (e) {
+        debugPrint('deleteOneByInvoiceNumberAndProduct Supabase query failed: $e');
+      }
+    } else {
+      final rows = await (db.select(db.stockMovements)
+            ..where((t) =>
+                t.invoiceNumber.equals(invoiceNumber) &
+                t.productId.equals(productId))
+            ..limit(1))
+          .get();
+      if (rows.isNotEmpty) targetId = rows.first.id;
+    }
+    if (targetId != null) await deleteById(targetId);
+  }
+
   Future<void> deleteByInvoiceNumber(String invoiceNumber) async {
     if (isOnline) {
       try {

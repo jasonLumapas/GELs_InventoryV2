@@ -68,6 +68,9 @@ class _AppSettingsScreenState extends ConsumerState<AppSettingsScreen> {
   bool _showImportCsv = true;
   bool _inventoryReportShowSelling = false;
   bool _allowBadOrderNoClient = false;
+  bool _inventoryAllowAddStock    = true;
+  bool _inventoryAllowRemoveStock = true;
+  bool _inventoryShowHistory      = true;
 
   @override
   void initState() {
@@ -93,6 +96,12 @@ class _AppSettingsScreenState extends ConsumerState<AppSettingsScreen> {
         await AppSettingsService.getInventoryReportShowSelling();
     _allowBadOrderNoClient =
         await AppSettingsService.getAllowBadOrderNoClient();
+    _inventoryAllowAddStock =
+        await AppSettingsService.getInventoryAllowAddStock();
+    _inventoryAllowRemoveStock =
+        await AppSettingsService.getInventoryAllowRemoveStock();
+    _inventoryShowHistory =
+        await AppSettingsService.getInventoryShowHistory();
     if (!mounted) return;
     setState(() {
       _unlocked = true;
@@ -128,6 +137,24 @@ class _AppSettingsScreenState extends ConsumerState<AppSettingsScreen> {
     setState(() => _allowBadOrderNoClient = value);
     await AppSettingsService.setAllowBadOrderNoClient(value);
     ref.invalidate(allowBadOrderNoClientProvider);
+  }
+
+  Future<void> _toggleInventoryAllowAddStock(bool value) async {
+    setState(() => _inventoryAllowAddStock = value);
+    await AppSettingsService.setInventoryAllowAddStock(value);
+    ref.invalidate(inventoryAllowAddStockProvider);
+  }
+
+  Future<void> _toggleInventoryAllowRemoveStock(bool value) async {
+    setState(() => _inventoryAllowRemoveStock = value);
+    await AppSettingsService.setInventoryAllowRemoveStock(value);
+    ref.invalidate(inventoryAllowRemoveStockProvider);
+  }
+
+  Future<void> _toggleInventoryShowHistory(bool value) async {
+    setState(() => _inventoryShowHistory = value);
+    await AppSettingsService.setInventoryShowHistory(value);
+    ref.invalidate(inventoryShowHistoryProvider);
   }
 
   @override
@@ -175,6 +202,35 @@ class _AppSettingsScreenState extends ConsumerState<AppSettingsScreen> {
                           'When enabled, Bad Orders and Returns can be saved without selecting a client (saved as "No Client Specified")'),
                       value: _allowBadOrderNoClient,
                       onChanged: _toggleAllowBadOrderNoClient,
+                    ),
+                    const Divider(),
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+                      child: Text('Inventory Page',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey)),
+                    ),
+                    SwitchListTile(
+                      title: const Text('Allow Add Stock'),
+                      subtitle: const Text(
+                          'Show the Add Stock button on the Inventory page'),
+                      value: _inventoryAllowAddStock,
+                      onChanged: _toggleInventoryAllowAddStock,
+                    ),
+                    SwitchListTile(
+                      title: const Text('Allow Remove Stock'),
+                      subtitle: const Text(
+                          'Show the Remove Stock button on the Inventory page'),
+                      value: _inventoryAllowRemoveStock,
+                      onChanged: _toggleInventoryAllowRemoveStock,
+                    ),
+                    SwitchListTile(
+                      title: const Text('Show Transaction History'),
+                      subtitle: const Text(
+                          'Show the Transaction History button on the Inventory page'),
+                      value: _inventoryShowHistory,
+                      onChanged: _toggleInventoryShowHistory,
                     ),
                   ],
                 ),

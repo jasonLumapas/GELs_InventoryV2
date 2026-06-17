@@ -8,6 +8,7 @@ import '../../models/client.dart';
 import '../../models/product.dart';
 import '../../repositories/bad_order_repository.dart';
 import '../../repositories/client_repository.dart';
+import '../../repositories/inventory_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../widgets/common/app_scaffold.dart';
@@ -80,51 +81,6 @@ class BadOrderListScreen extends ConsumerWidget {
   }
 }
 
-// ── Detail data ───────────────────────────────────────────────────────────────
-
-class _DetailData {
-  final List<BadOrderItem> items;
-  final Map<String, Product> productsById;
-  final Map<String, double> amounts; // item.id → selling amount
-  final double grandTotal;
-
-  const _DetailData({
-    required this.items,
-    required this.productsById,
-    required this.amounts,
-    required this.grandTotal,
-  });
-}
-
-Future<_DetailData> _loadDetailData(WidgetRef ref, BadOrder order) async {
-  final items = await ref.read(badOrderRepositoryProvider).getItems(order.id);
-  final products = await ref.read(productRepositoryProvider).getAll();
-  final productsById = <String, Product>{for (final p in products) p.id: p};
-
-  final amounts = <String, double>{};
-  double total = 0;
-
-  for (final item in items) {
-    final product = productsById[item.productId];
-    if (product == null) continue;
-    final pieces = item.unitType == 'box'
-        ? item.quantity * product.piecesPerBox
-        : item.quantity;
-    final price =
-        await ref.read(productRepositoryProvider).getCurrentPrice(item.productId);
-    final amount = pieces * (price?.sellingPrice ?? 0.0);
-    amounts[item.id] = amount;
-    total += amount;
-  }
-
-  return _DetailData(
-    items: items,
-    productsById: productsById,
-    amounts: amounts,
-    grandTotal: total,
-  );
-}
-
 // ── Detail sheet ──────────────────────────────────────────────────────────────
 
 void _showDetail(
@@ -133,157 +89,378 @@ void _showDetail(
   BadOrder order,
   Client? client,
 ) {
-  final dateFmt = DateFormat('MMM dd, yyyy');
-  // Create the future once so FutureBuilder won't re-fire on rebuilds.
-  final detailFuture = _loadDetailData(ref, order);
-
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
     ),
-    builder: (ctx) => DraggableScrollableSheet(
-      initialChildSize: 0.5,
-      maxChildSize: 0.85,
-      minChildSize: 0.3,
-      expand: false,
-      builder: (ctx, scrollCtrl) => FutureBuilder<_DetailData>(
-        future: detailFuture,
-        builder: (ctx, snap) {
-          final data = snap.data;
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Handle
-              Center(
-                child: Container(
-                  margin: const EdgeInsets.symmetric(vertical: 10),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
+    builder: (_) => _DetailSheet(order: order, client: client),
+  );
+}
 
-              // Header row
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Row(
-                  children: [
-                    Icon(
-                      order.isReturn
-                          ? Icons.undo
-                          : Icons.remove_shopping_cart,
-                      color: order.isReturn ? Colors.green : Colors.orange,
+class _DetailSheet extends ConsumerStatefulWidget {
+  final BadOrder order;
+  final Client? client;
+
+  const _DetailSheet({required this.order, required this.client});
+
+  @override
+  ConsumerState<_DetailSheet> createState() => _DetailSheetState();
+}
+
+class _DetailSheetState extends ConsumerState<_DetailSheet> {
+  bool _loading = true;
+  List<BadOrderItem> _items = [];
+  Map<String, Product> _productsById = {};
+  Map<String, double> _amounts = {};
+  double _grandTotal = 0;
+  Map<String, int> _inventoryQty = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    if (!mounted) return;
+    setState(() => _loading = true);
+
+    final itemsFuture    = ref.read(badOrderRepositoryProvider).getItems(widget.order.id);
+    final productsFuture = ref.read(productRepositoryProvider).getAll();
+    final pricesFuture   = ref.read(productRepositoryProvider).getAllCurrentPrices();
+    final inventoryFuture = ref.read(inventoryRepositoryProvider).getAll();
+
+    final results = await Future.wait([itemsFuture, productsFuture, pricesFuture, inventoryFuture]);
+    final items      = results[0] as List<BadOrderItem>;
+    final products   = results[1] as List<Product>;
+    final prices     = results[2] as Map<String, double>;
+    final inventory  = results[3] as List;
+
+    final productsById = <String, Product>{for (final p in products) p.id: p};
+    final inventoryQty = <String, int>{
+      for (final i in inventory) i.productId as String: i.quantityPieces as int
+    };
+
+    final amounts  = <String, double>{};
+    double total   = 0;
+    for (final item in items) {
+      final product = productsById[item.productId];
+      if (product == null) continue;
+      final pieces = item.unitType == 'box'
+          ? item.quantity * product.piecesPerBox
+          : item.quantity;
+      final amount = pieces * (prices[item.productId] ?? 0.0);
+      amounts[item.id] = amount;
+      total += amount;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _loading      = false;
+      _items        = items;
+      _productsById = productsById;
+      _amounts      = amounts;
+      _grandTotal   = total;
+      _inventoryQty = inventoryQty;
+    });
+  }
+
+  Future<void> _editItem(BadOrderItem item) async {
+    final product      = _productsById[item.productId];
+    final piecesPerBox = product?.piecesPerBox ?? 1;
+    final oldPieces    = item.unitType == 'box'
+        ? item.quantity * piecesPerBox
+        : item.quantity;
+
+    // For bad orders the old deduction is already in the DB, so effective
+    // available = current stock + old pieces back − pieces held by other
+    // lines for this same product.
+    // Returns have no stock constraint (they add stock back).
+    int? maxPieces;
+    if (!widget.order.isReturn) {
+      int otherCommitted = 0;
+      for (final other in _items) {
+        if (other.id == item.id || other.productId != item.productId) continue;
+        final ppb = _productsById[other.productId]?.piecesPerBox ?? 1;
+        otherCommitted +=
+            other.unitType == 'box' ? other.quantity * ppb : other.quantity;
+      }
+      final stock = _inventoryQty[item.productId] ?? 0;
+      final raw   = stock + oldPieces - otherCommitted;
+      maxPieces   = raw < 0 ? 0 : raw;
+    }
+
+    String unitType  = item.unitType;
+    final qtyCtrl    = TextEditingController(text: item.quantity.toString());
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) {
+          final newQty    = int.tryParse(qtyCtrl.text.trim()) ?? 0;
+          final newPieces = unitType == 'box' ? newQty * piecesPerBox : newQty;
+          final isOver    = maxPieces != null && newPieces > maxPieces;
+
+          String availLabel = '';
+          if (maxPieces != null) {
+            final availBoxes = maxPieces ~/ piecesPerBox;
+            final availPcs   = maxPieces % piecesPerBox;
+            availLabel = availBoxes > 0
+                ? '$availBoxes box(es)${availPcs > 0 ? ' + $availPcs pcs' : ''}'
+                : '$availPcs pcs';
+          }
+
+          return AlertDialog(
+            title: Text('Edit — ${product?.name ?? item.productId}'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (maxPieces != null) ...[
+                  Text(
+                    'Available: $availLabel',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isOver ? Colors.red : Colors.grey[600],
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      order.typeLabel,
-                      style: const TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                const Text('Unit type'),
+                const SizedBox(height: 6),
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(value: 'box', label: Text('Box')),
+                    ButtonSegment(value: 'piece', label: Text('Piece')),
                   ],
+                  selected: {unitType},
+                  onSelectionChanged: (s) =>
+                      setDlg(() => unitType = s.first),
                 ),
-              ),
-
-              // Meta info
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _metaRow('Client', client?.name ?? order.clientId),
-                    _metaRow('Date', dateFmt.format(order.date)),
-                    if (order.notes != null && order.notes!.isNotEmpty)
-                      _metaRow('Notes', order.notes!),
-                  ],
-                ),
-              ),
-
-              const Divider(height: 20),
-
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: Text('Items',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-              const SizedBox(height: 4),
-
-              // Items list or loading/error
-              if (snap.connectionState == ConnectionState.waiting)
-                const Expanded(
-                    child: Center(child: CircularProgressIndicator()))
-              else if (snap.hasError)
-                Expanded(
-                    child: Center(child: Text('Error: ${snap.error}')))
-              else if (data == null || data.items.isEmpty)
-                const Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Text('No items.'),
-                  ),
-                )
-              else ...[
-                Expanded(
-                  child: ListView.separated(
-                    controller: scrollCtrl,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: data.items.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (ctx, i) {
-                      final item = data.items[i];
-                      final product = data.productsById[item.productId];
-                      final qtyLabel = item.unitType == 'box'
-                          ? '${item.quantity} box(es)'
-                          : '${item.quantity} pcs';
-                      final amount = data.amounts[item.id] ?? 0.0;
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(product?.name ?? item.productId),
-                        subtitle: Text(qtyLabel,
-                            style: const TextStyle(fontSize: 12)),
-                        trailing: Text(
-                          formatCurrency(amount),
-                          style: const TextStyle(fontWeight: FontWeight.w500),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-
-                // Grand total footer
-                Container(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                  decoration: BoxDecoration(
-                    border: Border(
-                        top: BorderSide(color: Colors.grey.shade300)),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      const Text(
-                        'Grand Total: ',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 15),
-                      ),
-                      Text(
-                        formatCurrency(data.grandTotal),
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 15),
-                      ),
-                    ],
+                const SizedBox(height: 16),
+                TextField(
+                  controller: qtyCtrl,
+                  keyboardType: TextInputType.number,
+                  onChanged: (_) => setDlg(() {}),
+                  decoration: InputDecoration(
+                    labelText: 'Quantity',
+                    border: const OutlineInputBorder(),
+                    isDense: true,
+                    errorText: isOver ? 'Exceeds available stock' : null,
                   ),
                 ),
               ],
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel')),
+              FilledButton(
+                  onPressed: isOver ? null : () => Navigator.pop(ctx, true),
+                  child: const Text('Save')),
             ],
           );
         },
       ),
-    ),
-  );
+    );
+
+    if (confirmed != true || !mounted) return;
+    final newQty = int.tryParse(qtyCtrl.text.trim()) ?? 0;
+    if (newQty <= 0) return;
+
+    await ref.read(badOrderRepositoryProvider).updateItem(
+      order: widget.order,
+      oldItem: item,
+      newUnitType: unitType,
+      newQuantity: newQty,
+      piecesPerBox: product?.piecesPerBox ?? 1,
+    );
+    ref.invalidate(badOrdersListProvider);
+    ref.invalidate(inventoryListProvider);
+    await _loadData();
+  }
+
+  Future<void> _deleteItem(BadOrderItem item) async {
+    final product = _productsById[item.productId];
+    final ok = await showConfirmDialog(
+      context,
+      title: 'Delete Item',
+      message: 'Remove "${product?.name ?? item.productId}" from this '
+          '${widget.order.typeLabel}? The inventory will be adjusted.',
+      confirmLabel: 'Delete',
+    );
+    if (!ok || !mounted) return;
+
+    await ref.read(badOrderRepositoryProvider).deleteItem(
+      order: widget.order,
+      item: item,
+      piecesPerBox: product?.piecesPerBox ?? 1,
+    );
+    ref.invalidate(badOrdersListProvider);
+    ref.invalidate(inventoryListProvider);
+
+    await _loadData();
+
+    if (mounted && _items.isEmpty) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dateFmt = DateFormat('MMM dd, yyyy');
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.5,
+      maxChildSize: 0.85,
+      minChildSize: 0.3,
+      expand: false,
+      builder: (ctx, scrollCtrl) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Handle
+          Center(
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 10),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Row(
+              children: [
+                Icon(
+                  widget.order.isReturn
+                      ? Icons.undo
+                      : Icons.remove_shopping_cart,
+                  color:
+                      widget.order.isReturn ? Colors.green : Colors.orange,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  widget.order.typeLabel,
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ),
+
+          // Meta info
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _metaRow('Client',
+                    widget.client?.name ?? widget.order.clientId),
+                _metaRow('Date', dateFmt.format(widget.order.date)),
+                if (widget.order.notes != null &&
+                    widget.order.notes!.isNotEmpty)
+                  _metaRow('Notes', widget.order.notes!),
+              ],
+            ),
+          ),
+
+          const Divider(height: 20),
+
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Text('Items',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+          const SizedBox(height: 4),
+
+          // Body
+          if (_loading)
+            const Expanded(
+                child: Center(child: CircularProgressIndicator()))
+          else if (_items.isEmpty)
+            const Expanded(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('No items.'),
+              ),
+            )
+          else ...[
+            Expanded(
+              child: ListView.separated(
+                controller: scrollCtrl,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: _items.length,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (ctx, i) {
+                  final item    = _items[i];
+                  final product = _productsById[item.productId];
+                  final qtyLabel = item.unitType == 'box'
+                      ? '${item.quantity} box(es)'
+                      : '${item.quantity} pcs';
+                  final amount = _amounts[item.id] ?? 0.0;
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(product?.name ?? item.productId),
+                    subtitle: Text(qtyLabel,
+                        style: const TextStyle(fontSize: 12)),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          formatCurrency(amount),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w500),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined,
+                              size: 20),
+                          tooltip: 'Edit item',
+                          onPressed: () => _editItem(item),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline,
+                              color: Colors.red, size: 20),
+                          tooltip: 'Delete item',
+                          onPressed: () => _deleteItem(item),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+
+            // Grand total footer
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              decoration: BoxDecoration(
+                border:
+                    Border(top: BorderSide(color: Colors.grey.shade300)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  const Text('Grand Total: ',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 15)),
+                  Text(
+                    formatCurrency(_grandTotal),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 Widget _metaRow(String label, String value) => Padding(

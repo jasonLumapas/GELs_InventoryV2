@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../../models/inventory_item.dart';
 import '../../models/product.dart';
 import '../../models/stock_movement.dart';
+import '../../core/services/app_settings_service.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../repositories/stock_movement_repository.dart';
@@ -50,6 +51,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   Widget build(BuildContext context) {
     final viewAsync      = ref.watch(inventoryViewProvider);
     final suppliersAsync = ref.watch(suppliersListProvider);
+    final allowAdd     = ref.watch(inventoryAllowAddStockProvider).valueOrNull ?? true;
+    final allowRemove  = ref.watch(inventoryAllowRemoveStockProvider).valueOrNull ?? true;
+    final showHistory  = ref.watch(inventoryShowHistoryProvider).valueOrNull ?? true;
     final suppliers      = [...suppliersAsync.valueOrNull ?? []]
       ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
@@ -157,31 +161,34 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          IconButton(
-                            icon: const Icon(Icons.add_circle,
-                                color: Colors.green),
-                            tooltip: 'Add stock',
-                            onPressed: () => _showAdjustDialog(
-                                ctx, product, qty,
-                                isAdd: true),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.remove_circle,
-                                color: Colors.red),
-                            tooltip: 'Remove stock',
-                            onPressed: qty == 0
-                                ? null
-                                : () => _showAdjustDialog(
-                                    ctx, product, qty,
-                                    isAdd: false),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.history,
-                                color: Colors.blueGrey),
-                            tooltip: 'Transaction history',
-                            onPressed: () =>
-                                _showHistoryDialog(ctx, product),
-                          ),
+                          if (allowAdd)
+                            IconButton(
+                              icon: const Icon(Icons.add_circle,
+                                  color: Colors.green),
+                              tooltip: 'Add stock',
+                              onPressed: () => _showAdjustDialog(
+                                  ctx, product, qty,
+                                  isAdd: true),
+                            ),
+                          if (allowRemove)
+                            IconButton(
+                              icon: const Icon(Icons.remove_circle,
+                                  color: Colors.red),
+                              tooltip: 'Remove stock',
+                              onPressed: qty == 0
+                                  ? null
+                                  : () => _showAdjustDialog(
+                                      ctx, product, qty,
+                                      isAdd: false),
+                            ),
+                          if (showHistory)
+                            IconButton(
+                              icon: const Icon(Icons.history,
+                                  color: Colors.blueGrey),
+                              tooltip: 'Transaction history',
+                              onPressed: () =>
+                                  _showHistoryDialog(ctx, product),
+                            ),
                         ],
                       ),
                     );

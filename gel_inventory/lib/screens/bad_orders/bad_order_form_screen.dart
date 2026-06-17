@@ -32,6 +32,7 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
   String _type = 'bad_order'; // 'bad_order' | 'return'
   DateTime _selectedDate = DateTime.now();
   final List<_BoItem> _items = [];
+  Map<String, int> _inventoryQty = {};
   bool _loading = true;
   bool _saving = false;
   Set<String> _orderedProductIds = {};
@@ -46,10 +47,49 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
   }
 
   Future<void> _load() async {
-    _clients = await ref.read(clientRepositoryProvider).getAll();
-    _products = await ref.read(productRepositoryProvider).getAll();
+    final clientsFuture  = ref.read(clientRepositoryProvider).getAll();
+    final productsFuture = ref.read(productRepositoryProvider).getAll();
+    final invFuture      = ref.read(inventoryRepositoryProvider).getAll();
+    _clients  = await clientsFuture;
+    _products = await productsFuture;
+    final invItems = await invFuture;
     _allowNoClient = await AppSettingsService.getAllowBadOrderNoClient();
+    _inventoryQty = {for (final i in invItems) i.productId: i.quantityPieces};
     setState(() => _loading = false);
+  }
+
+  int _committedPieces(String productId, {int? excludeIndex}) {
+    int total = 0;
+    for (int i = 0; i < _items.length; i++) {
+      if (i == excludeIndex) continue;
+      if (_items[i].productId == productId) total += _items[i].quantityInPieces;
+    }
+    return total;
+  }
+
+  int _effectiveAvailable(String productId, {int? excludeIndex}) {
+    final stock = _inventoryQty[productId] ?? 0;
+    final avail = stock - _committedPieces(productId, excludeIndex: excludeIndex);
+    return avail < 0 ? 0 : (avail > stock ? stock : avail);
+  }
+
+  bool get _canSave {
+    if (_saving) return false;
+    if (_selectedClient == null && !_noClient) return false;
+    if (_items.isEmpty) return false;
+    if (_type == 'bad_order') {
+      for (int i = 0; i < _items.length; i++) {
+        final item = _items[i];
+        if (item.quantity <= 0) return false;
+        if (item.quantityInPieces >
+            _effectiveAvailable(item.productId, excludeIndex: i)) {
+          return false;
+        }
+      }
+    } else {
+      if (_items.any((item) => item.quantity <= 0)) return false;
+    }
+    return true;
   }
 
   void _toggleNoClient(bool value) {
@@ -140,12 +180,46 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
               : 'No previously ordered products found for this client.')));
       return;
     }
+    final isBadOrder = _type == 'bad_order';
     final picked = await showSearchPicker<Product>(
       context: context,
       title: 'Select Product',
       items: available,
       labelOf: (p) => p.name,
       searchableOf: (p) => '${p.name} ${p.productCode ?? ''}',
+      leadingOf: isBadOrder
+          ? (p) => Icon(
+                _effectiveAvailable(p.id) > 0
+                    ? Icons.check_circle
+                    : Icons.cancel,
+                color: _effectiveAvailable(p.id) > 0
+                    ? Colors.green
+                    : Colors.red,
+                size: 20,
+              )
+          : null,
+      subtitleOf: isBadOrder
+          ? (p) {
+              final qty = _effectiveAvailable(p.id);
+              if (qty <= 0) return 'No stock';
+              final ppb = p.piecesPerBox;
+              final boxes = qty ~/ ppb;
+              final pcs = qty % ppb;
+              return boxes > 0
+                  ? '$boxes box(es) + $pcs pcs  ($qty pcs total)'
+                  : '$qty pcs available';
+            }
+          : null,
+      subtitleStyleOf: isBadOrder
+          ? (p) => TextStyle(
+                color: _effectiveAvailable(p.id) > 0
+                    ? Colors.green.shade700
+                    : Colors.red,
+              )
+          : null,
+      isDisabledOf: isBadOrder
+          ? (p) => _effectiveAvailable(p.id) <= 0
+          : null,
     );
     if (picked != null) {
       setState(() => _items.add(_BoItem(
@@ -356,6 +430,10 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                           itemCount: _items.length,
                           itemBuilder: (_, i) => _BoItemTile(
                             item: _items[i],
+                            availablePieces: _effectiveAvailable(
+                                _items[i].productId,
+                                excludeIndex: i),
+                            isBadOrder: _type == 'bad_order',
                             onRemove: () =>
                                 setState(() => _items.removeAt(i)),
                             onChanged: () => setState(() {}),
@@ -377,11 +455,7 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                       ),
                       const SizedBox(width: 8),
                       FilledButton(
-                        onPressed: ((_selectedClient != null || _noClient) &&
-                                _items.isNotEmpty &&
-                                !_saving)
-                            ? _save
-                            : null,
+                        onPressed: _canSave ? _save : null,
                         child: const Text('Save'),
                       ),
                     ],
@@ -405,15 +479,22 @@ class _BoItem {
     required this.productName,
     required this.piecesPerBox,
   });
+
+  int get quantityInPieces =>
+      unitType == 'box' ? quantity * piecesPerBox : quantity;
 }
 
 class _BoItemTile extends StatefulWidget {
   final _BoItem item;
+  final int availablePieces;
+  final bool isBadOrder;
   final VoidCallback onRemove;
   final VoidCallback onChanged;
 
   const _BoItemTile({
     required this.item,
+    required this.availablePieces,
+    required this.isBadOrder,
     required this.onRemove,
     required this.onChanged,
   });
@@ -439,16 +520,39 @@ class _BoItemTileState extends State<_BoItemTile> {
 
   @override
   Widget build(BuildContext context) {
-    final item = widget.item;
+    final item    = widget.item;
+    final avail   = widget.availablePieces;
+    final stockOk = !widget.isBadOrder || item.quantityInPieces <= avail;
+    final ppb     = item.piecesPerBox;
+    final availBoxes = avail ~/ ppb;
+    final availPcs   = avail % ppb;
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      color: stockOk ? null : Colors.red.shade50,
       child: Padding(
         padding: const EdgeInsets.all(8),
         child: Row(
           children: [
             Expanded(
-              child: Text(item.productName,
-                  style: const TextStyle(fontWeight: FontWeight.w500)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(item.productName,
+                      style: const TextStyle(fontWeight: FontWeight.w500)),
+                  if (widget.isBadOrder)
+                    Text(
+                      stockOk
+                          ? 'Available: $availBoxes box(es) + $availPcs pcs'
+                          : 'Only $availBoxes box(es) + $availPcs pcs available',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: stockOk
+                              ? Colors.grey.shade600
+                              : Colors.red),
+                    ),
+                ],
+              ),
             ),
             SegmentedButton<String>(
               segments: const [

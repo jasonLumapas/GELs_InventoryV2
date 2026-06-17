@@ -56,7 +56,10 @@ class _LineItem {
   double get subtotalSupplier =>
       isFree ? 0 : quantityInPieces * supplierPrice;
 
-  bool get pricesDiffer => supplierPrice != systemPrice;
+  bool get pricesDiffer {
+    final enteredBox = double.tryParse(supplierPriceCtrl.text) ?? systemPricePerBox;
+    return (enteredBox * 100).round() != (systemPricePerBox * 100).round();
+  }
 }
 
 // ── Screen ────────────────────────────────────────────────────────────────────

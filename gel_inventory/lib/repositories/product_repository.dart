@@ -23,9 +23,7 @@ class ProductRepository extends BaseRepository {
           .eq('is_deleted', false)
           .order('name');
       final products = (data as List).map((j) => Product.fromJson(j)).toList();
-      for (final p in products) {
-        await trySaveLocal(() => _saveLocalProduct(p));
-      }
+      await Future.wait(products.map((p) => trySaveLocal(() => _saveLocalProduct(p))));
       return products;
     }
     final rows = await (db.select(db.products)

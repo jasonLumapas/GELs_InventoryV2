@@ -20,8 +20,11 @@ import '../../widgets/common/confirm_dialog.dart';
 // Uses public providers so external screens can invalidate after invoice saves.
 final inventoryViewProvider =
     FutureProvider<List<({Product product, InventoryItem? stock})>>((ref) async {
-  final products      = await ref.watch(productsListProvider.future);
-  final inventoryItems = await ref.watch(inventoryListProvider.future);
+  // Start both fetches concurrently before awaiting either.
+  final productsFuture   = ref.watch(productsListProvider.future);
+  final inventoryFuture  = ref.watch(inventoryListProvider.future);
+  final products         = await productsFuture;
+  final inventoryItems   = await inventoryFuture;
   final stockByProductId = {for (final i in inventoryItems) i.productId: i};
   return products
       .map((p) => (product: p, stock: stockByProductId[p.id]))

@@ -23,9 +23,7 @@ class SupplierRepository extends BaseRepository {
           .order('name');
       final suppliers =
           (data as List).map((j) => Supplier.fromJson(j)).toList();
-      for (final s in suppliers) {
-        await trySaveLocal(() => _saveLocal(s));
-      }
+      await Future.wait(suppliers.map((s) => trySaveLocal(() => _saveLocal(s))));
       return suppliers;
     }
     final rows = await (db.select(db.suppliers)

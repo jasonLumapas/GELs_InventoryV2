@@ -20,9 +20,7 @@ class InventoryRepository extends BaseRepository {
       final data = await Supabase.instance.client.from('inventory').select();
       final items =
           (data as List).map((j) => InventoryItem.fromJson(j)).toList();
-      for (final item in items) {
-        await trySaveLocal(() => _saveLocal(item));
-      }
+      await Future.wait(items.map((item) => trySaveLocal(() => _saveLocal(item))));
       return items;
     }
     final rows = await db.select(db.inventory).get();

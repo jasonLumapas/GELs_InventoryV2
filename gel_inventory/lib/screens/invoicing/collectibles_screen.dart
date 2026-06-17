@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../models/invoice.dart';
+import '../../models/invoice_payment.dart';
 import '../../repositories/client_repository.dart';
 import '../../repositories/invoice_payment_repository.dart';
 import '../../repositories/invoice_repository.dart';
@@ -19,13 +20,31 @@ class _CollectibleItem {
   // Overrides invoice.paymentType for chip routing (e.g. cash portion of a
   // check invoice appears under the Cash chip).
   final String displayPaymentType;
+  // Only populated for partial invoices that still have a remaining balance.
+  // Used to compute date-filtered paid amounts dynamically.
+  final List<InvoicePayment> _partialPayments;
 
   _CollectibleItem({
     required this.invoice,
     required this.clientName,
     required this.outstanding,
     String? displayPaymentType,
-  }) : displayPaymentType = displayPaymentType ?? invoice.paymentType;
+    List<InvoicePayment>? partialPayments,
+  })  : displayPaymentType = displayPaymentType ?? invoice.paymentType,
+        _partialPayments = partialPayments ?? const [];
+
+  /// Amount collected within [start, end).
+  /// For partial-with-balance: sum of payments in that range.
+  /// For everything else (fully paid, cash, etc.): full invoice total.
+  double paidInRange(DateTime start, DateTime end) {
+    if (_partialPayments.isEmpty) return invoice.totalAmount;
+    return _partialPayments
+        .where((p) =>
+            p.paymentDate != null &&
+            !p.paymentDate!.isBefore(start) &&
+            p.paymentDate!.isBefore(end))
+        .fold<double>(0.0, (s, p) => s + p.amount);
+  }
 }
 
 class CollectiblesScreen extends ConsumerStatefulWidget {
@@ -155,14 +174,18 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
     final List<_CollectibleItem> items = [];
     for (final inv in nonCash) {
       double outstanding;
+      List<InvoicePayment>? partialPayments;
       if (inv.paymentType == 'cash') {
         outstanding = inv.totalAmount; // show full amount as "collected"
       } else if (inv.paymentType == 'partial') {
         final payments = await ref
             .read(invoicePaymentRepositoryProvider)
             .getForInvoice(inv.id);
-        final paid = payments.fold(0.0, (s, p) => s + p.amount);
-        outstanding = inv.totalAmount - paid;
+        // outstanding uses ALL payments so the Balance subtitle stays correct.
+        final totalPaid = payments.fold(0.0, (s, p) => s + p.amount);
+        outstanding = inv.totalAmount - totalPaid;
+        // Store payments so paidInRange() can filter by date dynamically.
+        if (outstanding > 0.01) partialPayments = payments;
       } else if (inv.paymentType == 'check') {
         final checkPaid = inv.checkAmount ?? 0.0;
         final payments = await ref
@@ -193,9 +216,9 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
           inv.paymentType == 'check') {
         items.add(_CollectibleItem(
           invoice: inv,
-          clientName:
-              clientMap[inv.clientId]?.name ?? inv.clientId,
+          clientName: clientMap[inv.clientId]?.name ?? inv.clientId,
           outstanding: outstanding,
+          partialPayments: partialPayments,
         ));
       }
     }
@@ -214,11 +237,14 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
         if (_filterType != null) {
           final type = i.displayPaymentType;
           if (_filterType == 'paid_accounts') {
-            // Fully paid credit, partial, or check invoices
-            if ((type != 'credit' && type != 'partial' && type != 'check') ||
-                i.outstanding > 0.01) {
+            // Fully paid credit/check/partial, OR partial with some payment made.
+            if (type != 'credit' && type != 'partial' && type != 'check') {
               return false;
             }
+            final isFullyPaid = i.outstanding <= 0.01;
+            final hasPartialPayment = type == 'partial' &&
+                i.paidInRange(_startDate, _endDate) > 0.01;
+            if (!isFullyPaid && !hasPartialPayment) return false;
           } else if (_filterType == 'check') {
             // Check chip: only unpaid/partially-paid check invoices
             if (type != 'check' || i.outstanding <= 0.01) {
@@ -234,6 +260,13 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
             return false;
           }
         }
+        // Partial-with-balance: already date-gated by paidInRange above;
+        // skip the invoice-date filter so payments on old invoices still appear.
+        if (_filterType == 'paid_accounts' &&
+            i.displayPaymentType == 'partial' &&
+            i.outstanding > 0.01) {
+          return true;
+        }
         final d = i.invoice.invoiceDate;
         return !d.isBefore(_startDate) && d.isBefore(_endDate);
       }).toList();
@@ -243,8 +276,8 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
     final dateFmt = DateFormat('MMM dd, yyyy');
     final filtered  = _filtered;
     final totalOutstanding = filtered.fold(0.0, (s, i) => s + i.outstanding);
-    final totalPaidAccounts =
-        filtered.fold(0.0, (s, i) => s + i.invoice.totalAmount);
+    final totalPaidAccounts = filtered.fold<double>(
+        0.0, (s, i) => s + i.paidInRange(_startDate, _endDate));
 
     return AppScaffold(
       title: 'Remittance',
@@ -367,7 +400,7 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
                                 // other types show amount in title.
                                 if (_filterType == 'paid_accounts')
                                   Text(
-                                    formatCurrency(inv.totalAmount),
+                                    formatCurrency(item.paidInRange(_startDate, _endDate)),
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       color: Colors.green.shade700,
@@ -388,6 +421,11 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
                               '${dateFmt.format(inv.invoiceDate)}  •  '
                               '${isCashOfCheck ? "Cash payment (Check)" : inv.paymentLabel}'
                               '${isCheck && item.outstanding > 0.01
+                                  ? '  •  Balance: ${formatCurrency(item.outstanding)}'
+                                  : ''}'
+                              '${_filterType == 'paid_accounts' &&
+                                      inv.paymentType == 'partial' &&
+                                      item.outstanding > 0.01
                                   ? '  •  Balance: ${formatCurrency(item.outstanding)}'
                                   : ''}',
                             ),

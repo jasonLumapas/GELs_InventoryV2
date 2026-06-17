@@ -597,6 +597,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                 ),
 
                 if (!isCancelled) ...[
+                  Expanded(child: SingleChildScrollView(child: Column(children: [
                   // Check fields
                   if (_paymentType == 'check') ...[
                     Padding(
@@ -1072,28 +1073,33 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                   ),
 
                   // Editable items list
-                  Expanded(
-                    child: _editItems.isEmpty
-                        ? const Center(
-                            child: Text('No items. Tap "Add Product".'))
-                        : ListView.builder(
-                            itemCount: _editItems.length,
-                            itemBuilder: (ctx, i) {
-                              final item = _editItems[i];
-                              final currentInv =
-                                  item.inventory?.quantityPieces ?? 0;
-                              return _EditItemTile(
-                                item: item,
-                                currentInventoryPieces: currentInv,
-                                onRemove: () =>
-                                    setState(() => _editItems.removeAt(i)),
-                                onChanged: () => setState(() {}),
-                              );
-                            },
-                          ),
-                  ),
+                  if (_editItems.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                          child: Text('No items. Tap "Add Product".')),
+                    )
+                  else
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _editItems.length,
+                      itemBuilder: (ctx, i) {
+                        final item = _editItems[i];
+                        final currentInv =
+                            item.inventory?.quantityPieces ?? 0;
+                        return _EditItemTile(
+                          item: item,
+                          currentInventoryPieces: currentInv,
+                          onRemove: () =>
+                              setState(() => _editItems.removeAt(i)),
+                          onChanged: () => setState(() {}),
+                        );
+                      },
+                    ),
+                  ]))),  // end Column / SingleChildScrollView / Expanded
 
-                  // Total + actions bar
+                  // Total + actions bar (pinned outside the scroll view)
                   Container(
                     color: Theme.of(context)
                         .colorScheme

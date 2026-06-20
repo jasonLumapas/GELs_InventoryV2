@@ -147,16 +147,47 @@ Future<void> printInvoice({
   );
 
   // ── Item height estimator ────────────────────────────────────────────────────
-  // 22 pt = single-line row; 36 pt = two-line row (long name or discount).
+  // Simulates word-wrap on the description column so 3-, 4-, or more-line
+  // product names don't overflow into the next page's header.
+  //
+  // Font: Arial Narrow Bold 11.5 pt
+  //   avg glyph width  ≈ 5.5 pt  (0.478 × em — calibrated against observed
+  //                                single/two-line heights of 22/36 pt)
+  //   space advance    ≈ 3.2 pt  (0.28 × em, typical for proportional fonts)
+  //   line height      = 14 pt   (11.5 × 1.2 leading — matches 22 & 36 pt)
+  //   row bottom pad   = 7 pt    (EdgeInsets.only(bottom: 7) on each widget)
   double itemH(InvoiceItem item) {
     final product = productsById[item.productId];
     final name = product != null
         ? '${product.name} x ${product.piecesPerBox}'
         : '';
-    final orig = item.quantity * item.pricePerPiece;
-    final twoLine = name.length > 20 ||
-        (!item.isFree && (orig - item.subtotal) > 0.01);
-    return twoLine ? 36.0 : 22.0;
+    final orig        = item.quantity * item.pricePerPiece;
+    final hasDiscount = !item.isFree && (orig - item.subtotal) > 0.01;
+
+    const double charW  = 5.5;
+    const double spaceW = 3.2;
+    const double lineH  = 14.0;
+    const double rowPad = 7.0;
+
+    // Greedy word-wrap: break before a word that would exceed descW.
+    int    nameLines = 1;
+    double curW      = 0.0;
+    for (final word in name.split(' ')) {
+      final ww = word.length * charW;
+      if (curW > 0 && curW + spaceW + ww > descW) {
+        nameLines++;
+        curW = ww;
+      } else {
+        curW += (curW > 0 ? spaceW : 0.0) + ww;
+      }
+    }
+
+    // The amount column adds a discount line when applicable.
+    final totalLines = nameLines > (hasDiscount ? 2 : 1)
+        ? nameLines
+        : (hasDiscount ? 2 : 1);
+
+    return totalLines * lineH + rowPad;
   }
 
   // ── Item widgets ─────────────────────────────────────────────────────────────

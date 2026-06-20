@@ -1061,6 +1061,16 @@ class _LineItemTileState extends State<_LineItemTile> {
   }
 
   @override
+  void didUpdateWidget(_LineItemTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.item, widget.item)) {
+      final text =
+          widget.item.quantity > 0 ? widget.item.quantity.toString() : '';
+      if (_qtyCtrl.text != text) _qtyCtrl.text = text;
+    }
+  }
+
+  @override
   void dispose() {
     _qtyCtrl.dispose();
     super.dispose();

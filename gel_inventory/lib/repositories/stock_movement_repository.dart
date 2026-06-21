@@ -428,6 +428,36 @@ class StockMovementRepository extends BaseRepository {
     return (nonBO, bo, bulkClear);
   }
 
+  /// Returns the most recent `reference_date` of any "Bulk clear all stock"
+  /// movement, or null if no bulk clear has ever been performed.
+  Future<DateTime?> getLastBulkClearDate() async {
+    if (isOnline) {
+      try {
+        final data = await Supabase.instance.client
+            .from('stock_movements')
+            .select('reference_date')
+            .eq('movement_type', 'out')
+            .eq('comments', 'Bulk clear all stock')
+            .order('reference_date', ascending: false)
+            .limit(1);
+        final list = data as List;
+        if (list.isEmpty) return null;
+        final refStr = list.first['reference_date'] as String?;
+        return refStr != null ? DateTime.tryParse(refStr) : null;
+      } catch (e) {
+        debugPrint('getLastBulkClearDate Supabase failed: $e. Falling back to local.');
+      }
+    }
+    final rows = await (db.select(db.stockMovements)
+          ..where((t) =>
+              t.movementType.equals('out') &
+              t.comments.equals('Bulk clear all stock'))
+          ..orderBy([(t) => drift.OrderingTerm.desc(t.referenceDate)])
+          ..limit(1))
+        .get();
+    return rows.isEmpty ? null : rows.first.referenceDate;
+  }
+
   Future<List<StockMovement>> getForProduct(String productId) async {
     if (isOnline) {
       final data = await Supabase.instance.client

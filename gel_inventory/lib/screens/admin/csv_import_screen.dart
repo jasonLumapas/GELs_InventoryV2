@@ -84,6 +84,7 @@ class _SupplierProductImportTabState
   final List<_LogEntry> _log = [];
   _ProductImportSummary? _summary;
   DateTime _selectedDate = DateTime.now();
+  DateTime? _lastBulkClearDate;
 
   @override
   void initState() {
@@ -92,7 +93,29 @@ class _SupplierProductImportTabState
         Platform.environment['HOME'] ??
         '';
     _pathCtrl.text = '$home\\Desktop\\supplier_products.csv';
+    _loadLastBulkClearDate();
   }
+
+  Future<void> _loadLastBulkClearDate() async {
+    final date = await ref
+        .read(stockMovementRepositoryProvider)
+        .getLastBulkClearDate();
+    if (!mounted) return;
+    setState(() {
+      _lastBulkClearDate = date;
+      if (date != null) {
+        final minDate = _minAllowedDate(date);
+        if (_selectedDate.isBefore(minDate)) _selectedDate = minDate;
+      }
+    });
+  }
+
+  /// Day after the last bulk clear (date-only, no time component).
+  DateTime _minAllowedDate(DateTime bulkClearDate) => DateTime(
+        bulkClearDate.year,
+        bulkClearDate.month,
+        bulkClearDate.day,
+      ).add(const Duration(days: 1));
 
   @override
   void dispose() {
@@ -146,6 +169,22 @@ class _SupplierProductImportTabState
   // ── Import logic ──────────────────────────────────────────────────────────
 
   Future<void> _import() async {
+    // Date guard: selected date must be the day after the last bulk clear.
+    if (_lastBulkClearDate != null) {
+      final minDate = _minAllowedDate(_lastBulkClearDate!);
+      final selected = DateTime(
+          _selectedDate.year, _selectedDate.month, _selectedDate.day);
+      if (selected.isBefore(minDate)) {
+        _addLog(
+          'Invalid date. Must be ${DateFormat("MMM dd, yyyy").format(minDate)} '
+          'or later (day after last bulk clear on '
+          '${DateFormat("MMM dd, yyyy").format(_lastBulkClearDate!)}).',
+          level: _LogLevel.error,
+        );
+        return;
+      }
+    }
+
     final path = _pathCtrl.text.trim();
     final file = File(path);
     if (!file.existsSync()) {
@@ -345,10 +384,15 @@ class _SupplierProductImportTabState
           // ── Reference date ──────────────────────────────────────────────
           InkWell(
             onTap: () async {
+              final minDate = _lastBulkClearDate != null
+                  ? _minAllowedDate(_lastBulkClearDate!)
+                  : DateTime(2020);
               final picked = await showDatePicker(
                 context: context,
-                initialDate: _selectedDate,
-                firstDate: DateTime(2020),
+                initialDate: _selectedDate.isBefore(minDate)
+                    ? minDate
+                    : _selectedDate,
+                firstDate: minDate,
                 lastDate: DateTime(2100),
               );
               if (picked != null) setState(() => _selectedDate = picked);
@@ -363,6 +407,17 @@ class _SupplierProductImportTabState
               child: Text(DateFormat('MMM dd, yyyy').format(_selectedDate)),
             ),
           ),
+          if (_lastBulkClearDate != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Earliest allowed: '
+                '${DateFormat("MMM dd, yyyy").format(_minAllowedDate(_lastBulkClearDate!))} '
+                '(day after last bulk clear on '
+                '${DateFormat("MMM dd, yyyy").format(_lastBulkClearDate!)})',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+              ),
+            ),
           const SizedBox(height: 10),
 
           // ── File path ───────────────────────────────────────────────────

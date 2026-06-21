@@ -29,6 +29,7 @@ Future<T?> showSearchPicker<T>({
   required String title,
   required List<T> items,
   required String Function(T) labelOf,
+  TextStyle? Function(T)? labelStyleOf,
   String Function(T)? searchableOf,
   String? Function(T)? subtitleOf,
   TextStyle? Function(T)? subtitleStyleOf,
@@ -50,6 +51,7 @@ Future<T?> showSearchPicker<T>({
       title: title,
       items: items,
       labelOf: labelOf,
+      labelStyleOf: labelStyleOf,
       searchableOf: searchableOf,
       subtitleOf: subtitleOf,
       subtitleStyleOf: subtitleStyleOf,
@@ -67,6 +69,7 @@ class _SearchPickerDialog<T> extends StatefulWidget {
   final String title;
   final List<T> items;
   final String Function(T) labelOf;
+  final TextStyle? Function(T)? labelStyleOf;
   final String Function(T)? searchableOf;
   final String? Function(T)? subtitleOf;
   final TextStyle? Function(T)? subtitleStyleOf;
@@ -81,6 +84,7 @@ class _SearchPickerDialog<T> extends StatefulWidget {
     required this.title,
     required this.items,
     required this.labelOf,
+    this.labelStyleOf,
     this.searchableOf,
     this.subtitleOf,
     this.subtitleStyleOf,
@@ -248,6 +252,7 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
                         final item = _filtered[i];
                         final sub = widget.subtitleOf?.call(item);
                         final subStyle = widget.subtitleStyleOf?.call(item);
+                        final labelStyle = widget.labelStyleOf?.call(item);
                         final leading = widget.leadingOf?.call(item);
                         final disabled =
                             widget.isDisabledOf?.call(item) ?? false;
@@ -256,7 +261,7 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
                         return ListTile(
                           enabled: !disabled,
                           leading: leading,
-                          title: Text(widget.labelOf(item)),
+                          title: Text(widget.labelOf(item), style: labelStyle),
                           subtitle: sub != null
                               ? Text(sub, style: subStyle)
                               : null,

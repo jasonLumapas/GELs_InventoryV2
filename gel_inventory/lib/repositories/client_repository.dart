@@ -57,6 +57,7 @@ class ClientRepository extends BaseRepository {
               name: r.name,
               contact: r.contact,
               address: r.address,
+              isBlacklisted: r.isBlacklisted,
               createdAt: r.createdAt,
             ))
         .toList();
@@ -97,6 +98,7 @@ class ClientRepository extends BaseRepository {
           name: drift.Value(c.name),
           contact: drift.Value(c.contact),
           address: drift.Value(c.address),
+          isBlacklisted: drift.Value(c.isBlacklisted),
           createdAt: drift.Value(c.createdAt),
         ));
   }

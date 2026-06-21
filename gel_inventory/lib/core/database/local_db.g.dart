@@ -402,6 +402,21 @@ class $ClientsTable extends Clients with TableInfo<$ClientsTable, Client> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _isBlacklistedMeta = const VerificationMeta(
+    'isBlacklisted',
+  );
+  @override
+  late final GeneratedColumn<bool> isBlacklisted = GeneratedColumn<bool>(
+    'is_blacklisted',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_blacklisted" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -415,7 +430,14 @@ class $ClientsTable extends Clients with TableInfo<$ClientsTable, Client> {
     defaultValue: currentDateAndTime,
   );
   @override
-  List<GeneratedColumn> get $columns => [id, name, contact, address, createdAt];
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    contact,
+    address,
+    isBlacklisted,
+    createdAt,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -453,6 +475,15 @@ class $ClientsTable extends Clients with TableInfo<$ClientsTable, Client> {
         address.isAcceptableOrUnknown(data['address']!, _addressMeta),
       );
     }
+    if (data.containsKey('is_blacklisted')) {
+      context.handle(
+        _isBlacklistedMeta,
+        isBlacklisted.isAcceptableOrUnknown(
+          data['is_blacklisted']!,
+          _isBlacklistedMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -484,6 +515,10 @@ class $ClientsTable extends Clients with TableInfo<$ClientsTable, Client> {
         DriftSqlType.string,
         data['${effectivePrefix}address'],
       ),
+      isBlacklisted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_blacklisted'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -502,12 +537,14 @@ class Client extends DataClass implements Insertable<Client> {
   final String name;
   final String? contact;
   final String? address;
+  final bool isBlacklisted;
   final DateTime createdAt;
   const Client({
     required this.id,
     required this.name,
     this.contact,
     this.address,
+    required this.isBlacklisted,
     required this.createdAt,
   });
   @override
@@ -521,6 +558,7 @@ class Client extends DataClass implements Insertable<Client> {
     if (!nullToAbsent || address != null) {
       map['address'] = Variable<String>(address);
     }
+    map['is_blacklisted'] = Variable<bool>(isBlacklisted);
     map['created_at'] = Variable<DateTime>(createdAt);
     return map;
   }
@@ -535,6 +573,7 @@ class Client extends DataClass implements Insertable<Client> {
       address: address == null && nullToAbsent
           ? const Value.absent()
           : Value(address),
+      isBlacklisted: Value(isBlacklisted),
       createdAt: Value(createdAt),
     );
   }
@@ -549,6 +588,7 @@ class Client extends DataClass implements Insertable<Client> {
       name: serializer.fromJson<String>(json['name']),
       contact: serializer.fromJson<String?>(json['contact']),
       address: serializer.fromJson<String?>(json['address']),
+      isBlacklisted: serializer.fromJson<bool>(json['isBlacklisted']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
   }
@@ -560,6 +600,7 @@ class Client extends DataClass implements Insertable<Client> {
       'name': serializer.toJson<String>(name),
       'contact': serializer.toJson<String?>(contact),
       'address': serializer.toJson<String?>(address),
+      'isBlacklisted': serializer.toJson<bool>(isBlacklisted),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
   }
@@ -569,12 +610,14 @@ class Client extends DataClass implements Insertable<Client> {
     String? name,
     Value<String?> contact = const Value.absent(),
     Value<String?> address = const Value.absent(),
+    bool? isBlacklisted,
     DateTime? createdAt,
   }) => Client(
     id: id ?? this.id,
     name: name ?? this.name,
     contact: contact.present ? contact.value : this.contact,
     address: address.present ? address.value : this.address,
+    isBlacklisted: isBlacklisted ?? this.isBlacklisted,
     createdAt: createdAt ?? this.createdAt,
   );
   Client copyWithCompanion(ClientsCompanion data) {
@@ -583,6 +626,9 @@ class Client extends DataClass implements Insertable<Client> {
       name: data.name.present ? data.name.value : this.name,
       contact: data.contact.present ? data.contact.value : this.contact,
       address: data.address.present ? data.address.value : this.address,
+      isBlacklisted: data.isBlacklisted.present
+          ? data.isBlacklisted.value
+          : this.isBlacklisted,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -594,13 +640,15 @@ class Client extends DataClass implements Insertable<Client> {
           ..write('name: $name, ')
           ..write('contact: $contact, ')
           ..write('address: $address, ')
+          ..write('isBlacklisted: $isBlacklisted, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, contact, address, createdAt);
+  int get hashCode =>
+      Object.hash(id, name, contact, address, isBlacklisted, createdAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -609,6 +657,7 @@ class Client extends DataClass implements Insertable<Client> {
           other.name == this.name &&
           other.contact == this.contact &&
           other.address == this.address &&
+          other.isBlacklisted == this.isBlacklisted &&
           other.createdAt == this.createdAt);
 }
 
@@ -617,6 +666,7 @@ class ClientsCompanion extends UpdateCompanion<Client> {
   final Value<String> name;
   final Value<String?> contact;
   final Value<String?> address;
+  final Value<bool> isBlacklisted;
   final Value<DateTime> createdAt;
   final Value<int> rowid;
   const ClientsCompanion({
@@ -624,6 +674,7 @@ class ClientsCompanion extends UpdateCompanion<Client> {
     this.name = const Value.absent(),
     this.contact = const Value.absent(),
     this.address = const Value.absent(),
+    this.isBlacklisted = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -632,6 +683,7 @@ class ClientsCompanion extends UpdateCompanion<Client> {
     required String name,
     this.contact = const Value.absent(),
     this.address = const Value.absent(),
+    this.isBlacklisted = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
@@ -641,6 +693,7 @@ class ClientsCompanion extends UpdateCompanion<Client> {
     Expression<String>? name,
     Expression<String>? contact,
     Expression<String>? address,
+    Expression<bool>? isBlacklisted,
     Expression<DateTime>? createdAt,
     Expression<int>? rowid,
   }) {
@@ -649,6 +702,7 @@ class ClientsCompanion extends UpdateCompanion<Client> {
       if (name != null) 'name': name,
       if (contact != null) 'contact': contact,
       if (address != null) 'address': address,
+      if (isBlacklisted != null) 'is_blacklisted': isBlacklisted,
       if (createdAt != null) 'created_at': createdAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -659,6 +713,7 @@ class ClientsCompanion extends UpdateCompanion<Client> {
     Value<String>? name,
     Value<String?>? contact,
     Value<String?>? address,
+    Value<bool>? isBlacklisted,
     Value<DateTime>? createdAt,
     Value<int>? rowid,
   }) {
@@ -667,6 +722,7 @@ class ClientsCompanion extends UpdateCompanion<Client> {
       name: name ?? this.name,
       contact: contact ?? this.contact,
       address: address ?? this.address,
+      isBlacklisted: isBlacklisted ?? this.isBlacklisted,
       createdAt: createdAt ?? this.createdAt,
       rowid: rowid ?? this.rowid,
     );
@@ -687,6 +743,9 @@ class ClientsCompanion extends UpdateCompanion<Client> {
     if (address.present) {
       map['address'] = Variable<String>(address.value);
     }
+    if (isBlacklisted.present) {
+      map['is_blacklisted'] = Variable<bool>(isBlacklisted.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -703,6 +762,7 @@ class ClientsCompanion extends UpdateCompanion<Client> {
           ..write('name: $name, ')
           ..write('contact: $contact, ')
           ..write('address: $address, ')
+          ..write('isBlacklisted: $isBlacklisted, ')
           ..write('createdAt: $createdAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -9920,6 +9980,7 @@ typedef $$ClientsTableCreateCompanionBuilder =
       required String name,
       Value<String?> contact,
       Value<String?> address,
+      Value<bool> isBlacklisted,
       Value<DateTime> createdAt,
       Value<int> rowid,
     });
@@ -9929,6 +9990,7 @@ typedef $$ClientsTableUpdateCompanionBuilder =
       Value<String> name,
       Value<String?> contact,
       Value<String?> address,
+      Value<bool> isBlacklisted,
       Value<DateTime> createdAt,
       Value<int> rowid,
     });
@@ -10001,6 +10063,11 @@ class $$ClientsTableFilterComposer
 
   ColumnFilters<String> get address => $composableBuilder(
     column: $table.address,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isBlacklisted => $composableBuilder(
+    column: $table.isBlacklisted,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10089,6 +10156,11 @@ class $$ClientsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get isBlacklisted => $composableBuilder(
+    column: $table.isBlacklisted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -10115,6 +10187,11 @@ class $$ClientsTableAnnotationComposer
 
   GeneratedColumn<String> get address =>
       $composableBuilder(column: $table.address, builder: (column) => column);
+
+  GeneratedColumn<bool> get isBlacklisted => $composableBuilder(
+    column: $table.isBlacklisted,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -10202,6 +10279,7 @@ class $$ClientsTableTableManager
                 Value<String> name = const Value.absent(),
                 Value<String?> contact = const Value.absent(),
                 Value<String?> address = const Value.absent(),
+                Value<bool> isBlacklisted = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ClientsCompanion(
@@ -10209,6 +10287,7 @@ class $$ClientsTableTableManager
                 name: name,
                 contact: contact,
                 address: address,
+                isBlacklisted: isBlacklisted,
                 createdAt: createdAt,
                 rowid: rowid,
               ),
@@ -10218,6 +10297,7 @@ class $$ClientsTableTableManager
                 required String name,
                 Value<String?> contact = const Value.absent(),
                 Value<String?> address = const Value.absent(),
+                Value<bool> isBlacklisted = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ClientsCompanion.insert(
@@ -10225,6 +10305,7 @@ class $$ClientsTableTableManager
                 name: name,
                 contact: contact,
                 address: address,
+                isBlacklisted: isBlacklisted,
                 createdAt: createdAt,
                 rowid: rowid,
               ),

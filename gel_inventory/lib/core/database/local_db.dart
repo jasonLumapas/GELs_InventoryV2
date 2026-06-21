@@ -25,6 +25,8 @@ class Clients extends Table {
   TextColumn get name => text()();
   TextColumn get contact => text().nullable()();
   TextColumn get address => text().nullable()();
+  BoolColumn get isBlacklisted =>
+      boolean().withDefault(const Constant(false))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
   @override
@@ -354,7 +356,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 23;
+  int get schemaVersion => 24;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -457,6 +459,11 @@ class LocalDatabase extends _$LocalDatabase {
           }
           if (from < 23) {
             await m.createTable(vanStockDrafts);
+          }
+          if (from < 24) {
+            await _addColumnIfMissing(
+                m.database, 'clients', 'is_blacklisted',
+                'INTEGER NOT NULL DEFAULT 0');
           }
         },
       );

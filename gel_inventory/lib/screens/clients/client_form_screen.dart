@@ -20,6 +20,7 @@ class _ClientFormScreenState extends ConsumerState<ClientFormScreen> {
   final _contactCtrl = TextEditingController();
   final _addressCtrl = TextEditingController();
   bool _loading = false;
+  bool _isBlacklisted = false;
   Client? _existing;
 
   bool get isNew => widget.clientId == null || widget.clientId == 'new';
@@ -38,6 +39,7 @@ class _ClientFormScreenState extends ConsumerState<ClientFormScreen> {
       _nameCtrl.text = _existing!.name;
       _contactCtrl.text = _existing!.contact ?? '';
       _addressCtrl.text = _existing!.address ?? '';
+      _isBlacklisted = _existing!.isBlacklisted;
     }
     setState(() => _loading = false);
   }
@@ -60,6 +62,7 @@ class _ClientFormScreenState extends ConsumerState<ClientFormScreen> {
           _contactCtrl.text.trim().isEmpty ? null : _contactCtrl.text.trim(),
       address:
           _addressCtrl.text.trim().isEmpty ? null : _addressCtrl.text.trim(),
+      isBlacklisted: _isBlacklisted,
       createdAt: _existing?.createdAt ?? DateTime.now(),
     );
     await ref.read(clientRepositoryProvider).upsert(client);
@@ -100,7 +103,18 @@ class _ClientFormScreenState extends ConsumerState<ClientFormScreen> {
                           const InputDecoration(labelText: 'Address (optional)'),
                       maxLines: 3,
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 8),
+                    SwitchListTile(
+                      value: _isBlacklisted,
+                      onChanged: (v) => setState(() => _isBlacklisted = v),
+                      title: const Text('Blacklisted'),
+                      subtitle: const Text(
+                          'Client name will appear in red on new invoices'),
+                      activeThumbColor: Colors.red,
+                      activeTrackColor: Colors.red.shade200,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    const SizedBox(height: 16),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [

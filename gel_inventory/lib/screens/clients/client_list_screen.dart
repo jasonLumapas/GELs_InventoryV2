@@ -95,14 +95,43 @@ class _ClientListScreenState extends ConsumerState<ClientListScreen> {
                           c.address!,
                       ];
                       return ListTile(
-                        leading: const Icon(Icons.store),
-                        title: Text(c.name),
+                        leading: Icon(Icons.store,
+                            color: c.isBlacklisted ? Colors.red : null),
+                        title: Text(
+                          c.name,
+                          style: TextStyle(
+                            color: c.isBlacklisted ? Colors.red : null,
+                            fontWeight: c.isBlacklisted
+                                ? FontWeight.bold
+                                : null,
+                          ),
+                        ),
                         subtitle: subtitleParts.isEmpty
                             ? null
                             : Text(subtitleParts.join('  •  ')),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            IconButton(
+                              icon: Icon(
+                                c.isBlacklisted
+                                    ? Icons.block
+                                    : Icons.block_outlined,
+                                color: c.isBlacklisted
+                                    ? Colors.red
+                                    : Colors.grey,
+                              ),
+                              tooltip: c.isBlacklisted
+                                  ? 'Remove blacklist'
+                                  : 'Blacklist client',
+                              onPressed: () async {
+                                await ref
+                                    .read(clientRepositoryProvider)
+                                    .upsert(c.copyWith(
+                                        isBlacklisted: !c.isBlacklisted));
+                                ref.invalidate(clientsListProvider);
+                              },
+                            ),
                             IconButton(
                               icon: const Icon(Icons.edit),
                               onPressed: () => context.go('/clients/${c.id}'),

@@ -118,6 +118,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   List<_EditItem> _editItems = [];
   Client? _selectedClient;
   List<Client> _clients = [];
+  Set<String> _pendingClientIds = {};
   List<Product> _products = [];
   Map<String, Product> _productsById = {};
   final Map<String, ProductPrice?> _priceCache = {};
@@ -172,6 +173,9 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     _originalItems =
         await ref.read(invoiceRepositoryProvider).getItems(widget.invoiceId);
     _clients = await ref.read(clientRepositoryProvider).getAll();
+    _pendingClientIds = await ref
+        .read(invoiceRepositoryProvider)
+        .getPendingCheckCreditClientIds();
     _products = await ref.read(productRepositoryProvider).getAll();
     _productsById = {for (final p in _products) p.id: p};
     _selectedClient =
@@ -257,13 +261,29 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     setState(() => _payments = _payments.where((p) => p.id != id).toList());
   }
 
+  bool _isClientFlagged(Client c) =>
+      c.isBlacklisted || _pendingClientIds.contains(c.id);
+
   Future<void> _pickClient() async {
     final picked = await showSearchPicker<Client>(
       context: context,
       title: 'Select Client / Store',
       items: _clients,
       labelOf: (c) => c.name,
-      subtitleOf: (c) => c.address,
+      labelStyleOf: (c) => _isClientFlagged(c)
+          ? const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)
+          : null,
+      subtitleOf: (c) {
+        final parts = [
+          if (c.address != null && c.address!.isNotEmpty) c.address!,
+          if (c.isBlacklisted) 'Blacklisted',
+          if (_pendingClientIds.contains(c.id)) 'Pending balance',
+        ];
+        return parts.isEmpty ? null : parts.join('  •  ');
+      },
+      subtitleStyleOf: (c) => _isClientFlagged(c)
+          ? TextStyle(color: Colors.red.shade700)
+          : null,
     );
     if (picked != null) setState(() => _selectedClient = picked);
   }
@@ -996,6 +1016,12 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                           style: TextStyle(
                             color: _selectedClient == null
                                 ? Theme.of(context).hintColor
+                                : (_isClientFlagged(_selectedClient!)
+                                    ? Colors.red
+                                    : null),
+                            fontWeight: _selectedClient != null &&
+                                    _isClientFlagged(_selectedClient!)
+                                ? FontWeight.bold
                                 : null,
                           ),
                         ),

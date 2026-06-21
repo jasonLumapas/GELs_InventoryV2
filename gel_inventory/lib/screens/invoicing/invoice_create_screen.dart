@@ -103,6 +103,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
   ProviderContainer? _container;
 
   List<Client> _clients = [];
+  Set<String> _pendingClientIds = {};
   List<Product> _products = [];
   Map<String, String> _supplierNames = {}; // productId → supplier name
   final Map<String, ProductPrice?> _priceCache = {};
@@ -146,6 +147,9 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
     final clients   = await ref.read(clientRepositoryProvider).getAll();
     final products  = await ref.read(productRepositoryProvider).getAll();
     final suppliers = await ref.read(supplierRepositoryProvider).getAll();
+    final pendingIds = await ref
+        .read(invoiceRepositoryProvider)
+        .getPendingCheckCreditClientIds();
     final suppMap = {for (final s in suppliers) s.id: s.name};
 
     String? invoiceNum;
@@ -163,6 +167,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
 
     setState(() {
       _clients  = clients;
+      _pendingClientIds = pendingIds;
       _products = products;
       _supplierNames = {for (final p in products) p.id: suppMap[p.supplierId] ?? ''};
       _invoiceNumber = invoiceNum;
@@ -170,6 +175,9 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       _loading  = false;
     });
   }
+
+  bool _isClientFlagged(Client c) =>
+      c.isBlacklisted || _pendingClientIds.contains(c.id);
 
   // Loads a previously auto-saved draft invoice and reconstructs the
   // _lineItems list from its stored items.
@@ -350,7 +358,20 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       title: 'Select Client / Store',
       items: _clients,
       labelOf: (c) => c.name,
-      subtitleOf: (c) => c.address,
+      labelStyleOf: (c) => _isClientFlagged(c)
+          ? const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)
+          : null,
+      subtitleOf: (c) {
+        final parts = [
+          if (c.address != null && c.address!.isNotEmpty) c.address!,
+          if (c.isBlacklisted) 'Blacklisted',
+          if (_pendingClientIds.contains(c.id)) 'Pending balance',
+        ];
+        return parts.isEmpty ? null : parts.join('  •  ');
+      },
+      subtitleStyleOf: (c) => _isClientFlagged(c)
+          ? TextStyle(color: Colors.red.shade700)
+          : null,
       onAdd: (existing) => _promptAddClient(existing),
     );
     if (picked != null) {
@@ -873,6 +894,12 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                         style: TextStyle(
                           color: _selectedClient == null
                               ? Theme.of(context).hintColor
+                              : (_isClientFlagged(_selectedClient!)
+                                  ? Colors.red
+                                  : null),
+                          fontWeight: _selectedClient != null &&
+                                  _isClientFlagged(_selectedClient!)
+                              ? FontWeight.bold
                               : null,
                         ),
                       ),

@@ -1,4 +1,5 @@
 ﻿import 'package:drift/drift.dart' as drift;
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/database/local_db.dart' hide Invoice, InvoiceItem;
@@ -571,6 +572,79 @@ class InvoiceRepository extends BaseRepository {
           isFree: drift.Value(item.isFree),
           discountPercent: drift.Value(item.discountPercent),
         ));
+  }
+
+  /// Returns IDs of clients that have at least one printed invoice that is
+  /// either (a) payment type 'credit', or (b) payment type 'partial' with
+  /// an outstanding balance (total > sum of payments).
+  Future<Set<String>> getPendingCheckCreditClientIds() async {
+    final clientIds = <String>{};
+
+    if (isOnline) {
+      try {
+        // Credit invoices — entire amount is still outstanding.
+        final creditData = await Supabase.instance.client
+            .from('invoices')
+            .select('client_id')
+            .eq('status', 'printed')
+            .eq('payment_type', 'credit');
+        for (final e in creditData as List) {
+          clientIds.add(e['client_id'] as String);
+        }
+
+        // Partial invoices — outstanding only if total > sum(payments).
+        final partialData = await Supabase.instance.client
+            .from('invoices')
+            .select('client_id, total_amount, invoice_payments(amount)')
+            .eq('status', 'printed')
+            .eq('payment_type', 'partial');
+        for (final inv in partialData as List) {
+          final total = (inv['total_amount'] as num).toDouble();
+          final payments = inv['invoice_payments'] as List;
+          final paid = payments.fold<double>(
+              0.0, (s, p) => s + (p['amount'] as num).toDouble());
+          if (total - paid > 0.01) clientIds.add(inv['client_id'] as String);
+        }
+
+        return clientIds;
+      } catch (e) {
+        debugPrint(
+            'getPendingCheckCreditClientIds Supabase failed: $e. Falling back to local.');
+        clientIds.clear();
+      }
+    }
+
+    // ── Offline (Drift) ──────────────────────────────────────────────────────
+    final printedInvoices = await (db.select(db.invoices)
+          ..where((t) => t.status.equals('printed')))
+        .get();
+
+    // Credit: full balance outstanding.
+    for (final r in printedInvoices) {
+      if (r.paymentType == 'credit') clientIds.add(r.clientId);
+    }
+
+    // Partial: compare total vs. sum of payments.
+    final partials = printedInvoices
+        .where((r) => r.paymentType == 'partial')
+        .toList();
+    if (partials.isNotEmpty) {
+      final partialIds = partials.map((r) => r.id).toList();
+      final allPayments = await (db.select(db.invoicePayments)
+            ..where((t) => t.invoiceId.isIn(partialIds)))
+          .get();
+      final paidByInvoice = <String, double>{};
+      for (final p in allPayments) {
+        paidByInvoice[p.invoiceId] =
+            (paidByInvoice[p.invoiceId] ?? 0.0) + p.amount;
+      }
+      for (final r in partials) {
+        final paid = paidByInvoice[r.id] ?? 0.0;
+        if (r.totalAmount - paid > 0.01) clientIds.add(r.clientId);
+      }
+    }
+
+    return clientIds;
   }
 }
 

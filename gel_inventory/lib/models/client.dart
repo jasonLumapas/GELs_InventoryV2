@@ -3,6 +3,7 @@ class Client {
   final String name;
   final String? contact;
   final String? address;
+  final bool isBlacklisted;
   final DateTime createdAt;
 
   const Client({
@@ -10,6 +11,7 @@ class Client {
     required this.name,
     this.contact,
     this.address,
+    this.isBlacklisted = false,
     required this.createdAt,
   });
 
@@ -18,6 +20,7 @@ class Client {
         name: j['name'] as String,
         contact: j['contact'] as String?,
         address: j['address'] as String?,
+        isBlacklisted: (j['is_blacklisted'] as bool?) ?? false,
         createdAt: DateTime.parse(j['created_at'] as String),
       );
 
@@ -26,14 +29,22 @@ class Client {
         'name': name,
         'contact': contact,
         'address': address,
+        'is_blacklisted': isBlacklisted,
         'created_at': createdAt.toIso8601String(),
       };
 
-  Client copyWith({String? name, String? contact, String? address}) => Client(
+  Client copyWith({
+    String? name,
+    String? contact,
+    String? address,
+    bool? isBlacklisted,
+  }) =>
+      Client(
         id: id,
         name: name ?? this.name,
         contact: contact ?? this.contact,
         address: address ?? this.address,
+        isBlacklisted: isBlacklisted ?? this.isBlacklisted,
         createdAt: createdAt,
       );
 }

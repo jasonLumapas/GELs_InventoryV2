@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../models/bad_order.dart';
+import '../../models/bad_order_draft.dart';
 import '../../models/bad_order_item.dart';
 import '../../models/client.dart';
 import '../../models/product.dart';
@@ -18,13 +21,21 @@ import '../../widgets/common/app_scaffold.dart';
 import '../../widgets/common/search_picker.dart';
 
 class BadOrderFormScreen extends ConsumerStatefulWidget {
-  const BadOrderFormScreen({super.key});
+  /// If set, resumes the existing draft with this id instead of starting
+  /// a new one.
+  final String? draftId;
+
+  const BadOrderFormScreen({super.key, this.draftId});
 
   @override
   ConsumerState<BadOrderFormScreen> createState() => _BadOrderFormScreenState();
 }
 
 class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
+  // Captured during build so it can still be used in dispose(), where `ref`
+  // throws (the ConsumerStatefulElement is already marked disposed by then).
+  ProviderContainer? _container;
+
   final _notesCtrl = TextEditingController();
   List<Client> _clients = [];
   List<Product> _products = [];
@@ -40,9 +51,18 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
   bool _allowNoClient = false;
   bool _noClient = false;
 
+  // ── Auto-save (draft) ────────────────────────────────────────────────────
+  late String _draftId;
+  late DateTime _createdAt;
+  Timer? _autoSaveTimer;
+  bool _draftPersisted = false;
+  bool _finalized = false;
+
   @override
   void initState() {
     super.initState();
+    _draftId = widget.draftId ?? const Uuid().v4();
+    _createdAt = DateTime.now();
     _load();
   }
 
@@ -55,7 +75,83 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
     final invItems = await invFuture;
     _allowNoClient = await AppSettingsService.getAllowBadOrderNoClient();
     _inventoryQty = {for (final i in invItems) i.productId: i.quantityPieces};
+
+    if (widget.draftId != null) {
+      await _loadDraft(widget.draftId!);
+    }
+
     setState(() => _loading = false);
+
+    if (_selectedClient != null && !_noClient) {
+      await _loadOrderedProducts();
+    }
+  }
+
+  // Loads a previously auto-saved draft and reconstructs client/date/type/
+  // items from it.
+  Future<void> _loadDraft(String id) async {
+    final drafts = await ref.read(badOrderRepositoryProvider).getDrafts();
+    final draft = drafts.where((d) => d.id == id).firstOrNull;
+    if (draft == null) return;
+
+    _createdAt = draft.createdAt;
+    _draftPersisted = true;
+    _type = draft.type;
+    _selectedDate = draft.date;
+    _noClient = draft.noClient;
+    _selectedClient = draft.noClient
+        ? null
+        : _clients.where((c) => c.id == draft.clientId).firstOrNull;
+    _notesCtrl.text = draft.notes ?? '';
+
+    final productsById = {for (final p in _products) p.id: p};
+    for (final di in draft.items) {
+      final product = productsById[di.productId];
+      if (product == null) continue;
+      _items.add(_BoItem(
+        productId: product.id,
+        productName: product.name,
+        piecesPerBox: product.piecesPerBox,
+      )
+        ..boxes = di.boxes
+        ..pieces = di.pieces);
+    }
+  }
+
+  // Debounce auto-saving so rapid edits don't trigger a DB write on every
+  // keystroke.
+  void _scheduleAutoSave() {
+    if (_finalized) return;
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = Timer(const Duration(seconds: 2), _autoSaveDraft);
+  }
+
+  bool get _hasDraftContent =>
+      (_selectedClient != null || _noClient) && _items.isNotEmpty;
+
+  BadOrderDraft _buildDraftPayload() => BadOrderDraft(
+        id: _draftId,
+        type: _type,
+        clientId: _noClient ? null : _selectedClient?.id,
+        noClient: _noClient,
+        date: _selectedDate,
+        notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+        items: _items
+            .map((i) => BadOrderDraftItem(
+                  productId: i.productId,
+                  boxes: i.boxes,
+                  pieces: i.pieces,
+                ))
+            .toList(),
+        createdAt: _createdAt,
+      );
+
+  Future<void> _autoSaveDraft() async {
+    if (_finalized || !mounted) return;
+    if (!_hasDraftContent) return;
+    await ref.read(badOrderRepositoryProvider).saveDraft(_buildDraftPayload());
+    _draftPersisted = true;
+    ref.invalidate(badOrderDraftsProvider);
   }
 
   int _committedPieces(String productId, {int? excludeIndex}) {
@@ -80,14 +176,14 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
     if (_type == 'bad_order') {
       for (int i = 0; i < _items.length; i++) {
         final item = _items[i];
-        if (item.quantity <= 0) return false;
+        if (item.quantityInPieces <= 0) return false;
         if (item.quantityInPieces >
             _effectiveAvailable(item.productId, excludeIndex: i)) {
           return false;
         }
       }
     } else {
-      if (_items.any((item) => item.quantity <= 0)) return false;
+      if (_items.any((item) => item.quantityInPieces <= 0)) return false;
     }
     return true;
   }
@@ -99,6 +195,7 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
       _orderedProductIds = {};
       _items.clear();
     });
+    _scheduleAutoSave();
   }
 
   Future<void> _pickDate() async {
@@ -114,6 +211,7 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
       _items.clear();
     });
     await _loadOrderedProducts();
+    _scheduleAutoSave();
   }
 
   Future<void> _pickClient() async {
@@ -130,6 +228,7 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
       _items.clear();
     });
     await _loadOrderedProducts();
+    _scheduleAutoSave();
   }
 
   /// Loads the set of product IDs ordered by the selected client on or
@@ -181,7 +280,10 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
       return;
     }
     final isBadOrder = _type == 'bad_order';
-    final picked = await showSearchPicker<Product>(
+    // Multi-pick mode: the dialog stays open after each selection so the
+    // user can add several products in one go, closing only via "Done" or
+    // dismissal.
+    await showSearchPicker<Product>(
       context: context,
       title: 'Select Product',
       items: available,
@@ -217,22 +319,28 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                     : Colors.red,
               )
           : null,
-      isDisabledOf: isBadOrder
-          ? (p) => _effectiveAvailable(p.id) <= 0
-          : null,
+      // Disable once already added (so it can't be picked twice in this
+      // session) and, for bad orders, once out of stock.
+      isDisabledOf: (p) =>
+          _items.any((i) => i.productId == p.id) ||
+          (isBadOrder && _effectiveAvailable(p.id) <= 0),
+      onSelected: _addItem,
     );
-    if (picked != null) {
-      setState(() => _items.add(_BoItem(
-            productId: picked.id,
-            productName: picked.name,
-            piecesPerBox: picked.piecesPerBox,
-          )));
-    }
+  }
+
+  void _addItem(Product picked) {
+    setState(() => _items.add(_BoItem(
+          productId: picked.id,
+          productName: picked.name,
+          piecesPerBox: picked.piecesPerBox,
+        )));
+    _scheduleAutoSave();
   }
 
   Future<void> _save() async {
     if ((_selectedClient == null && !_noClient) || _items.isEmpty) return;
     setState(() => _saving = true);
+    _autoSaveTimer?.cancel();
     final now = DateTime.now();
     final clientId = _noClient
         ? (await ref.read(clientRepositoryProvider).getOrCreateNoClientPlaceholder()).id
@@ -250,27 +358,64 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
               id: const Uuid().v4(),
               badOrderId: order.id,
               productId: i.productId,
-              unitType: i.unitType,
-              quantity: i.quantity,
+              unitType: 'piece',
+              quantity: i.quantityInPieces,
             ))
         .toList();
     final ppbMap = {for (final p in _products) p.id: p.piecesPerBox};
     await ref
         .read(badOrderRepositoryProvider)
         .save(order: order, items: items, piecesPerBoxByProduct: ppbMap);
+
+    _finalized = true;
+    if (_draftPersisted) {
+      await ref.read(badOrderRepositoryProvider).discardDraft(_draftId);
+    }
     ref.invalidate(badOrdersListProvider);
     ref.invalidate(inventoryListProvider);
+    ref.invalidate(badOrderDraftsProvider);
+    if (mounted) context.go('/bad-orders');
+  }
+
+  Future<void> _cancel() async {
+    _autoSaveTimer?.cancel();
+    if (_draftPersisted && !_finalized) {
+      await ref.read(badOrderRepositoryProvider).discardDraft(_draftId);
+      _finalized = true;
+      ref.invalidate(badOrderDraftsProvider);
+    }
     if (mounted) context.go('/bad-orders');
   }
 
   @override
   void dispose() {
+    final hadPendingSave = _autoSaveTimer?.isActive ?? false;
+    _autoSaveTimer?.cancel();
+    if (!_finalized) {
+      if (_hasDraftContent) {
+        // Flush any pending debounced save immediately so the draft shows up
+        // in the list right away, instead of waiting for the next edit.
+        if (hadPendingSave || !_draftPersisted) {
+          _container
+              ?.read(badOrderRepositoryProvider)
+              .saveDraft(_buildDraftPayload());
+        }
+      } else if (_draftPersisted && widget.draftId == null) {
+        // Only discard drafts created fresh during this session
+        // (crash-recovery safety net). A resumed draft (widget.draftId !=
+        // null) should remain saved so the user can come back to it again
+        // later — only the explicit Cancel button discards those.
+        _container?.read(badOrderRepositoryProvider).discardDraft(_draftId);
+      }
+      _container?.invalidate(badOrderDraftsProvider);
+    }
     _notesCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    _container = ProviderScope.containerOf(context, listen: false);
     return AppScaffold(
       title: 'New Bad Order / Return',
       body: _loading
@@ -295,8 +440,10 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                               label: Text('Return')),
                         ],
                         selected: {_type},
-                        onSelectionChanged: (s) =>
-                            setState(() => _type = s.first),
+                        onSelectionChanged: (s) {
+                          setState(() => _type = s.first);
+                          _scheduleAutoSave();
+                        },
                       ),
                       const SizedBox(height: 8),
                       if (_type == 'return')
@@ -378,6 +525,7 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                         controller: _notesCtrl,
                         decoration:
                             const InputDecoration(labelText: 'Notes (optional)'),
+                        onChanged: (_) => _scheduleAutoSave(),
                       ),
                     ],
                   ),
@@ -434,9 +582,14 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                                 _items[i].productId,
                                 excludeIndex: i),
                             isBadOrder: _type == 'bad_order',
-                            onRemove: () =>
-                                setState(() => _items.removeAt(i)),
-                            onChanged: () => setState(() {}),
+                            onRemove: () {
+                              setState(() => _items.removeAt(i));
+                              _scheduleAutoSave();
+                            },
+                            onChanged: () {
+                              setState(() {});
+                              _scheduleAutoSave();
+                            },
                           ),
                         ),
                 ),
@@ -450,7 +603,7 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       OutlinedButton(
-                        onPressed: () => context.go('/bad-orders'),
+                        onPressed: _cancel,
                         child: const Text('Cancel'),
                       ),
                       const SizedBox(width: 8),
@@ -471,8 +624,8 @@ class _BoItem {
   final String productId;
   final String productName;
   final int piecesPerBox;
-  String unitType = 'piece';
-  int quantity = 1;
+  int boxes = 0;
+  int pieces = 0;
 
   _BoItem({
     required this.productId,
@@ -480,8 +633,7 @@ class _BoItem {
     required this.piecesPerBox,
   });
 
-  int get quantityInPieces =>
-      unitType == 'box' ? quantity * piecesPerBox : quantity;
+  int get quantityInPieces => boxes * piecesPerBox + pieces;
 }
 
 class _BoItemTile extends StatefulWidget {
@@ -504,17 +656,35 @@ class _BoItemTile extends StatefulWidget {
 }
 
 class _BoItemTileState extends State<_BoItemTile> {
-  late TextEditingController _qtyCtrl;
+  late TextEditingController _boxCtrl;
+  late TextEditingController _pcsCtrl;
 
   @override
   void initState() {
     super.initState();
-    _qtyCtrl = TextEditingController(text: '1');
+    _boxCtrl = TextEditingController(
+        text: widget.item.boxes > 0 ? widget.item.boxes.toString() : '');
+    _pcsCtrl = TextEditingController(
+        text: widget.item.pieces > 0 ? widget.item.pieces.toString() : '');
+  }
+
+  @override
+  void didUpdateWidget(_BoItemTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The ListView has no keys, so when a row above is removed, Flutter
+    // reuses this State for a different _BoItem — resync the controllers.
+    if (!identical(oldWidget.item, widget.item)) {
+      _boxCtrl.text =
+          widget.item.boxes > 0 ? widget.item.boxes.toString() : '';
+      _pcsCtrl.text =
+          widget.item.pieces > 0 ? widget.item.pieces.toString() : '';
+    }
   }
 
   @override
   void dispose() {
-    _qtyCtrl.dispose();
+    _boxCtrl.dispose();
+    _pcsCtrl.dispose();
     super.dispose();
   }
 
@@ -554,28 +724,31 @@ class _BoItemTileState extends State<_BoItemTile> {
                 ],
               ),
             ),
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'piece', label: Text('Pcs')),
-                ButtonSegment(value: 'box', label: Text('Box')),
-              ],
-              selected: {item.unitType},
-              onSelectionChanged: (s) {
-                setState(() => item.unitType = s.first);
-                widget.onChanged();
-              },
-            ),
-            const SizedBox(width: 8),
             SizedBox(
-              width: 70,
+              width: 64,
               child: TextField(
-                controller: _qtyCtrl,
+                controller: _boxCtrl,
                 decoration: const InputDecoration(
-                    labelText: 'Qty', isDense: true),
+                    labelText: 'Box', isDense: true),
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 onChanged: (v) {
-                  item.quantity = int.tryParse(v) ?? 1;
+                  item.boxes = int.tryParse(v) ?? 0;
+                  widget.onChanged();
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 64,
+              child: TextField(
+                controller: _pcsCtrl,
+                decoration: const InputDecoration(
+                    labelText: 'Pcs', isDense: true),
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                onChanged: (v) {
+                  item.pieces = int.tryParse(v) ?? 0;
                   widget.onChanged();
                 },
               ),

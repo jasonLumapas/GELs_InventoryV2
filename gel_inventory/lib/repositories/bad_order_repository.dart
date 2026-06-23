@@ -1,11 +1,15 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart' as drift;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
-import '../core/database/local_db.dart' hide BadOrder, BadOrderItem, StockMovement;
+import '../core/database/local_db.dart'
+    hide BadOrder, BadOrderItem, BadOrderDraft, StockMovement;
 import '../core/services/connectivity_service.dart';
 import '../core/services/sync_service.dart';
 import '../models/bad_order.dart';
+import '../models/bad_order_draft.dart';
 import '../models/bad_order_item.dart';
 import '../models/stock_movement.dart';
 import 'base_repository.dart';
@@ -293,6 +297,90 @@ class BadOrderRepository extends BaseRepository {
         .go();
     await (db.delete(db.badOrders)..where((t) => t.id.equals(id))).go();
   }
+
+  // ── Drafts (auto-saved unfinished "New Bad Order / Return" forms) ───────
+  // Stored separately from bad_orders / bad_order_items so autosaving never
+  // touches inventory — only the final Save does.
+
+  Future<List<BadOrderDraft>> getDrafts() async {
+    if (isOnline) {
+      try {
+        final data = await Supabase.instance.client
+            .from('bad_order_drafts')
+            .select()
+            .order('created_at', ascending: false);
+        return (data as List).map((j) => BadOrderDraft.fromJson(j)).toList();
+      } catch (_) {}
+    }
+    final rows = await (db.select(db.badOrderDrafts)
+          ..orderBy([(t) => drift.OrderingTerm.desc(t.createdAt)]))
+        .get();
+    return rows
+        .map((r) => BadOrderDraft(
+              id: r.id,
+              type: r.type,
+              clientId: r.clientId,
+              noClient: r.noClient,
+              date: r.date,
+              notes: r.notes,
+              items: (jsonDecode(r.itemsJson) as List)
+                  .map((e) =>
+                      BadOrderDraftItem.fromJson(e as Map<String, dynamic>))
+                  .toList(),
+              createdAt: r.createdAt,
+            ))
+        .toList();
+  }
+
+  Future<void> saveDraft(BadOrderDraft draft) async {
+    final payload = draft.toJson();
+    if (isOnline) {
+      try {
+        await Supabase.instance.client
+            .from('bad_order_drafts')
+            .upsert(payload);
+      } catch (_) {}
+    } else {
+      await syncService.enqueue(
+        tableName: 'bad_order_drafts',
+        recordId: draft.id,
+        operation: 'insert',
+        payload: payload,
+      );
+    }
+    await trySaveLocal(() => db.into(db.badOrderDrafts).insertOnConflictUpdate(
+          BadOrderDraftsCompanion(
+            id: drift.Value(draft.id),
+            type: drift.Value(draft.type),
+            clientId: drift.Value(draft.clientId),
+            noClient: drift.Value(draft.noClient),
+            date: drift.Value(draft.date),
+            notes: drift.Value(draft.notes),
+            itemsJson: drift.Value(
+                jsonEncode(draft.items.map((i) => i.toJson()).toList())),
+            createdAt: drift.Value(draft.createdAt),
+          ),
+        ));
+  }
+
+  Future<void> discardDraft(String id) async {
+    if (isOnline) {
+      try {
+        await Supabase.instance.client
+            .from('bad_order_drafts')
+            .delete()
+            .eq('id', id);
+      } catch (_) {}
+    } else {
+      await syncService.enqueue(
+        tableName: 'bad_order_drafts',
+        recordId: id,
+        operation: 'delete',
+        payload: {'id': id},
+      );
+    }
+    await (db.delete(db.badOrderDrafts)..where((t) => t.id.equals(id))).go();
+  }
 }
 
 final badOrderRepositoryProvider = Provider<BadOrderRepository>((ref) {
@@ -308,4 +396,8 @@ final badOrderRepositoryProvider = Provider<BadOrderRepository>((ref) {
 
 final badOrdersListProvider = FutureProvider<List<BadOrder>>((ref) {
   return ref.watch(badOrderRepositoryProvider).getAll();
+});
+
+final badOrderDraftsProvider = FutureProvider<List<BadOrderDraft>>((ref) {
+  return ref.watch(badOrderRepositoryProvider).getDrafts();
 });

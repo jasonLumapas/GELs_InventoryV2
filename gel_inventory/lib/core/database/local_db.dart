@@ -208,6 +208,26 @@ class VanStockDrafts extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Unfinished "New Bad Order / Return" forms, auto-saved so they can be
+/// resumed later. Does not affect inventory — only the bad_orders /
+/// bad_order_items tables (written on final Save) do.
+class BadOrderDrafts extends Table {
+  TextColumn get id => text()();
+  // type: 'bad_order' | 'return'
+  TextColumn get type => text()();
+  TextColumn get clientId => text().nullable()();
+  BoolColumn get noClient => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
+  TextColumn get notes => text().nullable()();
+  // JSON-encoded list of {product_id, boxes, pieces}
+  TextColumn get itemsJson => text()();
+  DateTimeColumn get createdAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// Manual stock-in/out movements with optional references.
 class StockMovements extends Table {
   TextColumn get id => text()();
@@ -344,6 +364,7 @@ class SyncQueue extends Table {
   VanAreas,
   VanStocks,
   VanStockDrafts,
+  BadOrderDrafts,
   StockMovements,
   InvoicePayments,
   SupplierReceivedInvoices,
@@ -356,7 +377,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 24;
+  int get schemaVersion => 25;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -464,6 +485,9 @@ class LocalDatabase extends _$LocalDatabase {
             await _addColumnIfMissing(
                 m.database, 'clients', 'is_blacklisted',
                 'INTEGER NOT NULL DEFAULT 0');
+          }
+          if (from < 25) {
+            await m.createTable(badOrderDrafts);
           }
         },
       );

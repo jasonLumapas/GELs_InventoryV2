@@ -86,7 +86,8 @@ final _router = GoRouter(
         builder: (ctx, s) => const BadOrderListScreen()),
     GoRoute(
         path: '/bad-orders/new',
-        builder: (ctx, s) => const BadOrderFormScreen()),
+        builder: (ctx, s) =>
+            BadOrderFormScreen(draftId: s.uri.queryParameters['draft'])),
 
     // Van Selling
     GoRoute(

@@ -21,6 +21,7 @@ class BadOrderListScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final listAsync    = ref.watch(badOrdersListProvider);
     final clientsAsync = ref.watch(clientsListProvider);
+    final draftsAsync  = ref.watch(badOrderDraftsProvider);
     final dateFmt      = DateFormat('MMM dd, yyyy');
 
     return AppScaffold(
@@ -33,49 +34,141 @@ class BadOrderListScreen extends ConsumerWidget {
         ),
         const SizedBox(width: 8),
       ],
-      body: listAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
-        data: (orders) {
-          final clientsMap = {
-            for (final c in clientsAsync.valueOrNull ?? []) c.id: c
-          };
-          if (orders.isEmpty) {
-            return const Center(child: Text('No bad orders or returns yet.'));
-          }
-          return ListView.separated(
-            itemCount: orders.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (ctx, i) {
-              final o = orders[i];
-              final client = clientsMap[o.clientId];
-              return ListTile(
-                leading: Icon(
-                  o.isReturn ? Icons.undo : Icons.remove_shopping_cart,
-                  color: o.isReturn ? Colors.green : Colors.orange,
-                ),
-                title: Text('${o.typeLabel} — ${client?.name ?? o.clientId}'),
-                subtitle: Text(
-                    '${dateFmt.format(o.date)}${o.notes != null ? ' • ${o.notes}' : ''}'),
-                onTap: () => _showDetail(context, ref, o, client),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
-                  onPressed: () async {
-                    final ok = await showConfirmDialog(ctx,
-                        title: 'Delete',
-                        message:
-                            'Delete this ${o.typeLabel}? This cannot be undone.',
-                        confirmLabel: 'Delete');
-                    if (ok) {
-                      await ref.read(badOrderRepositoryProvider).delete(o.id);
-                      ref.invalidate(badOrdersListProvider);
-                    }
-                  },
+      body: Column(
+        children: [
+          // ── Draft bad orders / returns banner ──────────────────────────
+          draftsAsync.when(
+            loading: () => const SizedBox.shrink(),
+            error: (_, _) => const SizedBox.shrink(),
+            data: (drafts) {
+              if (drafts.isEmpty) return const SizedBox.shrink();
+              final clientsMap = {
+                for (final c in clientsAsync.valueOrNull ?? []) c.id: c
+              };
+              return Container(
+                width: double.infinity,
+                color: Colors.amber.shade100,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        '${drafts.length} unfinished bad order(s)/return(s)',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                    ),
+                    ...drafts.map((d) {
+                      final client = d.noClient
+                          ? null
+                          : clientsMap[d.clientId];
+                      final typeLabel =
+                          d.type == 'return' ? 'Return' : 'Bad Order';
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.edit_note, size: 18),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                '$typeLabel — '
+                                '${d.noClient ? "No Client Specified" : client?.name ?? "Unknown client"}'
+                                '  •  ${dateFmt.format(d.date)}'
+                                '  •  ${d.items.length} item(s)',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () => context
+                                  .go('/bad-orders/new?draft=${d.id}'),
+                              child: const Text('Resume'),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline,
+                                  color: Colors.red, size: 20),
+                              tooltip: 'Discard draft',
+                              onPressed: () async {
+                                final ok = await showConfirmDialog(
+                                  context,
+                                  title: 'Discard Draft',
+                                  message:
+                                      'Discard this unfinished $typeLabel? This cannot be undone.',
+                                  confirmLabel: 'Discard',
+                                );
+                                if (ok) {
+                                  await ref
+                                      .read(badOrderRepositoryProvider)
+                                      .discardDraft(d.id);
+                                  ref.invalidate(badOrderDraftsProvider);
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
                 ),
               );
             },
-          );
-        },
+          ),
+          Expanded(
+            child: listAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text('Error: $e')),
+              data: (orders) {
+                final clientsMap = {
+                  for (final c in clientsAsync.valueOrNull ?? []) c.id: c
+                };
+                if (orders.isEmpty) {
+                  return const Center(
+                      child: Text('No bad orders or returns yet.'));
+                }
+                return ListView.separated(
+                  itemCount: orders.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (ctx, i) {
+                    final o = orders[i];
+                    final client = clientsMap[o.clientId];
+                    return ListTile(
+                      leading: Icon(
+                        o.isReturn ? Icons.undo : Icons.remove_shopping_cart,
+                        color: o.isReturn ? Colors.green : Colors.orange,
+                      ),
+                      title:
+                          Text('${o.typeLabel} — ${client?.name ?? o.clientId}'),
+                      subtitle: Text(
+                          '${dateFmt.format(o.date)}${o.notes != null ? ' • ${o.notes}' : ''}'),
+                      onTap: () => _showDetail(context, ref, o, client),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline,
+                            color: Colors.red),
+                        onPressed: () async {
+                          final ok = await showConfirmDialog(ctx,
+                              title: 'Delete',
+                              message:
+                                  'Delete this ${o.typeLabel}? This cannot be undone.',
+                              confirmLabel: 'Delete');
+                          if (ok) {
+                            await ref
+                                .read(badOrderRepositoryProvider)
+                                .delete(o.id);
+                            ref.invalidate(badOrdersListProvider);
+                          }
+                        },
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -399,9 +492,16 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
                 itemBuilder: (ctx, i) {
                   final item    = _items[i];
                   final product = _productsById[item.productId];
-                  final qtyLabel = item.unitType == 'box'
-                      ? '${item.quantity} box(es)'
-                      : '${item.quantity} pcs';
+                  final ppb     = product?.piecesPerBox ?? 1;
+                  String qtyLabel;
+                  if (item.unitType == 'box') {
+                    qtyLabel = '${item.quantity} box(es)';
+                  } else {
+                    final boxes = ppb > 0 ? item.quantity ~/ ppb : 0;
+                    final pcs   = ppb > 0 ? item.quantity % ppb : item.quantity;
+                    qtyLabel =
+                        boxes > 0 ? '$boxes box(es) + $pcs pcs' : '$pcs pcs';
+                  }
                   final amount = _amounts[item.id] ?? 0.0;
                   return ListTile(
                     contentPadding: EdgeInsets.zero,

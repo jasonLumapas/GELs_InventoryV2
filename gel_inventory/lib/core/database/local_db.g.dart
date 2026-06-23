@@ -5858,6 +5858,511 @@ class VanStockDraftsCompanion extends UpdateCompanion<VanStockDraft> {
   }
 }
 
+class $BadOrderDraftsTable extends BadOrderDrafts
+    with TableInfo<$BadOrderDraftsTable, BadOrderDraft> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $BadOrderDraftsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _typeMeta = const VerificationMeta('type');
+  @override
+  late final GeneratedColumn<String> type = GeneratedColumn<String>(
+    'type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _clientIdMeta = const VerificationMeta(
+    'clientId',
+  );
+  @override
+  late final GeneratedColumn<String> clientId = GeneratedColumn<String>(
+    'client_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _noClientMeta = const VerificationMeta(
+    'noClient',
+  );
+  @override
+  late final GeneratedColumn<bool> noClient = GeneratedColumn<bool>(
+    'no_client',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("no_client" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _dateMeta = const VerificationMeta('date');
+  @override
+  late final GeneratedColumn<DateTime> date = GeneratedColumn<DateTime>(
+    'date',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _notesMeta = const VerificationMeta('notes');
+  @override
+  late final GeneratedColumn<String> notes = GeneratedColumn<String>(
+    'notes',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _itemsJsonMeta = const VerificationMeta(
+    'itemsJson',
+  );
+  @override
+  late final GeneratedColumn<String> itemsJson = GeneratedColumn<String>(
+    'items_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    type,
+    clientId,
+    noClient,
+    date,
+    notes,
+    itemsJson,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'bad_order_drafts';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<BadOrderDraft> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('type')) {
+      context.handle(
+        _typeMeta,
+        type.isAcceptableOrUnknown(data['type']!, _typeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_typeMeta);
+    }
+    if (data.containsKey('client_id')) {
+      context.handle(
+        _clientIdMeta,
+        clientId.isAcceptableOrUnknown(data['client_id']!, _clientIdMeta),
+      );
+    }
+    if (data.containsKey('no_client')) {
+      context.handle(
+        _noClientMeta,
+        noClient.isAcceptableOrUnknown(data['no_client']!, _noClientMeta),
+      );
+    }
+    if (data.containsKey('date')) {
+      context.handle(
+        _dateMeta,
+        date.isAcceptableOrUnknown(data['date']!, _dateMeta),
+      );
+    }
+    if (data.containsKey('notes')) {
+      context.handle(
+        _notesMeta,
+        notes.isAcceptableOrUnknown(data['notes']!, _notesMeta),
+      );
+    }
+    if (data.containsKey('items_json')) {
+      context.handle(
+        _itemsJsonMeta,
+        itemsJson.isAcceptableOrUnknown(data['items_json']!, _itemsJsonMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_itemsJsonMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  BadOrderDraft map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return BadOrderDraft(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      type: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}type'],
+      )!,
+      clientId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}client_id'],
+      ),
+      noClient: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}no_client'],
+      )!,
+      date: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}date'],
+      )!,
+      notes: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}notes'],
+      ),
+      itemsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}items_json'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $BadOrderDraftsTable createAlias(String alias) {
+    return $BadOrderDraftsTable(attachedDatabase, alias);
+  }
+}
+
+class BadOrderDraft extends DataClass implements Insertable<BadOrderDraft> {
+  final String id;
+  final String type;
+  final String? clientId;
+  final bool noClient;
+  final DateTime date;
+  final String? notes;
+  final String itemsJson;
+  final DateTime createdAt;
+  const BadOrderDraft({
+    required this.id,
+    required this.type,
+    this.clientId,
+    required this.noClient,
+    required this.date,
+    this.notes,
+    required this.itemsJson,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['type'] = Variable<String>(type);
+    if (!nullToAbsent || clientId != null) {
+      map['client_id'] = Variable<String>(clientId);
+    }
+    map['no_client'] = Variable<bool>(noClient);
+    map['date'] = Variable<DateTime>(date);
+    if (!nullToAbsent || notes != null) {
+      map['notes'] = Variable<String>(notes);
+    }
+    map['items_json'] = Variable<String>(itemsJson);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  BadOrderDraftsCompanion toCompanion(bool nullToAbsent) {
+    return BadOrderDraftsCompanion(
+      id: Value(id),
+      type: Value(type),
+      clientId: clientId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(clientId),
+      noClient: Value(noClient),
+      date: Value(date),
+      notes: notes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(notes),
+      itemsJson: Value(itemsJson),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory BadOrderDraft.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return BadOrderDraft(
+      id: serializer.fromJson<String>(json['id']),
+      type: serializer.fromJson<String>(json['type']),
+      clientId: serializer.fromJson<String?>(json['clientId']),
+      noClient: serializer.fromJson<bool>(json['noClient']),
+      date: serializer.fromJson<DateTime>(json['date']),
+      notes: serializer.fromJson<String?>(json['notes']),
+      itemsJson: serializer.fromJson<String>(json['itemsJson']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'type': serializer.toJson<String>(type),
+      'clientId': serializer.toJson<String?>(clientId),
+      'noClient': serializer.toJson<bool>(noClient),
+      'date': serializer.toJson<DateTime>(date),
+      'notes': serializer.toJson<String?>(notes),
+      'itemsJson': serializer.toJson<String>(itemsJson),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  BadOrderDraft copyWith({
+    String? id,
+    String? type,
+    Value<String?> clientId = const Value.absent(),
+    bool? noClient,
+    DateTime? date,
+    Value<String?> notes = const Value.absent(),
+    String? itemsJson,
+    DateTime? createdAt,
+  }) => BadOrderDraft(
+    id: id ?? this.id,
+    type: type ?? this.type,
+    clientId: clientId.present ? clientId.value : this.clientId,
+    noClient: noClient ?? this.noClient,
+    date: date ?? this.date,
+    notes: notes.present ? notes.value : this.notes,
+    itemsJson: itemsJson ?? this.itemsJson,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  BadOrderDraft copyWithCompanion(BadOrderDraftsCompanion data) {
+    return BadOrderDraft(
+      id: data.id.present ? data.id.value : this.id,
+      type: data.type.present ? data.type.value : this.type,
+      clientId: data.clientId.present ? data.clientId.value : this.clientId,
+      noClient: data.noClient.present ? data.noClient.value : this.noClient,
+      date: data.date.present ? data.date.value : this.date,
+      notes: data.notes.present ? data.notes.value : this.notes,
+      itemsJson: data.itemsJson.present ? data.itemsJson.value : this.itemsJson,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BadOrderDraft(')
+          ..write('id: $id, ')
+          ..write('type: $type, ')
+          ..write('clientId: $clientId, ')
+          ..write('noClient: $noClient, ')
+          ..write('date: $date, ')
+          ..write('notes: $notes, ')
+          ..write('itemsJson: $itemsJson, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    type,
+    clientId,
+    noClient,
+    date,
+    notes,
+    itemsJson,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is BadOrderDraft &&
+          other.id == this.id &&
+          other.type == this.type &&
+          other.clientId == this.clientId &&
+          other.noClient == this.noClient &&
+          other.date == this.date &&
+          other.notes == this.notes &&
+          other.itemsJson == this.itemsJson &&
+          other.createdAt == this.createdAt);
+}
+
+class BadOrderDraftsCompanion extends UpdateCompanion<BadOrderDraft> {
+  final Value<String> id;
+  final Value<String> type;
+  final Value<String?> clientId;
+  final Value<bool> noClient;
+  final Value<DateTime> date;
+  final Value<String?> notes;
+  final Value<String> itemsJson;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const BadOrderDraftsCompanion({
+    this.id = const Value.absent(),
+    this.type = const Value.absent(),
+    this.clientId = const Value.absent(),
+    this.noClient = const Value.absent(),
+    this.date = const Value.absent(),
+    this.notes = const Value.absent(),
+    this.itemsJson = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  BadOrderDraftsCompanion.insert({
+    required String id,
+    required String type,
+    this.clientId = const Value.absent(),
+    this.noClient = const Value.absent(),
+    this.date = const Value.absent(),
+    this.notes = const Value.absent(),
+    required String itemsJson,
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       type = Value(type),
+       itemsJson = Value(itemsJson);
+  static Insertable<BadOrderDraft> custom({
+    Expression<String>? id,
+    Expression<String>? type,
+    Expression<String>? clientId,
+    Expression<bool>? noClient,
+    Expression<DateTime>? date,
+    Expression<String>? notes,
+    Expression<String>? itemsJson,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (type != null) 'type': type,
+      if (clientId != null) 'client_id': clientId,
+      if (noClient != null) 'no_client': noClient,
+      if (date != null) 'date': date,
+      if (notes != null) 'notes': notes,
+      if (itemsJson != null) 'items_json': itemsJson,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  BadOrderDraftsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? type,
+    Value<String?>? clientId,
+    Value<bool>? noClient,
+    Value<DateTime>? date,
+    Value<String?>? notes,
+    Value<String>? itemsJson,
+    Value<DateTime>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return BadOrderDraftsCompanion(
+      id: id ?? this.id,
+      type: type ?? this.type,
+      clientId: clientId ?? this.clientId,
+      noClient: noClient ?? this.noClient,
+      date: date ?? this.date,
+      notes: notes ?? this.notes,
+      itemsJson: itemsJson ?? this.itemsJson,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (type.present) {
+      map['type'] = Variable<String>(type.value);
+    }
+    if (clientId.present) {
+      map['client_id'] = Variable<String>(clientId.value);
+    }
+    if (noClient.present) {
+      map['no_client'] = Variable<bool>(noClient.value);
+    }
+    if (date.present) {
+      map['date'] = Variable<DateTime>(date.value);
+    }
+    if (notes.present) {
+      map['notes'] = Variable<String>(notes.value);
+    }
+    if (itemsJson.present) {
+      map['items_json'] = Variable<String>(itemsJson.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BadOrderDraftsCompanion(')
+          ..write('id: $id, ')
+          ..write('type: $type, ')
+          ..write('clientId: $clientId, ')
+          ..write('noClient: $noClient, ')
+          ..write('date: $date, ')
+          ..write('notes: $notes, ')
+          ..write('itemsJson: $itemsJson, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $StockMovementsTable extends StockMovements
     with TableInfo<$StockMovementsTable, StockMovement> {
   @override
@@ -9417,6 +9922,7 @@ abstract class _$LocalDatabase extends GeneratedDatabase {
   late final $VanAreasTable vanAreas = $VanAreasTable(this);
   late final $VanStocksTable vanStocks = $VanStocksTable(this);
   late final $VanStockDraftsTable vanStockDrafts = $VanStockDraftsTable(this);
+  late final $BadOrderDraftsTable badOrderDrafts = $BadOrderDraftsTable(this);
   late final $StockMovementsTable stockMovements = $StockMovementsTable(this);
   late final $InvoicePaymentsTable invoicePayments = $InvoicePaymentsTable(
     this,
@@ -9447,6 +9953,7 @@ abstract class _$LocalDatabase extends GeneratedDatabase {
     vanAreas,
     vanStocks,
     vanStockDrafts,
+    badOrderDrafts,
     stockMovements,
     invoicePayments,
     supplierReceivedInvoices,
@@ -15464,6 +15971,269 @@ typedef $$VanStockDraftsTableProcessedTableManager =
       VanStockDraft,
       PrefetchHooks Function()
     >;
+typedef $$BadOrderDraftsTableCreateCompanionBuilder =
+    BadOrderDraftsCompanion Function({
+      required String id,
+      required String type,
+      Value<String?> clientId,
+      Value<bool> noClient,
+      Value<DateTime> date,
+      Value<String?> notes,
+      required String itemsJson,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+typedef $$BadOrderDraftsTableUpdateCompanionBuilder =
+    BadOrderDraftsCompanion Function({
+      Value<String> id,
+      Value<String> type,
+      Value<String?> clientId,
+      Value<bool> noClient,
+      Value<DateTime> date,
+      Value<String?> notes,
+      Value<String> itemsJson,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+
+class $$BadOrderDraftsTableFilterComposer
+    extends Composer<_$LocalDatabase, $BadOrderDraftsTable> {
+  $$BadOrderDraftsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get clientId => $composableBuilder(
+    column: $table.clientId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get noClient => $composableBuilder(
+    column: $table.noClient,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get itemsJson => $composableBuilder(
+    column: $table.itemsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$BadOrderDraftsTableOrderingComposer
+    extends Composer<_$LocalDatabase, $BadOrderDraftsTable> {
+  $$BadOrderDraftsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get clientId => $composableBuilder(
+    column: $table.clientId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get noClient => $composableBuilder(
+    column: $table.noClient,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get itemsJson => $composableBuilder(
+    column: $table.itemsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$BadOrderDraftsTableAnnotationComposer
+    extends Composer<_$LocalDatabase, $BadOrderDraftsTable> {
+  $$BadOrderDraftsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get type =>
+      $composableBuilder(column: $table.type, builder: (column) => column);
+
+  GeneratedColumn<String> get clientId =>
+      $composableBuilder(column: $table.clientId, builder: (column) => column);
+
+  GeneratedColumn<bool> get noClient =>
+      $composableBuilder(column: $table.noClient, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get date =>
+      $composableBuilder(column: $table.date, builder: (column) => column);
+
+  GeneratedColumn<String> get notes =>
+      $composableBuilder(column: $table.notes, builder: (column) => column);
+
+  GeneratedColumn<String> get itemsJson =>
+      $composableBuilder(column: $table.itemsJson, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$BadOrderDraftsTableTableManager
+    extends
+        RootTableManager<
+          _$LocalDatabase,
+          $BadOrderDraftsTable,
+          BadOrderDraft,
+          $$BadOrderDraftsTableFilterComposer,
+          $$BadOrderDraftsTableOrderingComposer,
+          $$BadOrderDraftsTableAnnotationComposer,
+          $$BadOrderDraftsTableCreateCompanionBuilder,
+          $$BadOrderDraftsTableUpdateCompanionBuilder,
+          (
+            BadOrderDraft,
+            BaseReferences<
+              _$LocalDatabase,
+              $BadOrderDraftsTable,
+              BadOrderDraft
+            >,
+          ),
+          BadOrderDraft,
+          PrefetchHooks Function()
+        > {
+  $$BadOrderDraftsTableTableManager(
+    _$LocalDatabase db,
+    $BadOrderDraftsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$BadOrderDraftsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$BadOrderDraftsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$BadOrderDraftsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> type = const Value.absent(),
+                Value<String?> clientId = const Value.absent(),
+                Value<bool> noClient = const Value.absent(),
+                Value<DateTime> date = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
+                Value<String> itemsJson = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => BadOrderDraftsCompanion(
+                id: id,
+                type: type,
+                clientId: clientId,
+                noClient: noClient,
+                date: date,
+                notes: notes,
+                itemsJson: itemsJson,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String type,
+                Value<String?> clientId = const Value.absent(),
+                Value<bool> noClient = const Value.absent(),
+                Value<DateTime> date = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
+                required String itemsJson,
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => BadOrderDraftsCompanion.insert(
+                id: id,
+                type: type,
+                clientId: clientId,
+                noClient: noClient,
+                date: date,
+                notes: notes,
+                itemsJson: itemsJson,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$BadOrderDraftsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LocalDatabase,
+      $BadOrderDraftsTable,
+      BadOrderDraft,
+      $$BadOrderDraftsTableFilterComposer,
+      $$BadOrderDraftsTableOrderingComposer,
+      $$BadOrderDraftsTableAnnotationComposer,
+      $$BadOrderDraftsTableCreateCompanionBuilder,
+      $$BadOrderDraftsTableUpdateCompanionBuilder,
+      (
+        BadOrderDraft,
+        BaseReferences<_$LocalDatabase, $BadOrderDraftsTable, BadOrderDraft>,
+      ),
+      BadOrderDraft,
+      PrefetchHooks Function()
+    >;
 typedef $$StockMovementsTableCreateCompanionBuilder =
     StockMovementsCompanion Function({
       required String id,
@@ -18496,6 +19266,8 @@ class $LocalDatabaseManager {
       $$VanStocksTableTableManager(_db, _db.vanStocks);
   $$VanStockDraftsTableTableManager get vanStockDrafts =>
       $$VanStockDraftsTableTableManager(_db, _db.vanStockDrafts);
+  $$BadOrderDraftsTableTableManager get badOrderDrafts =>
+      $$BadOrderDraftsTableTableManager(_db, _db.badOrderDrafts);
   $$StockMovementsTableTableManager get stockMovements =>
       $$StockMovementsTableTableManager(_db, _db.stockMovements);
   $$InvoicePaymentsTableTableManager get invoicePayments =>

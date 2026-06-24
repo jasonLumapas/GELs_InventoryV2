@@ -140,6 +140,25 @@ class InvoiceItems extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Audit log of items removed from an invoice during editing — preserved
+/// even after the invoice's active item rows are replaced.
+class DeletedInvoiceItems extends Table {
+  TextColumn get id => text()();
+  TextColumn get invoiceId => text().references(Invoices, #id)();
+  TextColumn get productId => text().references(Products, #id)();
+  // unitType: 'box' | 'piece'
+  TextColumn get unitType => text()();
+  IntColumn get quantity => integer()();
+  RealColumn get pricePerPiece => real()();
+  RealColumn get subtotal => real()();
+  BoolColumn get isFree => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get deletedAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// Bad orders (defective) and returned goods.
 class BadOrders extends Table {
   TextColumn get id => text()();
@@ -359,6 +378,7 @@ class SyncQueue extends Table {
   Inventory,
   Invoices,
   InvoiceItems,
+  DeletedInvoiceItems,
   BadOrders,
   BadOrderItems,
   VanAreas,
@@ -377,7 +397,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 25;
+  int get schemaVersion => 26;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -488,6 +508,9 @@ class LocalDatabase extends _$LocalDatabase {
           }
           if (from < 25) {
             await m.createTable(badOrderDrafts);
+          }
+          if (from < 26) {
+            await m.createTable(deletedInvoiceItems);
           }
         },
       );

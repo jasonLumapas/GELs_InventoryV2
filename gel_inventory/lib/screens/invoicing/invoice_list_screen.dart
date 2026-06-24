@@ -227,6 +227,11 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
           tooltip: 'Print invoice list',
           onPressed: _print,
         ),
+        IconButton(
+          icon: const Icon(Icons.cancel_outlined),
+          tooltip: 'Cancelled Invoices',
+          onPressed: () => context.push('/invoices/cancelled'),
+        ),
         FilledButton.icon(
           icon: const Icon(Icons.add, size: 18),
           label: const Text('New Invoice'),
@@ -582,28 +587,28 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                                 ),
                                 const SizedBox(width: 4),
                                 IconButton(
-                                  icon: const Icon(Icons.delete_outline,
+                                  icon: const Icon(Icons.cancel_outlined,
                                       color: Colors.red),
-                                  tooltip: inv.status == 'printed'
-                                      ? 'Delete (restores stock)'
-                                      : 'Delete',
+                                  tooltip: 'Cancel Invoice',
                                   onPressed: () async {
-                                    final msg = inv.status == 'printed'
-                                        ? 'Delete invoice $displayNumber?\n\nOrdered stock will be restored to inventory.'
-                                        : 'Delete invoice $displayNumber? This cannot be undone.';
                                     final ok = await showConfirmDialog(
                                       ctx,
-                                      title: 'Delete Invoice',
-                                      message: msg,
-                                      confirmLabel: 'Delete',
+                                      title: 'Cancel Invoice',
+                                      message:
+                                          'Cancel invoice $displayNumber?\n\n'
+                                          'Ordered stock will be restored to inventory. '
+                                          'The invoice moves to Cancelled Invoices, where it '
+                                          'can be restored or permanently deleted.',
+                                      confirmLabel: 'Cancel Invoice',
                                     );
                                     if (ok) {
                                       await ref
                                           .read(invoiceRepositoryProvider)
-                                          .deleteInvoice(inv);
+                                          .cancelInvoice(inv);
                                       ref.invalidate(filteredInvoicesProvider);
                                       ref.invalidate(invoicesListProvider);
                                       ref.invalidate(inventoryListProvider);
+                                      ref.invalidate(cancelledInvoicesProvider);
                                     }
                                   },
                                 ),

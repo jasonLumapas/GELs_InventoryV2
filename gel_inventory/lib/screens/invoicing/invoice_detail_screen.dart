@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/client.dart';
+import '../../models/deleted_invoice_item.dart';
 import '../../models/inventory_item.dart';
 import '../../models/invoice.dart';
 import '../../models/invoice_item.dart';
@@ -116,6 +117,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   Invoice? _invoice;
   List<InvoiceItem> _originalItems = [];
   List<_EditItem> _editItems = [];
+  List<DeletedInvoiceItem> _deletedItems = [];
   Client? _selectedClient;
   List<Client> _clients = [];
   Set<String> _pendingClientIds = {};
@@ -162,9 +164,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   }
 
   Future<void> _load() async {
-    final invoices = await ref.read(invoiceRepositoryProvider).getAll();
-    _invoice =
-        invoices.where((i) => i.id == widget.invoiceId).firstOrNull;
+    _invoice = await ref.read(invoiceRepositoryProvider).getById(widget.invoiceId);
     if (_invoice == null) {
       if (mounted) _goBack();
       return;
@@ -172,6 +172,9 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
 
     _originalItems =
         await ref.read(invoiceRepositoryProvider).getItems(widget.invoiceId);
+    _deletedItems = await ref
+        .read(invoiceRepositoryProvider)
+        .getDeletedItems(widget.invoiceId);
     _clients = await ref.read(clientRepositoryProvider).getAll();
     _pendingClientIds = await ref
         .read(invoiceRepositoryProvider)
@@ -490,21 +493,55 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     if (mounted) _goBack();
   }
 
-  Future<void> _deleteInvoice() async {
-    final isPrinted = _invoice!.status == 'printed';
+  Future<void> _cancelInvoice() async {
     final ok = await showConfirmDialog(
       context,
-      title: 'Delete Invoice',
-      message: isPrinted
-          ? 'Delete this invoice? Since it was printed, the ordered stock will be restored to inventory.'
-          : 'Delete this invoice? This cannot be undone.',
-      confirmLabel: 'Delete',
+      title: 'Cancel Invoice',
+      message: 'Cancel this invoice?\n\n'
+          'Ordered stock will be restored to inventory. The invoice moves '
+          'to Cancelled Invoices, where it can be restored or permanently '
+          'deleted.',
+      confirmLabel: 'Cancel Invoice',
     );
     if (ok) {
-      await ref.read(invoiceRepositoryProvider).deleteInvoice(_invoice!);
+      await ref.read(invoiceRepositoryProvider).cancelInvoice(_invoice!);
       ref.invalidate(invoicesListProvider);
       ref.invalidate(filteredInvoicesProvider);
       ref.invalidate(inventoryListProvider);
+      ref.invalidate(cancelledInvoicesProvider);
+      if (mounted) _goBack();
+    }
+  }
+
+  Future<void> _restoreInvoice() async {
+    final ok = await showConfirmDialog(
+      context,
+      title: 'Restore Invoice',
+      message: 'Restore this invoice? It will be marked as printed again '
+          'and its ordered stock will be re-deducted from inventory.',
+      confirmLabel: 'Restore',
+    );
+    if (ok) {
+      await ref.read(invoiceRepositoryProvider).restoreInvoice(_invoice!);
+      ref.invalidate(invoicesListProvider);
+      ref.invalidate(filteredInvoicesProvider);
+      ref.invalidate(inventoryListProvider);
+      ref.invalidate(cancelledInvoicesProvider);
+      if (mounted) _goBack();
+    }
+  }
+
+  Future<void> _permanentlyDeleteInvoice() async {
+    final ok = await showConfirmDialog(
+      context,
+      title: 'Delete Permanently',
+      message: 'Permanently delete this cancelled invoice? '
+          'This cannot be undone.',
+      confirmLabel: 'Delete Permanently',
+    );
+    if (ok) {
+      await ref.read(invoiceRepositoryProvider).deleteInvoice(_invoice!);
+      ref.invalidate(cancelledInvoicesProvider);
       if (mounted) _goBack();
     }
   }
@@ -516,13 +553,32 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
 
     return AppScaffold(
       title: 'Invoice Detail',
+      leading: isCancelled
+          ? IconButton(
+              icon: const Icon(Icons.arrow_back),
+              tooltip: 'Back',
+              onPressed: _goBack,
+            )
+          : null,
       actions: [
-        if (!isCancelled && !_loading)
+        if (!_loading && !isCancelled)
           IconButton(
-            icon: const Icon(Icons.delete_outline, color: Colors.red),
-            tooltip: 'Delete Invoice',
-            onPressed: _saving ? null : _deleteInvoice,
+            icon: const Icon(Icons.cancel_outlined, color: Colors.red),
+            tooltip: 'Cancel Invoice',
+            onPressed: _saving ? null : _cancelInvoice,
           ),
+        if (!_loading && isCancelled) ...[
+          IconButton(
+            icon: const Icon(Icons.restore),
+            tooltip: 'Restore Invoice',
+            onPressed: _saving ? null : _restoreInvoice,
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_forever, color: Colors.red),
+            tooltip: 'Delete Permanently',
+            onPressed: _saving ? null : _permanentlyDeleteInvoice,
+          ),
+        ],
       ],
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -1123,6 +1179,40 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                         );
                       },
                     ),
+
+                  // Deleted items history (read-only audit trail)
+                  if (_deletedItems.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: ExpansionTile(
+                        title: Text(
+                          'Deleted Items (${_deletedItems.length})',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        leading: const Icon(Icons.history, color: Colors.grey),
+                        children: _deletedItems.map((d) {
+                          final product = _productsById[d.productId];
+                          final ppb = product?.piecesPerBox ?? 1;
+                          final boxes = ppb > 0 ? d.quantity ~/ ppb : 0;
+                          final pcs = ppb > 0 ? d.quantity % ppb : d.quantity;
+                          final qtyLabel = boxes > 0
+                              ? '$boxes box(es) + $pcs pcs'
+                              : '$pcs pcs';
+                          return ListTile(
+                            dense: true,
+                            leading: const Icon(Icons.remove_circle_outline,
+                                color: Colors.red, size: 20),
+                            title: Text(product?.name ?? d.productId),
+                            subtitle: Text(
+                              '$qtyLabel'
+                              '${d.isFree ? '  •  FREE' : '  •  ${formatCurrency(d.subtotal)}'}'
+                              '  •  ${dateFmt.format(d.deletedAt)}',
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
                   ]))),  // end Column / SingleChildScrollView / Expanded
 
                   // Total + actions bar (pinned outside the scroll view)
@@ -1292,6 +1382,17 @@ class _EditItemTileState extends State<_EditItemTile> {
     super.initState();
     _qtyCtrl =
         TextEditingController(text: widget.item.quantity.toString());
+  }
+
+  @override
+  void didUpdateWidget(_EditItemTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The ListView has no keys, so when a row above is removed, Flutter
+    // reuses this State for a different _EditItem — resync the controller.
+    if (!identical(oldWidget.item, widget.item)) {
+      final text = widget.item.quantity.toString();
+      if (_qtyCtrl.text != text) _qtyCtrl.text = text;
+    }
   }
 
   @override

@@ -12,6 +12,7 @@ import 'screens/inventory/inventory_screen.dart';
 import 'screens/invoicing/invoice_list_screen.dart';
 import 'screens/invoicing/invoice_create_screen.dart';
 import 'screens/invoicing/invoice_detail_screen.dart';
+import 'screens/invoicing/cancelled_invoices_list_screen.dart';
 import 'screens/reports/reports_screen.dart';
 import 'screens/reports/order_summary_screen.dart';
 import 'screens/bad_orders/bad_order_list_screen.dart';
@@ -70,6 +71,9 @@ final _router = GoRouter(
         path: '/invoices/new',
         builder: (ctx, s) =>
             InvoiceCreateScreen(draftId: s.uri.queryParameters['draft'])),
+    GoRoute(
+        path: '/invoices/cancelled',
+        builder: (ctx, s) => const CancelledInvoicesListScreen()),
     GoRoute(
       path: '/invoices/:id',
       builder: (_, state) =>

@@ -10,6 +10,7 @@ class AppScaffold extends ConsumerWidget {
   final Widget body;
   final Widget? floatingActionButton;
   final List<Widget>? actions;
+  final Widget? leading;
 
   const AppScaffold({
     super.key,
@@ -17,6 +18,7 @@ class AppScaffold extends ConsumerWidget {
     required this.body,
     this.floatingActionButton,
     this.actions,
+    this.leading,
   });
 
   @override
@@ -27,6 +29,7 @@ class AppScaffold extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
+        leading: leading,
         title: headerTitle == null
             ? Text(title)
             : Column(

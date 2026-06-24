@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Persists app-wide visibility toggles, gated behind a settings password.
 class AppSettingsService {
-  static const String settingsPassword = 'g3l\$';
+  static const String settingsPassword = 'gels_g3l\$';
 
   static const _keyShowCapitalProfit  = 'settings_show_capital_profit';
   static const _keyShowOffSiteLoading = 'settings_show_offsite_loading';

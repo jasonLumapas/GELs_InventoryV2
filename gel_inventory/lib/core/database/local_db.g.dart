@@ -4021,6 +4021,575 @@ class InvoiceItemsCompanion extends UpdateCompanion<InvoiceItem> {
   }
 }
 
+class $DeletedInvoiceItemsTable extends DeletedInvoiceItems
+    with TableInfo<$DeletedInvoiceItemsTable, DeletedInvoiceItem> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DeletedInvoiceItemsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _invoiceIdMeta = const VerificationMeta(
+    'invoiceId',
+  );
+  @override
+  late final GeneratedColumn<String> invoiceId = GeneratedColumn<String>(
+    'invoice_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES invoices (id)',
+    ),
+  );
+  static const VerificationMeta _productIdMeta = const VerificationMeta(
+    'productId',
+  );
+  @override
+  late final GeneratedColumn<String> productId = GeneratedColumn<String>(
+    'product_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES products (id)',
+    ),
+  );
+  static const VerificationMeta _unitTypeMeta = const VerificationMeta(
+    'unitType',
+  );
+  @override
+  late final GeneratedColumn<String> unitType = GeneratedColumn<String>(
+    'unit_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _quantityMeta = const VerificationMeta(
+    'quantity',
+  );
+  @override
+  late final GeneratedColumn<int> quantity = GeneratedColumn<int>(
+    'quantity',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _pricePerPieceMeta = const VerificationMeta(
+    'pricePerPiece',
+  );
+  @override
+  late final GeneratedColumn<double> pricePerPiece = GeneratedColumn<double>(
+    'price_per_piece',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _subtotalMeta = const VerificationMeta(
+    'subtotal',
+  );
+  @override
+  late final GeneratedColumn<double> subtotal = GeneratedColumn<double>(
+    'subtotal',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _isFreeMeta = const VerificationMeta('isFree');
+  @override
+  late final GeneratedColumn<bool> isFree = GeneratedColumn<bool>(
+    'is_free',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_free" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    invoiceId,
+    productId,
+    unitType,
+    quantity,
+    pricePerPiece,
+    subtotal,
+    isFree,
+    deletedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'deleted_invoice_items';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DeletedInvoiceItem> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('invoice_id')) {
+      context.handle(
+        _invoiceIdMeta,
+        invoiceId.isAcceptableOrUnknown(data['invoice_id']!, _invoiceIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_invoiceIdMeta);
+    }
+    if (data.containsKey('product_id')) {
+      context.handle(
+        _productIdMeta,
+        productId.isAcceptableOrUnknown(data['product_id']!, _productIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_productIdMeta);
+    }
+    if (data.containsKey('unit_type')) {
+      context.handle(
+        _unitTypeMeta,
+        unitType.isAcceptableOrUnknown(data['unit_type']!, _unitTypeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_unitTypeMeta);
+    }
+    if (data.containsKey('quantity')) {
+      context.handle(
+        _quantityMeta,
+        quantity.isAcceptableOrUnknown(data['quantity']!, _quantityMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_quantityMeta);
+    }
+    if (data.containsKey('price_per_piece')) {
+      context.handle(
+        _pricePerPieceMeta,
+        pricePerPiece.isAcceptableOrUnknown(
+          data['price_per_piece']!,
+          _pricePerPieceMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_pricePerPieceMeta);
+    }
+    if (data.containsKey('subtotal')) {
+      context.handle(
+        _subtotalMeta,
+        subtotal.isAcceptableOrUnknown(data['subtotal']!, _subtotalMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_subtotalMeta);
+    }
+    if (data.containsKey('is_free')) {
+      context.handle(
+        _isFreeMeta,
+        isFree.isAcceptableOrUnknown(data['is_free']!, _isFreeMeta),
+      );
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DeletedInvoiceItem map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DeletedInvoiceItem(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      invoiceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}invoice_id'],
+      )!,
+      productId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}product_id'],
+      )!,
+      unitType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}unit_type'],
+      )!,
+      quantity: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}quantity'],
+      )!,
+      pricePerPiece: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}price_per_piece'],
+      )!,
+      subtotal: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}subtotal'],
+      )!,
+      isFree: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_free'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      )!,
+    );
+  }
+
+  @override
+  $DeletedInvoiceItemsTable createAlias(String alias) {
+    return $DeletedInvoiceItemsTable(attachedDatabase, alias);
+  }
+}
+
+class DeletedInvoiceItem extends DataClass
+    implements Insertable<DeletedInvoiceItem> {
+  final String id;
+  final String invoiceId;
+  final String productId;
+  final String unitType;
+  final int quantity;
+  final double pricePerPiece;
+  final double subtotal;
+  final bool isFree;
+  final DateTime deletedAt;
+  const DeletedInvoiceItem({
+    required this.id,
+    required this.invoiceId,
+    required this.productId,
+    required this.unitType,
+    required this.quantity,
+    required this.pricePerPiece,
+    required this.subtotal,
+    required this.isFree,
+    required this.deletedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['invoice_id'] = Variable<String>(invoiceId);
+    map['product_id'] = Variable<String>(productId);
+    map['unit_type'] = Variable<String>(unitType);
+    map['quantity'] = Variable<int>(quantity);
+    map['price_per_piece'] = Variable<double>(pricePerPiece);
+    map['subtotal'] = Variable<double>(subtotal);
+    map['is_free'] = Variable<bool>(isFree);
+    map['deleted_at'] = Variable<DateTime>(deletedAt);
+    return map;
+  }
+
+  DeletedInvoiceItemsCompanion toCompanion(bool nullToAbsent) {
+    return DeletedInvoiceItemsCompanion(
+      id: Value(id),
+      invoiceId: Value(invoiceId),
+      productId: Value(productId),
+      unitType: Value(unitType),
+      quantity: Value(quantity),
+      pricePerPiece: Value(pricePerPiece),
+      subtotal: Value(subtotal),
+      isFree: Value(isFree),
+      deletedAt: Value(deletedAt),
+    );
+  }
+
+  factory DeletedInvoiceItem.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DeletedInvoiceItem(
+      id: serializer.fromJson<String>(json['id']),
+      invoiceId: serializer.fromJson<String>(json['invoiceId']),
+      productId: serializer.fromJson<String>(json['productId']),
+      unitType: serializer.fromJson<String>(json['unitType']),
+      quantity: serializer.fromJson<int>(json['quantity']),
+      pricePerPiece: serializer.fromJson<double>(json['pricePerPiece']),
+      subtotal: serializer.fromJson<double>(json['subtotal']),
+      isFree: serializer.fromJson<bool>(json['isFree']),
+      deletedAt: serializer.fromJson<DateTime>(json['deletedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'invoiceId': serializer.toJson<String>(invoiceId),
+      'productId': serializer.toJson<String>(productId),
+      'unitType': serializer.toJson<String>(unitType),
+      'quantity': serializer.toJson<int>(quantity),
+      'pricePerPiece': serializer.toJson<double>(pricePerPiece),
+      'subtotal': serializer.toJson<double>(subtotal),
+      'isFree': serializer.toJson<bool>(isFree),
+      'deletedAt': serializer.toJson<DateTime>(deletedAt),
+    };
+  }
+
+  DeletedInvoiceItem copyWith({
+    String? id,
+    String? invoiceId,
+    String? productId,
+    String? unitType,
+    int? quantity,
+    double? pricePerPiece,
+    double? subtotal,
+    bool? isFree,
+    DateTime? deletedAt,
+  }) => DeletedInvoiceItem(
+    id: id ?? this.id,
+    invoiceId: invoiceId ?? this.invoiceId,
+    productId: productId ?? this.productId,
+    unitType: unitType ?? this.unitType,
+    quantity: quantity ?? this.quantity,
+    pricePerPiece: pricePerPiece ?? this.pricePerPiece,
+    subtotal: subtotal ?? this.subtotal,
+    isFree: isFree ?? this.isFree,
+    deletedAt: deletedAt ?? this.deletedAt,
+  );
+  DeletedInvoiceItem copyWithCompanion(DeletedInvoiceItemsCompanion data) {
+    return DeletedInvoiceItem(
+      id: data.id.present ? data.id.value : this.id,
+      invoiceId: data.invoiceId.present ? data.invoiceId.value : this.invoiceId,
+      productId: data.productId.present ? data.productId.value : this.productId,
+      unitType: data.unitType.present ? data.unitType.value : this.unitType,
+      quantity: data.quantity.present ? data.quantity.value : this.quantity,
+      pricePerPiece: data.pricePerPiece.present
+          ? data.pricePerPiece.value
+          : this.pricePerPiece,
+      subtotal: data.subtotal.present ? data.subtotal.value : this.subtotal,
+      isFree: data.isFree.present ? data.isFree.value : this.isFree,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DeletedInvoiceItem(')
+          ..write('id: $id, ')
+          ..write('invoiceId: $invoiceId, ')
+          ..write('productId: $productId, ')
+          ..write('unitType: $unitType, ')
+          ..write('quantity: $quantity, ')
+          ..write('pricePerPiece: $pricePerPiece, ')
+          ..write('subtotal: $subtotal, ')
+          ..write('isFree: $isFree, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    invoiceId,
+    productId,
+    unitType,
+    quantity,
+    pricePerPiece,
+    subtotal,
+    isFree,
+    deletedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DeletedInvoiceItem &&
+          other.id == this.id &&
+          other.invoiceId == this.invoiceId &&
+          other.productId == this.productId &&
+          other.unitType == this.unitType &&
+          other.quantity == this.quantity &&
+          other.pricePerPiece == this.pricePerPiece &&
+          other.subtotal == this.subtotal &&
+          other.isFree == this.isFree &&
+          other.deletedAt == this.deletedAt);
+}
+
+class DeletedInvoiceItemsCompanion extends UpdateCompanion<DeletedInvoiceItem> {
+  final Value<String> id;
+  final Value<String> invoiceId;
+  final Value<String> productId;
+  final Value<String> unitType;
+  final Value<int> quantity;
+  final Value<double> pricePerPiece;
+  final Value<double> subtotal;
+  final Value<bool> isFree;
+  final Value<DateTime> deletedAt;
+  final Value<int> rowid;
+  const DeletedInvoiceItemsCompanion({
+    this.id = const Value.absent(),
+    this.invoiceId = const Value.absent(),
+    this.productId = const Value.absent(),
+    this.unitType = const Value.absent(),
+    this.quantity = const Value.absent(),
+    this.pricePerPiece = const Value.absent(),
+    this.subtotal = const Value.absent(),
+    this.isFree = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DeletedInvoiceItemsCompanion.insert({
+    required String id,
+    required String invoiceId,
+    required String productId,
+    required String unitType,
+    required int quantity,
+    required double pricePerPiece,
+    required double subtotal,
+    this.isFree = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       invoiceId = Value(invoiceId),
+       productId = Value(productId),
+       unitType = Value(unitType),
+       quantity = Value(quantity),
+       pricePerPiece = Value(pricePerPiece),
+       subtotal = Value(subtotal);
+  static Insertable<DeletedInvoiceItem> custom({
+    Expression<String>? id,
+    Expression<String>? invoiceId,
+    Expression<String>? productId,
+    Expression<String>? unitType,
+    Expression<int>? quantity,
+    Expression<double>? pricePerPiece,
+    Expression<double>? subtotal,
+    Expression<bool>? isFree,
+    Expression<DateTime>? deletedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (invoiceId != null) 'invoice_id': invoiceId,
+      if (productId != null) 'product_id': productId,
+      if (unitType != null) 'unit_type': unitType,
+      if (quantity != null) 'quantity': quantity,
+      if (pricePerPiece != null) 'price_per_piece': pricePerPiece,
+      if (subtotal != null) 'subtotal': subtotal,
+      if (isFree != null) 'is_free': isFree,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DeletedInvoiceItemsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? invoiceId,
+    Value<String>? productId,
+    Value<String>? unitType,
+    Value<int>? quantity,
+    Value<double>? pricePerPiece,
+    Value<double>? subtotal,
+    Value<bool>? isFree,
+    Value<DateTime>? deletedAt,
+    Value<int>? rowid,
+  }) {
+    return DeletedInvoiceItemsCompanion(
+      id: id ?? this.id,
+      invoiceId: invoiceId ?? this.invoiceId,
+      productId: productId ?? this.productId,
+      unitType: unitType ?? this.unitType,
+      quantity: quantity ?? this.quantity,
+      pricePerPiece: pricePerPiece ?? this.pricePerPiece,
+      subtotal: subtotal ?? this.subtotal,
+      isFree: isFree ?? this.isFree,
+      deletedAt: deletedAt ?? this.deletedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (invoiceId.present) {
+      map['invoice_id'] = Variable<String>(invoiceId.value);
+    }
+    if (productId.present) {
+      map['product_id'] = Variable<String>(productId.value);
+    }
+    if (unitType.present) {
+      map['unit_type'] = Variable<String>(unitType.value);
+    }
+    if (quantity.present) {
+      map['quantity'] = Variable<int>(quantity.value);
+    }
+    if (pricePerPiece.present) {
+      map['price_per_piece'] = Variable<double>(pricePerPiece.value);
+    }
+    if (subtotal.present) {
+      map['subtotal'] = Variable<double>(subtotal.value);
+    }
+    if (isFree.present) {
+      map['is_free'] = Variable<bool>(isFree.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DeletedInvoiceItemsCompanion(')
+          ..write('id: $id, ')
+          ..write('invoiceId: $invoiceId, ')
+          ..write('productId: $productId, ')
+          ..write('unitType: $unitType, ')
+          ..write('quantity: $quantity, ')
+          ..write('pricePerPiece: $pricePerPiece, ')
+          ..write('subtotal: $subtotal, ')
+          ..write('isFree: $isFree, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $BadOrdersTable extends BadOrders
     with TableInfo<$BadOrdersTable, BadOrder> {
   @override
@@ -9917,6 +10486,8 @@ abstract class _$LocalDatabase extends GeneratedDatabase {
   late final $InventoryTable inventory = $InventoryTable(this);
   late final $InvoicesTable invoices = $InvoicesTable(this);
   late final $InvoiceItemsTable invoiceItems = $InvoiceItemsTable(this);
+  late final $DeletedInvoiceItemsTable deletedInvoiceItems =
+      $DeletedInvoiceItemsTable(this);
   late final $BadOrdersTable badOrders = $BadOrdersTable(this);
   late final $BadOrderItemsTable badOrderItems = $BadOrderItemsTable(this);
   late final $VanAreasTable vanAreas = $VanAreasTable(this);
@@ -9948,6 +10519,7 @@ abstract class _$LocalDatabase extends GeneratedDatabase {
     inventory,
     invoices,
     invoiceItems,
+    deletedInvoiceItems,
     badOrders,
     badOrderItems,
     vanAreas,
@@ -11023,6 +11595,33 @@ final class $$ProductsTableReferences
     );
   }
 
+  static MultiTypedResultKey<
+    $DeletedInvoiceItemsTable,
+    List<DeletedInvoiceItem>
+  >
+  _deletedInvoiceItemsRefsTable(_$LocalDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.deletedInvoiceItems,
+        aliasName: $_aliasNameGenerator(
+          db.products.id,
+          db.deletedInvoiceItems.productId,
+        ),
+      );
+
+  $$DeletedInvoiceItemsTableProcessedTableManager get deletedInvoiceItemsRefs {
+    final manager = $$DeletedInvoiceItemsTableTableManager(
+      $_db,
+      $_db.deletedInvoiceItems,
+    ).filter((f) => f.productId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _deletedInvoiceItemsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
   static MultiTypedResultKey<$BadOrderItemsTable, List<BadOrderItem>>
   _badOrderItemsRefsTable(_$LocalDatabase db) => MultiTypedResultKey.fromTable(
     db.badOrderItems,
@@ -11286,6 +11885,31 @@ class $$ProductsTableFilterComposer
           }) => $$InvoiceItemsTableFilterComposer(
             $db: $db,
             $table: $db.invoiceItems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> deletedInvoiceItemsRefs(
+    Expression<bool> Function($$DeletedInvoiceItemsTableFilterComposer f) f,
+  ) {
+    final $$DeletedInvoiceItemsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.deletedInvoiceItems,
+      getReferencedColumn: (t) => t.productId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DeletedInvoiceItemsTableFilterComposer(
+            $db: $db,
+            $table: $db.deletedInvoiceItems,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -11642,6 +12266,32 @@ class $$ProductsTableAnnotationComposer
     return f(composer);
   }
 
+  Expression<T> deletedInvoiceItemsRefs<T extends Object>(
+    Expression<T> Function($$DeletedInvoiceItemsTableAnnotationComposer a) f,
+  ) {
+    final $$DeletedInvoiceItemsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.deletedInvoiceItems,
+          getReferencedColumn: (t) => t.productId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$DeletedInvoiceItemsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.deletedInvoiceItems,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+
   Expression<T> badOrderItemsRefs<T extends Object>(
     Expression<T> Function($$BadOrderItemsTableAnnotationComposer a) f,
   ) {
@@ -11792,6 +12442,7 @@ class $$ProductsTableTableManager
             bool productDiscountsRefs,
             bool inventoryRefs,
             bool invoiceItemsRefs,
+            bool deletedInvoiceItemsRefs,
             bool badOrderItemsRefs,
             bool vanStocksRefs,
             bool stockMovementsRefs,
@@ -11865,6 +12516,7 @@ class $$ProductsTableTableManager
                 productDiscountsRefs = false,
                 inventoryRefs = false,
                 invoiceItemsRefs = false,
+                deletedInvoiceItemsRefs = false,
                 badOrderItemsRefs = false,
                 vanStocksRefs = false,
                 stockMovementsRefs = false,
@@ -11878,6 +12530,7 @@ class $$ProductsTableTableManager
                     if (productDiscountsRefs) db.productDiscounts,
                     if (inventoryRefs) db.inventory,
                     if (invoiceItemsRefs) db.invoiceItems,
+                    if (deletedInvoiceItemsRefs) db.deletedInvoiceItems,
                     if (badOrderItemsRefs) db.badOrderItems,
                     if (vanStocksRefs) db.vanStocks,
                     if (stockMovementsRefs) db.stockMovements,
@@ -11997,6 +12650,27 @@ class $$ProductsTableTableManager
                                 table,
                                 p0,
                               ).invoiceItemsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.productId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (deletedInvoiceItemsRefs)
+                        await $_getPrefetchedData<
+                          Product,
+                          $ProductsTable,
+                          DeletedInvoiceItem
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ProductsTableReferences
+                              ._deletedInvoiceItemsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ProductsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).deletedInvoiceItemsRefs,
                           referencedItemsForCurrentItem:
                               (item, referencedItems) => referencedItems.where(
                                 (e) => e.productId == item.id,
@@ -12134,6 +12808,7 @@ typedef $$ProductsTableProcessedTableManager =
         bool productDiscountsRefs,
         bool inventoryRefs,
         bool invoiceItemsRefs,
+        bool deletedInvoiceItemsRefs,
         bool badOrderItemsRefs,
         bool vanStocksRefs,
         bool stockMovementsRefs,
@@ -13238,6 +13913,33 @@ final class $$InvoicesTableReferences
     );
   }
 
+  static MultiTypedResultKey<
+    $DeletedInvoiceItemsTable,
+    List<DeletedInvoiceItem>
+  >
+  _deletedInvoiceItemsRefsTable(_$LocalDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.deletedInvoiceItems,
+        aliasName: $_aliasNameGenerator(
+          db.invoices.id,
+          db.deletedInvoiceItems.invoiceId,
+        ),
+      );
+
+  $$DeletedInvoiceItemsTableProcessedTableManager get deletedInvoiceItemsRefs {
+    final manager = $$DeletedInvoiceItemsTableTableManager(
+      $_db,
+      $_db.deletedInvoiceItems,
+    ).filter((f) => f.invoiceId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _deletedInvoiceItemsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
   static MultiTypedResultKey<$InvoicePaymentsTable, List<InvoicePayment>>
   _invoicePaymentsRefsTable(_$LocalDatabase db) =>
       MultiTypedResultKey.fromTable(
@@ -13391,6 +14093,31 @@ class $$InvoicesTableFilterComposer
           }) => $$InvoiceItemsTableFilterComposer(
             $db: $db,
             $table: $db.invoiceItems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> deletedInvoiceItemsRefs(
+    Expression<bool> Function($$DeletedInvoiceItemsTableFilterComposer f) f,
+  ) {
+    final $$DeletedInvoiceItemsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.deletedInvoiceItems,
+      getReferencedColumn: (t) => t.invoiceId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DeletedInvoiceItemsTableFilterComposer(
+            $db: $db,
+            $table: $db.deletedInvoiceItems,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -13668,6 +14395,32 @@ class $$InvoicesTableAnnotationComposer
     return f(composer);
   }
 
+  Expression<T> deletedInvoiceItemsRefs<T extends Object>(
+    Expression<T> Function($$DeletedInvoiceItemsTableAnnotationComposer a) f,
+  ) {
+    final $$DeletedInvoiceItemsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.deletedInvoiceItems,
+          getReferencedColumn: (t) => t.invoiceId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$DeletedInvoiceItemsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.deletedInvoiceItems,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+
   Expression<T> invoicePaymentsRefs<T extends Object>(
     Expression<T> Function($$InvoicePaymentsTableAnnotationComposer a) f,
   ) {
@@ -13710,6 +14463,7 @@ class $$InvoicesTableTableManager
           PrefetchHooks Function({
             bool clientId,
             bool invoiceItemsRefs,
+            bool deletedInvoiceItemsRefs,
             bool invoicePaymentsRefs,
           })
         > {
@@ -13816,12 +14570,14 @@ class $$InvoicesTableTableManager
               ({
                 clientId = false,
                 invoiceItemsRefs = false,
+                deletedInvoiceItemsRefs = false,
                 invoicePaymentsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
                     if (invoiceItemsRefs) db.invoiceItems,
+                    if (deletedInvoiceItemsRefs) db.deletedInvoiceItems,
                     if (invoicePaymentsRefs) db.invoicePayments,
                   ],
                   addJoins:
@@ -13879,6 +14635,27 @@ class $$InvoicesTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (deletedInvoiceItemsRefs)
+                        await $_getPrefetchedData<
+                          Invoice,
+                          $InvoicesTable,
+                          DeletedInvoiceItem
+                        >(
+                          currentTable: table,
+                          referencedTable: $$InvoicesTableReferences
+                              ._deletedInvoiceItemsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$InvoicesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).deletedInvoiceItemsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.invoiceId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                       if (invoicePaymentsRefs)
                         await $_getPrefetchedData<
                           Invoice,
@@ -13923,6 +14700,7 @@ typedef $$InvoicesTableProcessedTableManager =
       PrefetchHooks Function({
         bool clientId,
         bool invoiceItemsRefs,
+        bool deletedInvoiceItemsRefs,
         bool invoicePaymentsRefs,
       })
     >;
@@ -14411,6 +15189,512 @@ typedef $$InvoiceItemsTableProcessedTableManager =
       $$InvoiceItemsTableUpdateCompanionBuilder,
       (InvoiceItem, $$InvoiceItemsTableReferences),
       InvoiceItem,
+      PrefetchHooks Function({bool invoiceId, bool productId})
+    >;
+typedef $$DeletedInvoiceItemsTableCreateCompanionBuilder =
+    DeletedInvoiceItemsCompanion Function({
+      required String id,
+      required String invoiceId,
+      required String productId,
+      required String unitType,
+      required int quantity,
+      required double pricePerPiece,
+      required double subtotal,
+      Value<bool> isFree,
+      Value<DateTime> deletedAt,
+      Value<int> rowid,
+    });
+typedef $$DeletedInvoiceItemsTableUpdateCompanionBuilder =
+    DeletedInvoiceItemsCompanion Function({
+      Value<String> id,
+      Value<String> invoiceId,
+      Value<String> productId,
+      Value<String> unitType,
+      Value<int> quantity,
+      Value<double> pricePerPiece,
+      Value<double> subtotal,
+      Value<bool> isFree,
+      Value<DateTime> deletedAt,
+      Value<int> rowid,
+    });
+
+final class $$DeletedInvoiceItemsTableReferences
+    extends
+        BaseReferences<
+          _$LocalDatabase,
+          $DeletedInvoiceItemsTable,
+          DeletedInvoiceItem
+        > {
+  $$DeletedInvoiceItemsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $InvoicesTable _invoiceIdTable(_$LocalDatabase db) =>
+      db.invoices.createAlias(
+        $_aliasNameGenerator(db.deletedInvoiceItems.invoiceId, db.invoices.id),
+      );
+
+  $$InvoicesTableProcessedTableManager get invoiceId {
+    final $_column = $_itemColumn<String>('invoice_id')!;
+
+    final manager = $$InvoicesTableTableManager(
+      $_db,
+      $_db.invoices,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_invoiceIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $ProductsTable _productIdTable(_$LocalDatabase db) =>
+      db.products.createAlias(
+        $_aliasNameGenerator(db.deletedInvoiceItems.productId, db.products.id),
+      );
+
+  $$ProductsTableProcessedTableManager get productId {
+    final $_column = $_itemColumn<String>('product_id')!;
+
+    final manager = $$ProductsTableTableManager(
+      $_db,
+      $_db.products,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_productIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$DeletedInvoiceItemsTableFilterComposer
+    extends Composer<_$LocalDatabase, $DeletedInvoiceItemsTable> {
+  $$DeletedInvoiceItemsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get unitType => $composableBuilder(
+    column: $table.unitType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get quantity => $composableBuilder(
+    column: $table.quantity,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get pricePerPiece => $composableBuilder(
+    column: $table.pricePerPiece,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get subtotal => $composableBuilder(
+    column: $table.subtotal,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isFree => $composableBuilder(
+    column: $table.isFree,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$InvoicesTableFilterComposer get invoiceId {
+    final $$InvoicesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.invoiceId,
+      referencedTable: $db.invoices,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$InvoicesTableFilterComposer(
+            $db: $db,
+            $table: $db.invoices,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$ProductsTableFilterComposer get productId {
+    final $$ProductsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.productId,
+      referencedTable: $db.products,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProductsTableFilterComposer(
+            $db: $db,
+            $table: $db.products,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DeletedInvoiceItemsTableOrderingComposer
+    extends Composer<_$LocalDatabase, $DeletedInvoiceItemsTable> {
+  $$DeletedInvoiceItemsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get unitType => $composableBuilder(
+    column: $table.unitType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get quantity => $composableBuilder(
+    column: $table.quantity,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get pricePerPiece => $composableBuilder(
+    column: $table.pricePerPiece,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get subtotal => $composableBuilder(
+    column: $table.subtotal,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isFree => $composableBuilder(
+    column: $table.isFree,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$InvoicesTableOrderingComposer get invoiceId {
+    final $$InvoicesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.invoiceId,
+      referencedTable: $db.invoices,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$InvoicesTableOrderingComposer(
+            $db: $db,
+            $table: $db.invoices,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$ProductsTableOrderingComposer get productId {
+    final $$ProductsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.productId,
+      referencedTable: $db.products,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProductsTableOrderingComposer(
+            $db: $db,
+            $table: $db.products,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DeletedInvoiceItemsTableAnnotationComposer
+    extends Composer<_$LocalDatabase, $DeletedInvoiceItemsTable> {
+  $$DeletedInvoiceItemsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get unitType =>
+      $composableBuilder(column: $table.unitType, builder: (column) => column);
+
+  GeneratedColumn<int> get quantity =>
+      $composableBuilder(column: $table.quantity, builder: (column) => column);
+
+  GeneratedColumn<double> get pricePerPiece => $composableBuilder(
+    column: $table.pricePerPiece,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get subtotal =>
+      $composableBuilder(column: $table.subtotal, builder: (column) => column);
+
+  GeneratedColumn<bool> get isFree =>
+      $composableBuilder(column: $table.isFree, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  $$InvoicesTableAnnotationComposer get invoiceId {
+    final $$InvoicesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.invoiceId,
+      referencedTable: $db.invoices,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$InvoicesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.invoices,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$ProductsTableAnnotationComposer get productId {
+    final $$ProductsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.productId,
+      referencedTable: $db.products,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProductsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.products,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DeletedInvoiceItemsTableTableManager
+    extends
+        RootTableManager<
+          _$LocalDatabase,
+          $DeletedInvoiceItemsTable,
+          DeletedInvoiceItem,
+          $$DeletedInvoiceItemsTableFilterComposer,
+          $$DeletedInvoiceItemsTableOrderingComposer,
+          $$DeletedInvoiceItemsTableAnnotationComposer,
+          $$DeletedInvoiceItemsTableCreateCompanionBuilder,
+          $$DeletedInvoiceItemsTableUpdateCompanionBuilder,
+          (DeletedInvoiceItem, $$DeletedInvoiceItemsTableReferences),
+          DeletedInvoiceItem,
+          PrefetchHooks Function({bool invoiceId, bool productId})
+        > {
+  $$DeletedInvoiceItemsTableTableManager(
+    _$LocalDatabase db,
+    $DeletedInvoiceItemsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DeletedInvoiceItemsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DeletedInvoiceItemsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$DeletedInvoiceItemsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> invoiceId = const Value.absent(),
+                Value<String> productId = const Value.absent(),
+                Value<String> unitType = const Value.absent(),
+                Value<int> quantity = const Value.absent(),
+                Value<double> pricePerPiece = const Value.absent(),
+                Value<double> subtotal = const Value.absent(),
+                Value<bool> isFree = const Value.absent(),
+                Value<DateTime> deletedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DeletedInvoiceItemsCompanion(
+                id: id,
+                invoiceId: invoiceId,
+                productId: productId,
+                unitType: unitType,
+                quantity: quantity,
+                pricePerPiece: pricePerPiece,
+                subtotal: subtotal,
+                isFree: isFree,
+                deletedAt: deletedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String invoiceId,
+                required String productId,
+                required String unitType,
+                required int quantity,
+                required double pricePerPiece,
+                required double subtotal,
+                Value<bool> isFree = const Value.absent(),
+                Value<DateTime> deletedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DeletedInvoiceItemsCompanion.insert(
+                id: id,
+                invoiceId: invoiceId,
+                productId: productId,
+                unitType: unitType,
+                quantity: quantity,
+                pricePerPiece: pricePerPiece,
+                subtotal: subtotal,
+                isFree: isFree,
+                deletedAt: deletedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$DeletedInvoiceItemsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({invoiceId = false, productId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (invoiceId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.invoiceId,
+                                referencedTable:
+                                    $$DeletedInvoiceItemsTableReferences
+                                        ._invoiceIdTable(db),
+                                referencedColumn:
+                                    $$DeletedInvoiceItemsTableReferences
+                                        ._invoiceIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+                    if (productId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.productId,
+                                referencedTable:
+                                    $$DeletedInvoiceItemsTableReferences
+                                        ._productIdTable(db),
+                                referencedColumn:
+                                    $$DeletedInvoiceItemsTableReferences
+                                        ._productIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$DeletedInvoiceItemsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LocalDatabase,
+      $DeletedInvoiceItemsTable,
+      DeletedInvoiceItem,
+      $$DeletedInvoiceItemsTableFilterComposer,
+      $$DeletedInvoiceItemsTableOrderingComposer,
+      $$DeletedInvoiceItemsTableAnnotationComposer,
+      $$DeletedInvoiceItemsTableCreateCompanionBuilder,
+      $$DeletedInvoiceItemsTableUpdateCompanionBuilder,
+      (DeletedInvoiceItem, $$DeletedInvoiceItemsTableReferences),
+      DeletedInvoiceItem,
       PrefetchHooks Function({bool invoiceId, bool productId})
     >;
 typedef $$BadOrdersTableCreateCompanionBuilder =
@@ -19256,6 +20540,8 @@ class $LocalDatabaseManager {
       $$InvoicesTableTableManager(_db, _db.invoices);
   $$InvoiceItemsTableTableManager get invoiceItems =>
       $$InvoiceItemsTableTableManager(_db, _db.invoiceItems);
+  $$DeletedInvoiceItemsTableTableManager get deletedInvoiceItems =>
+      $$DeletedInvoiceItemsTableTableManager(_db, _db.deletedInvoiceItems);
   $$BadOrdersTableTableManager get badOrders =>
       $$BadOrdersTableTableManager(_db, _db.badOrders);
   $$BadOrderItemsTableTableManager get badOrderItems =>

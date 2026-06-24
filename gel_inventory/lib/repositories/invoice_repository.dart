@@ -2,9 +2,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../core/database/local_db.dart' hide Invoice, InvoiceItem;
+import 'package:uuid/uuid.dart';
+import '../core/database/local_db.dart'
+    hide Invoice, InvoiceItem, DeletedInvoiceItem;
 import '../core/services/connectivity_service.dart';
 import '../core/services/sync_service.dart';
+import '../models/deleted_invoice_item.dart';
 import '../models/invoice.dart';
 import '../models/invoice_item.dart';
 import 'base_repository.dart';
@@ -423,6 +426,16 @@ class InvoiceRepository extends BaseRepository {
       }
     }
 
+    // Log rows that were truly removed (id present in oldItems but not in
+    // newItems) — modified rows keep their id, so this only catches actual
+    // deletions, not quantity/unit-type edits.
+    final newIds = newItems.map((i) => i.id).toSet();
+    final removed = oldItems.where((i) => !newIds.contains(i.id));
+    final deletedAt = DateTime.now();
+    for (final item in removed) {
+      await _logDeletedItem(item, deletedAt);
+    }
+
     // Update invoice record
     var inv = invoice;
     if (inv.status != 'draft' && inv.sequenceNumber == null) {
@@ -471,6 +484,81 @@ class InvoiceRepository extends BaseRepository {
     }
   }
 
+  Future<void> _logDeletedItem(InvoiceItem item, DateTime deletedAt) async {
+    final entry = DeletedInvoiceItem(
+      id: const Uuid().v4(),
+      invoiceId: item.invoiceId,
+      productId: item.productId,
+      unitType: item.unitType,
+      quantity: item.quantity,
+      pricePerPiece: item.pricePerPiece,
+      subtotal: item.subtotal,
+      isFree: item.isFree,
+      deletedAt: deletedAt,
+    );
+    final payload = entry.toJson();
+    if (isOnline) {
+      await Supabase.instance.client
+          .from('deleted_invoice_items')
+          .insert(payload);
+    } else {
+      await syncService.enqueue(
+        tableName: 'deleted_invoice_items',
+        recordId: entry.id,
+        operation: 'insert',
+        payload: payload,
+      );
+    }
+    await trySaveLocal(() => db.into(db.deletedInvoiceItems).insertOnConflictUpdate(
+          DeletedInvoiceItemsCompanion(
+            id: drift.Value(entry.id),
+            invoiceId: drift.Value(entry.invoiceId),
+            productId: drift.Value(entry.productId),
+            unitType: drift.Value(entry.unitType),
+            quantity: drift.Value(entry.quantity),
+            pricePerPiece: drift.Value(entry.pricePerPiece),
+            subtotal: drift.Value(entry.subtotal),
+            isFree: drift.Value(entry.isFree),
+            deletedAt: drift.Value(entry.deletedAt),
+          ),
+        ));
+  }
+
+  /// Returns the deletion history for an invoice, most recent first.
+  Future<List<DeletedInvoiceItem>> getDeletedItems(String invoiceId) async {
+    if (isOnline) {
+      try {
+        final data = await Supabase.instance.client
+            .from('deleted_invoice_items')
+            .select()
+            .eq('invoice_id', invoiceId)
+            .order('deleted_at', ascending: false);
+        return (data as List)
+            .map((j) => DeletedInvoiceItem.fromJson(j))
+            .toList();
+      } catch (e) {
+        debugPrint('getDeletedItems Supabase failed: $e. Falling back to local.');
+      }
+    }
+    final rows = await (db.select(db.deletedInvoiceItems)
+          ..where((t) => t.invoiceId.equals(invoiceId))
+          ..orderBy([(t) => drift.OrderingTerm.desc(t.deletedAt)]))
+        .get();
+    return rows
+        .map((r) => DeletedInvoiceItem(
+              id: r.id,
+              invoiceId: r.invoiceId,
+              productId: r.productId,
+              unitType: r.unitType,
+              quantity: r.quantity,
+              pricePerPiece: r.pricePerPiece,
+              subtotal: r.subtotal,
+              isFree: r.isFree,
+              deletedAt: r.deletedAt,
+            ))
+        .toList();
+  }
+
   /// Permanently deletes an invoice and its items.
   /// If the invoice was printed, inventory is restored first.
   Future<void> deleteInvoice(Invoice invoice) async {
@@ -517,23 +605,81 @@ class InvoiceRepository extends BaseRepository {
     await (db.delete(db.invoices)..where((t) => t.id.equals(invoice.id))).go();
   }
 
-  Future<void> cancelInvoice(String invoiceId) async {
+  /// Soft-cancels an invoice: sets status to 'cancelled' and, if it was
+  /// printed, restores the ordered stock to inventory. The invoice and its
+  /// items remain in the database and can be viewed via [getCancelled] or
+  /// brought back via [restoreInvoice].
+  Future<void> cancelInvoice(Invoice invoice) async {
+    if (invoice.status == 'printed') {
+      final items = await getItems(invoice.id);
+      for (final item in items) {
+        await inventoryRepo.adjust(
+          productId: item.productId,
+          deltaPieces: item.quantity, // restore deducted stock
+        );
+      }
+    }
     final updated = {'status': 'cancelled'};
     if (isOnline) {
       await Supabase.instance.client
           .from('invoices')
           .update(updated)
-          .eq('id', invoiceId);
+          .eq('id', invoice.id);
     } else {
       await syncService.enqueue(
         tableName: 'invoices',
-        recordId: invoiceId,
+        recordId: invoice.id,
         operation: 'update',
         payload: updated,
       );
     }
-    await (db.update(db.invoices)..where((t) => t.id.equals(invoiceId)))
+    await (db.update(db.invoices)..where((t) => t.id.equals(invoice.id)))
         .write(const InvoicesCompanion(status: drift.Value('cancelled')));
+  }
+
+  /// Restores a cancelled invoice back to 'printed' and re-deducts its
+  /// items' quantities from inventory (reversing [cancelInvoice]).
+  Future<void> restoreInvoice(Invoice invoice) async {
+    final items = await getItems(invoice.id);
+    for (final item in items) {
+      await inventoryRepo.adjust(
+        productId: item.productId,
+        deltaPieces: -item.quantity, // re-deduct stock
+      );
+    }
+    final updated = {'status': 'printed'};
+    if (isOnline) {
+      await Supabase.instance.client
+          .from('invoices')
+          .update(updated)
+          .eq('id', invoice.id);
+    } else {
+      await syncService.enqueue(
+        tableName: 'invoices',
+        recordId: invoice.id,
+        operation: 'update',
+        payload: updated,
+      );
+    }
+    await (db.update(db.invoices)..where((t) => t.id.equals(invoice.id)))
+        .write(const InvoicesCompanion(status: drift.Value('printed')));
+  }
+
+  /// Returns all cancelled invoices, most recently dated first.
+  Future<List<Invoice>> getCancelled() async {
+    if (isOnline) {
+      final data = await Supabase.instance.client
+          .from('invoices')
+          .select()
+          .eq('status', 'cancelled')
+          .order('invoice_date', ascending: false);
+      return (data as List).map((j) => Invoice.fromJson(j)).toList();
+    }
+    final rows = await (db.select(db.invoices)
+          ..where((t) => t.status.equals('cancelled'))
+          ..orderBy([(t) => drift.OrderingTerm.desc(t.invoiceDate)]))
+        .get();
+    return rows.map(_invoiceFromRow).toList();
   }
 
   Future<void> _saveLocalInvoice(Invoice inv) async {
@@ -666,6 +812,15 @@ final invoicesListProvider = FutureProvider<List<Invoice>>((ref) {
 /// invoices from the Invoices list.
 final draftInvoicesProvider = FutureProvider<List<Invoice>>((ref) {
   return ref.watch(invoiceRepositoryProvider).getDrafts();
+});
+
+final cancelledInvoicesProvider = FutureProvider<List<Invoice>>((ref) {
+  return ref.watch(invoiceRepositoryProvider).getCancelled();
+});
+
+final deletedInvoiceItemsProvider =
+    FutureProvider.family<List<DeletedInvoiceItem>, String>((ref, invoiceId) {
+  return ref.watch(invoiceRepositoryProvider).getDeletedItems(invoiceId);
 });
 
 /// Date-range filtered list â€” keyed on (startDate, endDate); null = no bound.

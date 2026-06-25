@@ -8,6 +8,10 @@ class SupplierReceivedInvoice {
   final String status; // 'received' | 'cancelled'
   final String? notes;
   final DateTime createdAt;
+  // Cascading discount percentages applied (in order) to every item's
+  // supplier price, e.g. [10, 5] = 10% off, then 5% off the result.
+  final List<double> discountPercents;
+  final bool vatEnabled; // applies 12% VAT on top of the discounted price
 
   const SupplierReceivedInvoice({
     required this.id,
@@ -19,7 +23,19 @@ class SupplierReceivedInvoice {
     this.status = 'received',
     this.notes,
     required this.createdAt,
+    this.discountPercents = const [],
+    this.vatEnabled = false,
   });
+
+  /// Decodes the comma-separated "discount_percents" column, e.g. "10,5".
+  static List<double> decodeDiscountPercents(String? raw) =>
+      (raw == null || raw.isEmpty)
+          ? const []
+          : raw.split(',').map((s) => double.parse(s)).toList();
+
+  /// Encodes a discount list back to the comma-separated storage format.
+  static String? encodeDiscountPercents(List<double> discounts) =>
+      discounts.isEmpty ? null : discounts.map((d) => d.toString()).join(',');
 
   factory SupplierReceivedInvoice.fromJson(Map<String, dynamic> j) =>
       SupplierReceivedInvoice(
@@ -33,6 +49,9 @@ class SupplierReceivedInvoice {
         status: (j['status'] as String?) ?? 'received',
         notes: j['notes'] as String?,
         createdAt: DateTime.parse(j['created_at'] as String),
+        discountPercents:
+            decodeDiscountPercents(j['discount_percents'] as String?),
+        vatEnabled: (j['vat_enabled'] as bool?) ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -45,6 +64,8 @@ class SupplierReceivedInvoice {
         'status': status,
         'notes': notes,
         'created_at': createdAt.toIso8601String(),
+        'discount_percents': encodeDiscountPercents(discountPercents),
+        'vat_enabled': vatEnabled,
       };
 
   String get displayNumber =>
@@ -58,6 +79,8 @@ class SupplierReceivedInvoice {
     double? totalAmountSupplier,
     String? status,
     Object? notes = _sentinel,
+    List<double>? discountPercents,
+    bool? vatEnabled,
   }) =>
       SupplierReceivedInvoice(
         id: id,
@@ -71,6 +94,8 @@ class SupplierReceivedInvoice {
         status: status ?? this.status,
         notes: notes == _sentinel ? this.notes : notes as String?,
         createdAt: createdAt,
+        discountPercents: discountPercents ?? this.discountPercents,
+        vatEnabled: vatEnabled ?? this.vatEnabled,
       );
 }
 

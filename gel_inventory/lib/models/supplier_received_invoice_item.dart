@@ -9,6 +9,10 @@ class SupplierReceivedInvoiceItem {
   final double subtotalSystem;
   final double subtotalSupplier;
   final bool isFree;
+  // Supplier price (per piece) as entered, before the invoice's
+  // discounts/VAT were applied. Null for rows saved before this field
+  // existed — callers should fall back to [supplierPrice] in that case.
+  final double? rawSupplierPrice;
 
   const SupplierReceivedInvoiceItem({
     required this.id,
@@ -21,6 +25,7 @@ class SupplierReceivedInvoiceItem {
     required this.subtotalSystem,
     required this.subtotalSupplier,
     this.isFree = false,
+    this.rawSupplierPrice,
   });
 
   factory SupplierReceivedInvoiceItem.fromJson(Map<String, dynamic> j) =>
@@ -35,6 +40,7 @@ class SupplierReceivedInvoiceItem {
         subtotalSystem: (j['subtotal_system'] as num).toDouble(),
         subtotalSupplier: (j['subtotal_supplier'] as num).toDouble(),
         isFree: (j['is_free'] as bool?) ?? false,
+        rawSupplierPrice: (j['raw_supplier_price'] as num?)?.toDouble(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -48,5 +54,6 @@ class SupplierReceivedInvoiceItem {
         'subtotal_system': subtotalSystem,
         'subtotal_supplier': subtotalSupplier,
         'is_free': isFree,
+        'raw_supplier_price': rawSupplierPrice,
       };
 }

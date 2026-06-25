@@ -29,10 +29,12 @@ class _LineItem {
   int quantityPieces;
   bool isFree;
   final TextEditingController supplierPriceCtrl;
+  final double Function() discountMultiplier;
 
   _LineItem({
     required this.product,
     required this.systemPrice,
+    required this.discountMultiplier,
     this.quantity = 0,
     this.quantityPieces = 0,
     this.isFree = false,
@@ -47,18 +49,30 @@ class _LineItem {
 
   double get systemPricePerBox => systemPrice * product.piecesPerBox;
 
+  /// Supplier price (box) as typed, before discounts/VAT are applied.
+  double get rawSupplierPriceBox =>
+      double.tryParse(supplierPriceCtrl.text) ?? systemPricePerBox;
+
+  /// Supplier price (per piece) as typed, before discounts/VAT — this is
+  /// what gets persisted so discounts can be replayed correctly on edit.
+  double get rawSupplierPrice => product.piecesPerBox > 0
+      ? rawSupplierPriceBox / product.piecesPerBox
+      : rawSupplierPriceBox;
+
+  /// Supplier price (box) after cascading discounts and optional VAT —
+  /// this is the value actually used for subtotal/total computations.
+  double get netValueBox => rawSupplierPriceBox * discountMultiplier();
+
   double get supplierPrice => product.piecesPerBox > 0
-      ? (double.tryParse(supplierPriceCtrl.text) ?? systemPricePerBox) /
-          product.piecesPerBox
-      : (double.tryParse(supplierPriceCtrl.text) ?? systemPrice);
+      ? netValueBox / product.piecesPerBox
+      : netValueBox;
 
   double get subtotalSystem => isFree ? 0 : quantityInPieces * systemPrice;
   double get subtotalSupplier =>
       isFree ? 0 : quantityInPieces * supplierPrice;
 
   bool get pricesDiffer {
-    final enteredBox = double.tryParse(supplierPriceCtrl.text) ?? systemPricePerBox;
-    return (enteredBox * 100).round() != (systemPricePerBox * 100).round();
+    return (netValueBox * 100).round() != (systemPricePerBox * 100).round();
   }
 }
 
@@ -89,6 +103,8 @@ class _SupplierReceivedInvoiceFormScreenState
   final _notesCtrl = TextEditingController();
   final List<_LineItem> _lineItems = [];
   List<SupplierReceivedInvoiceItem> _oldItems = [];
+  final List<double> _discountPercents = [];
+  bool _vatEnabled = false;
 
   List<Supplier> _suppliers = [];
   List<Product> _products = [];
@@ -154,6 +170,8 @@ class _SupplierReceivedInvoiceFormScreenState
         _selectedSupplier =
             suppliers.where((s) => s.id == invoice.supplierId).firstOrNull;
         if (widget.draftId != null) _draftPersisted = true;
+        _discountPercents.addAll(invoice.discountPercents);
+        _vatEnabled = invoice.vatEnabled;
 
         final items = await repo.getItems(invoice.id);
         _oldItems = items;
@@ -167,6 +185,7 @@ class _SupplierReceivedInvoiceFormScreenState
           _lineItems.add(_LineItem(
             product: product,
             systemPrice: currentPrice?.withdrawalPrice ?? it.systemPrice,
+            discountMultiplier: () => _discountMultiplier,
             quantity: product.piecesPerBox > 0
                 ? it.quantity ~/ product.piecesPerBox
                 : it.quantity,
@@ -174,7 +193,10 @@ class _SupplierReceivedInvoiceFormScreenState
                 ? it.quantity % product.piecesPerBox
                 : 0,
             isFree: it.isFree,
-            supplierPrice: it.supplierPrice,
+            // Pre-discount price if recorded, else fall back to the net
+            // price (rows saved before discounts existed, or no discount
+            // was applied — both cases mean "no discount to replay").
+            supplierPrice: it.rawSupplierPrice ?? it.supplierPrice,
           ));
         }
       }
@@ -442,6 +464,7 @@ class _SupplierReceivedInvoiceFormScreenState
       _lineItems.add(_LineItem(
         product: product,
         systemPrice: price?.withdrawalPrice ?? 0,
+        discountMultiplier: () => _discountMultiplier,
       ));
     });
     _scheduleAutoSave();
@@ -451,6 +474,69 @@ class _SupplierReceivedInvoiceFormScreenState
       _lineItems.fold(0.0, (sum, item) => sum + item.subtotalSystem);
   double get _totalSupplier =>
       _lineItems.fold(0.0, (sum, item) => sum + item.subtotalSupplier);
+
+  /// Combined multiplier applying every discount in sequence (cascading,
+  /// each discount taken off the previous net value), then VAT if enabled.
+  double get _discountMultiplier {
+    double m = 1.0;
+    for (final d in _discountPercents) {
+      m *= (1 - d / 100);
+    }
+    if (_vatEnabled) m *= 1.12;
+    return m;
+  }
+
+  Future<void> _promptAddDiscount() async {
+    final ctrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final value = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add Discount'),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: ctrl,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Discount %',
+              isDense: true,
+              suffixText: '%',
+            ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))
+            ],
+            validator: (v) {
+              final n = double.tryParse(v ?? '');
+              if (n == null || n <= 0 || n > 100) {
+                return 'Enter a value between 0 and 100';
+              }
+              return null;
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              if (!formKey.currentState!.validate()) return;
+              Navigator.pop(ctx, double.parse(ctrl.text));
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+
+    if (value != null) {
+      setState(() => _discountPercents.add(value));
+      _scheduleAutoSave();
+    }
+  }
 
   bool get _canSave =>
       !_saving &&
@@ -473,6 +559,8 @@ class _SupplierReceivedInvoiceFormScreenState
       status: _status,
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
       createdAt: _createdAt,
+      discountPercents: List<double>.from(_discountPercents),
+      vatEnabled: _vatEnabled,
     );
     final items = _lineItems
         .map((li) => SupplierReceivedInvoiceItem(
@@ -486,6 +574,7 @@ class _SupplierReceivedInvoiceFormScreenState
               subtotalSystem: li.subtotalSystem,
               subtotalSupplier: li.subtotalSupplier,
               isFree: li.isFree,
+              rawSupplierPrice: li.rawSupplierPrice,
             ))
         .toList();
     return (invoice: invoice, items: items);
@@ -508,6 +597,8 @@ class _SupplierReceivedInvoiceFormScreenState
       status: 'draft',
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
       createdAt: _createdAt,
+      discountPercents: List<double>.from(_discountPercents),
+      vatEnabled: _vatEnabled,
     );
     final items = _lineItems
         .map((li) => SupplierReceivedInvoiceItem(
@@ -521,6 +612,7 @@ class _SupplierReceivedInvoiceFormScreenState
               subtotalSystem: li.subtotalSystem,
               subtotalSupplier: li.subtotalSupplier,
               isFree: li.isFree,
+              rawSupplierPrice: li.rawSupplierPrice,
             ))
         .toList();
     return (invoice: invoice, items: items);
@@ -768,6 +860,46 @@ class _SupplierReceivedInvoiceFormScreenState
                   ),
                 ),
 
+                // Discount / VAT controls
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                  child: Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.percent, size: 16),
+                        label: const Text('Add Discount %'),
+                        onPressed:
+                            _status == 'cancelled' ? null : _promptAddDiscount,
+                      ),
+                      for (int i = 0; i < _discountPercents.length; i++)
+                        Chip(
+                          label: Text(
+                              '${formatNumber(_discountPercents[i])}% off'),
+                          onDeleted: _status == 'cancelled'
+                              ? null
+                              : () {
+                                  setState(
+                                      () => _discountPercents.removeAt(i));
+                                  _scheduleAutoSave();
+                                },
+                        ),
+                      FilterChip(
+                        label: const Text('Add VAT (12%)'),
+                        selected: _vatEnabled,
+                        onSelected: _status == 'cancelled'
+                            ? null
+                            : (v) {
+                                setState(() => _vatEnabled = v);
+                                _scheduleAutoSave();
+                              },
+                      ),
+                    ],
+                  ),
+                ),
+
                 // Line items
                 Expanded(
                   child: _lineItems.isEmpty
@@ -974,6 +1106,21 @@ class _LineItemTileState extends State<_LineItemTile> {
                           RegExp(r'^\d*\.?\d{0,2}'))
                     ],
                     onChanged: (_) => widget.onChanged(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 150,
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Net Value (Box)',
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                    ),
+                    child: Text(
+                      formatCurrency(item.netValueBox),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),

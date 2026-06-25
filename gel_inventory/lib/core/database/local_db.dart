@@ -295,6 +295,9 @@ class SupplierReceivedInvoices extends Table {
   TextColumn get notes => text().nullable()();
   DateTimeColumn get createdAt =>
       dateTime().withDefault(currentDateAndTime)();
+  // Comma-separated cascading discount percentages, e.g. "10,5".
+  TextColumn get discountPercents => text().nullable()();
+  BoolColumn get vatEnabled => boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -315,6 +318,8 @@ class SupplierReceivedInvoiceItems extends Table {
   RealColumn get subtotalSystem => real()();
   RealColumn get subtotalSupplier => real()();
   BoolColumn get isFree => boolean().withDefault(const Constant(false))();
+  // Supplier price (per piece) before the invoice's discounts/VAT.
+  RealColumn get rawSupplierPrice => real().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -397,7 +402,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 26;
+  int get schemaVersion => 27;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -511,6 +516,15 @@ class LocalDatabase extends _$LocalDatabase {
           }
           if (from < 26) {
             await m.createTable(deletedInvoiceItems);
+          }
+          if (from < 27) {
+            await _addColumnIfMissing(m.database, 'supplier_received_invoices',
+                'discount_percents', 'TEXT');
+            await _addColumnIfMissing(m.database, 'supplier_received_invoices',
+                'vat_enabled', 'INTEGER NOT NULL DEFAULT 0');
+            await _addColumnIfMissing(m.database,
+                'supplier_received_invoice_items', 'raw_supplier_price',
+                'REAL');
           }
         },
       );

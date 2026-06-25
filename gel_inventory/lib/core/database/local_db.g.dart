@@ -7995,6 +7995,32 @@ class $SupplierReceivedInvoicesTable extends SupplierReceivedInvoices
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _discountPercentsMeta = const VerificationMeta(
+    'discountPercents',
+  );
+  @override
+  late final GeneratedColumn<String> discountPercents = GeneratedColumn<String>(
+    'discount_percents',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _vatEnabledMeta = const VerificationMeta(
+    'vatEnabled',
+  );
+  @override
+  late final GeneratedColumn<bool> vatEnabled = GeneratedColumn<bool>(
+    'vat_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("vat_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -8006,6 +8032,8 @@ class $SupplierReceivedInvoicesTable extends SupplierReceivedInvoices
     status,
     notes,
     createdAt,
+    discountPercents,
+    vatEnabled,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -8086,6 +8114,21 @@ class $SupplierReceivedInvoicesTable extends SupplierReceivedInvoices
         createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
       );
     }
+    if (data.containsKey('discount_percents')) {
+      context.handle(
+        _discountPercentsMeta,
+        discountPercents.isAcceptableOrUnknown(
+          data['discount_percents']!,
+          _discountPercentsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('vat_enabled')) {
+      context.handle(
+        _vatEnabledMeta,
+        vatEnabled.isAcceptableOrUnknown(data['vat_enabled']!, _vatEnabledMeta),
+      );
+    }
     return context;
   }
 
@@ -8134,6 +8177,14 @@ class $SupplierReceivedInvoicesTable extends SupplierReceivedInvoices
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      discountPercents: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}discount_percents'],
+      ),
+      vatEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}vat_enabled'],
+      )!,
     );
   }
 
@@ -8154,6 +8205,8 @@ class SupplierReceivedInvoice extends DataClass
   final String status;
   final String? notes;
   final DateTime createdAt;
+  final String? discountPercents;
+  final bool vatEnabled;
   const SupplierReceivedInvoice({
     required this.id,
     required this.supplierId,
@@ -8164,6 +8217,8 @@ class SupplierReceivedInvoice extends DataClass
     required this.status,
     this.notes,
     required this.createdAt,
+    this.discountPercents,
+    required this.vatEnabled,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -8181,6 +8236,10 @@ class SupplierReceivedInvoice extends DataClass
       map['notes'] = Variable<String>(notes);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || discountPercents != null) {
+      map['discount_percents'] = Variable<String>(discountPercents);
+    }
+    map['vat_enabled'] = Variable<bool>(vatEnabled);
     return map;
   }
 
@@ -8199,6 +8258,10 @@ class SupplierReceivedInvoice extends DataClass
           ? const Value.absent()
           : Value(notes),
       createdAt: Value(createdAt),
+      discountPercents: discountPercents == null && nullToAbsent
+          ? const Value.absent()
+          : Value(discountPercents),
+      vatEnabled: Value(vatEnabled),
     );
   }
 
@@ -8219,6 +8282,8 @@ class SupplierReceivedInvoice extends DataClass
       status: serializer.fromJson<String>(json['status']),
       notes: serializer.fromJson<String?>(json['notes']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      discountPercents: serializer.fromJson<String?>(json['discountPercents']),
+      vatEnabled: serializer.fromJson<bool>(json['vatEnabled']),
     );
   }
   @override
@@ -8234,6 +8299,8 @@ class SupplierReceivedInvoice extends DataClass
       'status': serializer.toJson<String>(status),
       'notes': serializer.toJson<String?>(notes),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'discountPercents': serializer.toJson<String?>(discountPercents),
+      'vatEnabled': serializer.toJson<bool>(vatEnabled),
     };
   }
 
@@ -8247,6 +8314,8 @@ class SupplierReceivedInvoice extends DataClass
     String? status,
     Value<String?> notes = const Value.absent(),
     DateTime? createdAt,
+    Value<String?> discountPercents = const Value.absent(),
+    bool? vatEnabled,
   }) => SupplierReceivedInvoice(
     id: id ?? this.id,
     supplierId: supplierId ?? this.supplierId,
@@ -8259,6 +8328,10 @@ class SupplierReceivedInvoice extends DataClass
     status: status ?? this.status,
     notes: notes.present ? notes.value : this.notes,
     createdAt: createdAt ?? this.createdAt,
+    discountPercents: discountPercents.present
+        ? discountPercents.value
+        : this.discountPercents,
+    vatEnabled: vatEnabled ?? this.vatEnabled,
   );
   SupplierReceivedInvoice copyWithCompanion(
     SupplierReceivedInvoicesCompanion data,
@@ -8283,6 +8356,12 @@ class SupplierReceivedInvoice extends DataClass
       status: data.status.present ? data.status.value : this.status,
       notes: data.notes.present ? data.notes.value : this.notes,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      discountPercents: data.discountPercents.present
+          ? data.discountPercents.value
+          : this.discountPercents,
+      vatEnabled: data.vatEnabled.present
+          ? data.vatEnabled.value
+          : this.vatEnabled,
     );
   }
 
@@ -8297,7 +8376,9 @@ class SupplierReceivedInvoice extends DataClass
           ..write('totalAmountSupplier: $totalAmountSupplier, ')
           ..write('status: $status, ')
           ..write('notes: $notes, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('discountPercents: $discountPercents, ')
+          ..write('vatEnabled: $vatEnabled')
           ..write(')'))
         .toString();
   }
@@ -8313,6 +8394,8 @@ class SupplierReceivedInvoice extends DataClass
     status,
     notes,
     createdAt,
+    discountPercents,
+    vatEnabled,
   );
   @override
   bool operator ==(Object other) =>
@@ -8326,7 +8409,9 @@ class SupplierReceivedInvoice extends DataClass
           other.totalAmountSupplier == this.totalAmountSupplier &&
           other.status == this.status &&
           other.notes == this.notes &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.discountPercents == this.discountPercents &&
+          other.vatEnabled == this.vatEnabled);
 }
 
 class SupplierReceivedInvoicesCompanion
@@ -8340,6 +8425,8 @@ class SupplierReceivedInvoicesCompanion
   final Value<String> status;
   final Value<String?> notes;
   final Value<DateTime> createdAt;
+  final Value<String?> discountPercents;
+  final Value<bool> vatEnabled;
   final Value<int> rowid;
   const SupplierReceivedInvoicesCompanion({
     this.id = const Value.absent(),
@@ -8351,6 +8438,8 @@ class SupplierReceivedInvoicesCompanion
     this.status = const Value.absent(),
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.discountPercents = const Value.absent(),
+    this.vatEnabled = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   SupplierReceivedInvoicesCompanion.insert({
@@ -8363,6 +8452,8 @@ class SupplierReceivedInvoicesCompanion
     this.status = const Value.absent(),
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.discountPercents = const Value.absent(),
+    this.vatEnabled = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        supplierId = Value(supplierId);
@@ -8376,6 +8467,8 @@ class SupplierReceivedInvoicesCompanion
     Expression<String>? status,
     Expression<String>? notes,
     Expression<DateTime>? createdAt,
+    Expression<String>? discountPercents,
+    Expression<bool>? vatEnabled,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -8389,6 +8482,8 @@ class SupplierReceivedInvoicesCompanion
       if (status != null) 'status': status,
       if (notes != null) 'notes': notes,
       if (createdAt != null) 'created_at': createdAt,
+      if (discountPercents != null) 'discount_percents': discountPercents,
+      if (vatEnabled != null) 'vat_enabled': vatEnabled,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -8403,6 +8498,8 @@ class SupplierReceivedInvoicesCompanion
     Value<String>? status,
     Value<String?>? notes,
     Value<DateTime>? createdAt,
+    Value<String?>? discountPercents,
+    Value<bool>? vatEnabled,
     Value<int>? rowid,
   }) {
     return SupplierReceivedInvoicesCompanion(
@@ -8415,6 +8512,8 @@ class SupplierReceivedInvoicesCompanion
       status: status ?? this.status,
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
+      discountPercents: discountPercents ?? this.discountPercents,
+      vatEnabled: vatEnabled ?? this.vatEnabled,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -8451,6 +8550,12 @@ class SupplierReceivedInvoicesCompanion
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (discountPercents.present) {
+      map['discount_percents'] = Variable<String>(discountPercents.value);
+    }
+    if (vatEnabled.present) {
+      map['vat_enabled'] = Variable<bool>(vatEnabled.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -8469,6 +8574,8 @@ class SupplierReceivedInvoicesCompanion
           ..write('status: $status, ')
           ..write('notes: $notes, ')
           ..write('createdAt: $createdAt, ')
+          ..write('discountPercents: $discountPercents, ')
+          ..write('vatEnabled: $vatEnabled, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -8602,6 +8709,17 @@ class $SupplierReceivedInvoiceItemsTable extends SupplierReceivedInvoiceItems
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _rawSupplierPriceMeta = const VerificationMeta(
+    'rawSupplierPrice',
+  );
+  @override
+  late final GeneratedColumn<double> rawSupplierPrice = GeneratedColumn<double>(
+    'raw_supplier_price',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -8614,6 +8732,7 @@ class $SupplierReceivedInvoiceItemsTable extends SupplierReceivedInvoiceItems
     subtotalSystem,
     subtotalSupplier,
     isFree,
+    rawSupplierPrice,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -8717,6 +8836,15 @@ class $SupplierReceivedInvoiceItemsTable extends SupplierReceivedInvoiceItems
         isFree.isAcceptableOrUnknown(data['is_free']!, _isFreeMeta),
       );
     }
+    if (data.containsKey('raw_supplier_price')) {
+      context.handle(
+        _rawSupplierPriceMeta,
+        rawSupplierPrice.isAcceptableOrUnknown(
+          data['raw_supplier_price']!,
+          _rawSupplierPriceMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -8769,6 +8897,10 @@ class $SupplierReceivedInvoiceItemsTable extends SupplierReceivedInvoiceItems
         DriftSqlType.bool,
         data['${effectivePrefix}is_free'],
       )!,
+      rawSupplierPrice: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}raw_supplier_price'],
+      ),
     );
   }
 
@@ -8790,6 +8922,7 @@ class SupplierReceivedInvoiceItem extends DataClass
   final double subtotalSystem;
   final double subtotalSupplier;
   final bool isFree;
+  final double? rawSupplierPrice;
   const SupplierReceivedInvoiceItem({
     required this.id,
     required this.receivedInvoiceId,
@@ -8801,6 +8934,7 @@ class SupplierReceivedInvoiceItem extends DataClass
     required this.subtotalSystem,
     required this.subtotalSupplier,
     required this.isFree,
+    this.rawSupplierPrice,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -8815,6 +8949,9 @@ class SupplierReceivedInvoiceItem extends DataClass
     map['subtotal_system'] = Variable<double>(subtotalSystem);
     map['subtotal_supplier'] = Variable<double>(subtotalSupplier);
     map['is_free'] = Variable<bool>(isFree);
+    if (!nullToAbsent || rawSupplierPrice != null) {
+      map['raw_supplier_price'] = Variable<double>(rawSupplierPrice);
+    }
     return map;
   }
 
@@ -8830,6 +8967,9 @@ class SupplierReceivedInvoiceItem extends DataClass
       subtotalSystem: Value(subtotalSystem),
       subtotalSupplier: Value(subtotalSupplier),
       isFree: Value(isFree),
+      rawSupplierPrice: rawSupplierPrice == null && nullToAbsent
+          ? const Value.absent()
+          : Value(rawSupplierPrice),
     );
   }
 
@@ -8849,6 +8989,7 @@ class SupplierReceivedInvoiceItem extends DataClass
       subtotalSystem: serializer.fromJson<double>(json['subtotalSystem']),
       subtotalSupplier: serializer.fromJson<double>(json['subtotalSupplier']),
       isFree: serializer.fromJson<bool>(json['isFree']),
+      rawSupplierPrice: serializer.fromJson<double?>(json['rawSupplierPrice']),
     );
   }
   @override
@@ -8865,6 +9006,7 @@ class SupplierReceivedInvoiceItem extends DataClass
       'subtotalSystem': serializer.toJson<double>(subtotalSystem),
       'subtotalSupplier': serializer.toJson<double>(subtotalSupplier),
       'isFree': serializer.toJson<bool>(isFree),
+      'rawSupplierPrice': serializer.toJson<double?>(rawSupplierPrice),
     };
   }
 
@@ -8879,6 +9021,7 @@ class SupplierReceivedInvoiceItem extends DataClass
     double? subtotalSystem,
     double? subtotalSupplier,
     bool? isFree,
+    Value<double?> rawSupplierPrice = const Value.absent(),
   }) => SupplierReceivedInvoiceItem(
     id: id ?? this.id,
     receivedInvoiceId: receivedInvoiceId ?? this.receivedInvoiceId,
@@ -8890,6 +9033,9 @@ class SupplierReceivedInvoiceItem extends DataClass
     subtotalSystem: subtotalSystem ?? this.subtotalSystem,
     subtotalSupplier: subtotalSupplier ?? this.subtotalSupplier,
     isFree: isFree ?? this.isFree,
+    rawSupplierPrice: rawSupplierPrice.present
+        ? rawSupplierPrice.value
+        : this.rawSupplierPrice,
   );
   SupplierReceivedInvoiceItem copyWithCompanion(
     SupplierReceivedInvoiceItemsCompanion data,
@@ -8915,6 +9061,9 @@ class SupplierReceivedInvoiceItem extends DataClass
           ? data.subtotalSupplier.value
           : this.subtotalSupplier,
       isFree: data.isFree.present ? data.isFree.value : this.isFree,
+      rawSupplierPrice: data.rawSupplierPrice.present
+          ? data.rawSupplierPrice.value
+          : this.rawSupplierPrice,
     );
   }
 
@@ -8930,7 +9079,8 @@ class SupplierReceivedInvoiceItem extends DataClass
           ..write('supplierPrice: $supplierPrice, ')
           ..write('subtotalSystem: $subtotalSystem, ')
           ..write('subtotalSupplier: $subtotalSupplier, ')
-          ..write('isFree: $isFree')
+          ..write('isFree: $isFree, ')
+          ..write('rawSupplierPrice: $rawSupplierPrice')
           ..write(')'))
         .toString();
   }
@@ -8947,6 +9097,7 @@ class SupplierReceivedInvoiceItem extends DataClass
     subtotalSystem,
     subtotalSupplier,
     isFree,
+    rawSupplierPrice,
   );
   @override
   bool operator ==(Object other) =>
@@ -8961,7 +9112,8 @@ class SupplierReceivedInvoiceItem extends DataClass
           other.supplierPrice == this.supplierPrice &&
           other.subtotalSystem == this.subtotalSystem &&
           other.subtotalSupplier == this.subtotalSupplier &&
-          other.isFree == this.isFree);
+          other.isFree == this.isFree &&
+          other.rawSupplierPrice == this.rawSupplierPrice);
 }
 
 class SupplierReceivedInvoiceItemsCompanion
@@ -8976,6 +9128,7 @@ class SupplierReceivedInvoiceItemsCompanion
   final Value<double> subtotalSystem;
   final Value<double> subtotalSupplier;
   final Value<bool> isFree;
+  final Value<double?> rawSupplierPrice;
   final Value<int> rowid;
   const SupplierReceivedInvoiceItemsCompanion({
     this.id = const Value.absent(),
@@ -8988,6 +9141,7 @@ class SupplierReceivedInvoiceItemsCompanion
     this.subtotalSystem = const Value.absent(),
     this.subtotalSupplier = const Value.absent(),
     this.isFree = const Value.absent(),
+    this.rawSupplierPrice = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   SupplierReceivedInvoiceItemsCompanion.insert({
@@ -9001,6 +9155,7 @@ class SupplierReceivedInvoiceItemsCompanion
     required double subtotalSystem,
     required double subtotalSupplier,
     this.isFree = const Value.absent(),
+    this.rawSupplierPrice = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        receivedInvoiceId = Value(receivedInvoiceId),
@@ -9022,6 +9177,7 @@ class SupplierReceivedInvoiceItemsCompanion
     Expression<double>? subtotalSystem,
     Expression<double>? subtotalSupplier,
     Expression<bool>? isFree,
+    Expression<double>? rawSupplierPrice,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -9035,6 +9191,7 @@ class SupplierReceivedInvoiceItemsCompanion
       if (subtotalSystem != null) 'subtotal_system': subtotalSystem,
       if (subtotalSupplier != null) 'subtotal_supplier': subtotalSupplier,
       if (isFree != null) 'is_free': isFree,
+      if (rawSupplierPrice != null) 'raw_supplier_price': rawSupplierPrice,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -9050,6 +9207,7 @@ class SupplierReceivedInvoiceItemsCompanion
     Value<double>? subtotalSystem,
     Value<double>? subtotalSupplier,
     Value<bool>? isFree,
+    Value<double?>? rawSupplierPrice,
     Value<int>? rowid,
   }) {
     return SupplierReceivedInvoiceItemsCompanion(
@@ -9063,6 +9221,7 @@ class SupplierReceivedInvoiceItemsCompanion
       subtotalSystem: subtotalSystem ?? this.subtotalSystem,
       subtotalSupplier: subtotalSupplier ?? this.subtotalSupplier,
       isFree: isFree ?? this.isFree,
+      rawSupplierPrice: rawSupplierPrice ?? this.rawSupplierPrice,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -9100,6 +9259,9 @@ class SupplierReceivedInvoiceItemsCompanion
     if (isFree.present) {
       map['is_free'] = Variable<bool>(isFree.value);
     }
+    if (rawSupplierPrice.present) {
+      map['raw_supplier_price'] = Variable<double>(rawSupplierPrice.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -9119,6 +9281,7 @@ class SupplierReceivedInvoiceItemsCompanion
           ..write('subtotalSystem: $subtotalSystem, ')
           ..write('subtotalSupplier: $subtotalSupplier, ')
           ..write('isFree: $isFree, ')
+          ..write('rawSupplierPrice: $rawSupplierPrice, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -18270,6 +18433,8 @@ typedef $$SupplierReceivedInvoicesTableCreateCompanionBuilder =
       Value<String> status,
       Value<String?> notes,
       Value<DateTime> createdAt,
+      Value<String?> discountPercents,
+      Value<bool> vatEnabled,
       Value<int> rowid,
     });
 typedef $$SupplierReceivedInvoicesTableUpdateCompanionBuilder =
@@ -18283,6 +18448,8 @@ typedef $$SupplierReceivedInvoicesTableUpdateCompanionBuilder =
       Value<String> status,
       Value<String?> notes,
       Value<DateTime> createdAt,
+      Value<String?> discountPercents,
+      Value<bool> vatEnabled,
       Value<int> rowid,
     });
 
@@ -18402,6 +18569,16 @@ class $$SupplierReceivedInvoicesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get discountPercents => $composableBuilder(
+    column: $table.discountPercents,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get vatEnabled => $composableBuilder(
+    column: $table.vatEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$SuppliersTableFilterComposer get supplierId {
     final $$SuppliersTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -18504,6 +18681,16 @@ class $$SupplierReceivedInvoicesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get discountPercents => $composableBuilder(
+    column: $table.discountPercents,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get vatEnabled => $composableBuilder(
+    column: $table.vatEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$SuppliersTableOrderingComposer get supplierId {
     final $$SuppliersTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -18568,6 +18755,16 @@ class $$SupplierReceivedInvoicesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get discountPercents => $composableBuilder(
+    column: $table.discountPercents,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get vatEnabled => $composableBuilder(
+    column: $table.vatEnabled,
+    builder: (column) => column,
+  );
 
   $$SuppliersTableAnnotationComposer get supplierId {
     final $$SuppliersTableAnnotationComposer composer = $composerBuilder(
@@ -18673,6 +18870,8 @@ class $$SupplierReceivedInvoicesTableTableManager
                 Value<String> status = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<String?> discountPercents = const Value.absent(),
+                Value<bool> vatEnabled = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SupplierReceivedInvoicesCompanion(
                 id: id,
@@ -18684,6 +18883,8 @@ class $$SupplierReceivedInvoicesTableTableManager
                 status: status,
                 notes: notes,
                 createdAt: createdAt,
+                discountPercents: discountPercents,
+                vatEnabled: vatEnabled,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -18697,6 +18898,8 @@ class $$SupplierReceivedInvoicesTableTableManager
                 Value<String> status = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<String?> discountPercents = const Value.absent(),
+                Value<bool> vatEnabled = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SupplierReceivedInvoicesCompanion.insert(
                 id: id,
@@ -18708,6 +18911,8 @@ class $$SupplierReceivedInvoicesTableTableManager
                 status: status,
                 notes: notes,
                 createdAt: createdAt,
+                discountPercents: discountPercents,
+                vatEnabled: vatEnabled,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -18821,6 +19026,7 @@ typedef $$SupplierReceivedInvoiceItemsTableCreateCompanionBuilder =
       required double subtotalSystem,
       required double subtotalSupplier,
       Value<bool> isFree,
+      Value<double?> rawSupplierPrice,
       Value<int> rowid,
     });
 typedef $$SupplierReceivedInvoiceItemsTableUpdateCompanionBuilder =
@@ -18835,6 +19041,7 @@ typedef $$SupplierReceivedInvoiceItemsTableUpdateCompanionBuilder =
       Value<double> subtotalSystem,
       Value<double> subtotalSupplier,
       Value<bool> isFree,
+      Value<double?> rawSupplierPrice,
       Value<int> rowid,
     });
 
@@ -18946,6 +19153,11 @@ class $$SupplierReceivedInvoiceItemsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<double> get rawSupplierPrice => $composableBuilder(
+    column: $table.rawSupplierPrice,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$SupplierReceivedInvoicesTableFilterComposer get receivedInvoiceId {
     final $$SupplierReceivedInvoicesTableFilterComposer composer =
         $composerBuilder(
@@ -19043,6 +19255,11 @@ class $$SupplierReceivedInvoiceItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<double> get rawSupplierPrice => $composableBuilder(
+    column: $table.rawSupplierPrice,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$SupplierReceivedInvoicesTableOrderingComposer get receivedInvoiceId {
     final $$SupplierReceivedInvoicesTableOrderingComposer composer =
         $composerBuilder(
@@ -19131,6 +19348,11 @@ class $$SupplierReceivedInvoiceItemsTableAnnotationComposer
 
   GeneratedColumn<bool> get isFree =>
       $composableBuilder(column: $table.isFree, builder: (column) => column);
+
+  GeneratedColumn<double> get rawSupplierPrice => $composableBuilder(
+    column: $table.rawSupplierPrice,
+    builder: (column) => column,
+  );
 
   $$SupplierReceivedInvoicesTableAnnotationComposer get receivedInvoiceId {
     final $$SupplierReceivedInvoicesTableAnnotationComposer composer =
@@ -19232,6 +19454,7 @@ class $$SupplierReceivedInvoiceItemsTableTableManager
                 Value<double> subtotalSystem = const Value.absent(),
                 Value<double> subtotalSupplier = const Value.absent(),
                 Value<bool> isFree = const Value.absent(),
+                Value<double?> rawSupplierPrice = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SupplierReceivedInvoiceItemsCompanion(
                 id: id,
@@ -19244,6 +19467,7 @@ class $$SupplierReceivedInvoiceItemsTableTableManager
                 subtotalSystem: subtotalSystem,
                 subtotalSupplier: subtotalSupplier,
                 isFree: isFree,
+                rawSupplierPrice: rawSupplierPrice,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -19258,6 +19482,7 @@ class $$SupplierReceivedInvoiceItemsTableTableManager
                 required double subtotalSystem,
                 required double subtotalSupplier,
                 Value<bool> isFree = const Value.absent(),
+                Value<double?> rawSupplierPrice = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SupplierReceivedInvoiceItemsCompanion.insert(
                 id: id,
@@ -19270,6 +19495,7 @@ class $$SupplierReceivedInvoiceItemsTableTableManager
                 subtotalSystem: subtotalSystem,
                 subtotalSupplier: subtotalSupplier,
                 isFree: isFree,
+                rawSupplierPrice: rawSupplierPrice,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

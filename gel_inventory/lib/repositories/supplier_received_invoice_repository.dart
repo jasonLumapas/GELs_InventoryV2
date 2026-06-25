@@ -109,6 +109,9 @@ class SupplierReceivedInvoiceRepository extends BaseRepository {
         status: r.status,
         notes: r.notes,
         createdAt: r.createdAt,
+        discountPercents:
+            SupplierReceivedInvoice.decodeDiscountPercents(r.discountPercents),
+        vatEnabled: r.vatEnabled,
       );
 
   Future<List<SupplierReceivedInvoiceItem>> getItems(
@@ -137,6 +140,7 @@ class SupplierReceivedInvoiceRepository extends BaseRepository {
               subtotalSystem: r.subtotalSystem,
               subtotalSupplier: r.subtotalSupplier,
               isFree: r.isFree,
+              rawSupplierPrice: r.rawSupplierPrice,
             ))
         .toList();
   }
@@ -452,6 +456,10 @@ class SupplierReceivedInvoiceRepository extends BaseRepository {
             status: drift.Value(inv.status),
             notes: drift.Value(inv.notes),
             createdAt: drift.Value(inv.createdAt),
+            discountPercents: drift.Value(
+                SupplierReceivedInvoice.encodeDiscountPercents(
+                    inv.discountPercents)),
+            vatEnabled: drift.Value(inv.vatEnabled),
           ),
         );
   }
@@ -469,6 +477,7 @@ class SupplierReceivedInvoiceRepository extends BaseRepository {
             subtotalSystem: drift.Value(item.subtotalSystem),
             subtotalSupplier: drift.Value(item.subtotalSupplier),
             isFree: drift.Value(item.isFree),
+            rawSupplierPrice: drift.Value(item.rawSupplierPrice),
           ),
         );
   }

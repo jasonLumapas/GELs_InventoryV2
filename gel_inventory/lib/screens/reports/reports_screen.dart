@@ -5,10 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../models/product.dart';
+import '../../models/supplier_received_invoice.dart';
+import '../../models/supplier_received_invoice_item.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../repositories/stock_movement_repository.dart';
+import '../../repositories/supplier_received_invoice_repository.dart';
 import '../../repositories/supplier_repository.dart';
 import '../../repositories/van_stock_repository.dart';
 import '../../utils/currency_format.dart';
@@ -59,7 +62,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 3, vsync: this);
+    _tabs = TabController(length: 4, vsync: this);
     _loadSummary();
   }
 
@@ -143,6 +146,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
               Tab(text: 'Daily Summary'),
               Tab(text: 'Inventory Report'),
               Tab(text: 'Top Products'),
+              Tab(text: 'Purchase History'),
             ],
           ),
           Expanded(
@@ -152,6 +156,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
                 _buildDailySummary(context),
                 const _InventoryReportTab(),
                 const _TopMovingProductsTab(),
+                const _PurchaseHistoryTab(),
               ],
             ),
           ),
@@ -1541,4 +1546,492 @@ class _TopMovingProductsTabState
       ],
     );
   }
+}
+
+// ── Purchase History Tab ───────────────────────────────────────────────────
+
+class _PurchaseHistoryTab extends ConsumerStatefulWidget {
+  const _PurchaseHistoryTab();
+
+  @override
+  ConsumerState<_PurchaseHistoryTab> createState() =>
+      _PurchaseHistoryTabState();
+}
+
+class _PurchaseHistoryTabState extends ConsumerState<_PurchaseHistoryTab> {
+  String? _selectedSupplierId;
+  DateTime? _fromDate;
+  DateTime? _toDate;
+
+  Future<void> _pickFromDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _fromDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
+      setState(() => _fromDate = DateTime(picked.year, picked.month, picked.day));
+    }
+  }
+
+  Future<void> _pickToDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _toDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
+      setState(() => _toDate = DateTime(picked.year, picked.month, picked.day));
+    }
+  }
+
+  void _clearDates() => setState(() {
+        _fromDate = null;
+        _toDate = null;
+      });
+
+  Future<void> _downloadReport() async {
+    final endExclusive = _toDate?.add(const Duration(days: 1));
+    final allInvoices = await ref.read(
+        filteredSupplierReceivedInvoicesProvider((_fromDate, endExclusive))
+            .future);
+    final suppliers = ref.read(suppliersListProvider).valueOrNull ??
+        await ref.read(supplierRepositoryProvider).getAll();
+    final suppliersMap = {for (final s in suppliers) s.id: s};
+
+    final invoices = _selectedSupplierId == null
+        ? allInvoices
+        : allInvoices
+            .where((i) => i.supplierId == _selectedSupplierId)
+            .toList();
+
+    if (invoices.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No purchase history to export.')),
+      );
+      return;
+    }
+
+    final rows = invoices
+        .map((inv) => PurchaseHistoryReportRow(
+              referenceNumber: inv.displayNumber,
+              supplierName:
+                  suppliersMap[inv.supplierId]?.name ?? 'Unknown supplier',
+              date: inv.receivedDate,
+              status: inv.status,
+              totalAmountSystem: inv.totalAmountSystem,
+              totalAmountSupplier: inv.totalAmountSupplier,
+            ))
+        .toList();
+
+    final path = await exportPurchaseHistoryReport(
+      supplierName: _selectedSupplierId == null
+          ? null
+          : suppliersMap[_selectedSupplierId]?.name,
+      fromDate: _fromDate,
+      toDate: _toDate,
+      rows: rows,
+    );
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Saved to $path')),
+    );
+  }
+
+  Future<void> _showDetail(
+      SupplierReceivedInvoice invoice, String supplierName) async {
+    final items = await ref
+        .read(supplierReceivedInvoiceRepositoryProvider)
+        .getItems(invoice.id);
+    final products = await ref.read(productRepositoryProvider).getAll();
+    final productsById = {for (final p in products) p.id: p};
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      builder: (ctx) => _PurchaseHistoryDetailDialog(
+        invoice: invoice,
+        supplierName: supplierName,
+        items: items,
+        productsById: productsById,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dateFmt = DateFormat('MMM dd, yyyy');
+    final endExclusive = _toDate?.add(const Duration(days: 1));
+    final invoicesAsync = ref.watch(
+        filteredSupplierReceivedInvoicesProvider((_fromDate, endExclusive)));
+    final suppliersAsync = ref.watch(suppliersListProvider);
+
+    return Column(
+      children: [
+        // Supplier filter
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+          child: suppliersAsync.maybeWhen(
+            data: (suppliers) => Row(
+              children: [
+                const Text('Supplier:',
+                    style: TextStyle(fontSize: 13, color: Colors.grey)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: DropdownButton<String?>(
+                    value: _selectedSupplierId,
+                    isDense: true,
+                    isExpanded: true,
+                    underline: const SizedBox(),
+                    items: [
+                      const DropdownMenuItem(
+                          value: null, child: Text('All Suppliers')),
+                      ...suppliers.map((s) => DropdownMenuItem(
+                          value: s.id, child: Text(s.name))),
+                    ],
+                    onChanged: (v) => setState(() => _selectedSupplierId = v),
+                  ),
+                ),
+              ],
+            ),
+            orElse: () => const SizedBox.shrink(),
+          ),
+        ),
+
+        // Date range filter
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+          child: Row(
+            children: [
+              const Icon(Icons.calendar_today, size: 18, color: Colors.grey),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _pickFromDate,
+                  child: Text(
+                      _fromDate == null ? 'From date' : dateFmt.format(_fromDate!)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text('–'),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _pickToDate,
+                  child: Text(
+                      _toDate == null ? 'To date' : dateFmt.format(_toDate!)),
+                ),
+              ),
+              if (_fromDate != null || _toDate != null)
+                IconButton(
+                  icon: const Icon(Icons.clear, size: 18),
+                  tooltip: 'Clear date filter',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: _clearDates,
+                ),
+              IconButton(
+                icon: const Icon(Icons.file_download, size: 20),
+                tooltip: 'Download purchase history as PDF',
+                visualDensity: VisualDensity.compact,
+                onPressed: _downloadReport,
+              ),
+            ],
+          ),
+        ),
+
+        const Divider(height: 1),
+
+        // List
+        Expanded(
+          child: invoicesAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => Center(child: Text('Error: $e')),
+            data: (allInvoices) {
+              final suppliersMap = {
+                for (final s in suppliersAsync.valueOrNull ?? []) s.id: s
+              };
+              final invoices = _selectedSupplierId == null
+                  ? allInvoices
+                  : allInvoices
+                      .where((i) => i.supplierId == _selectedSupplierId)
+                      .toList();
+
+              if (invoices.isEmpty) {
+                return const Center(
+                    child: Text('No purchase history found.'));
+              }
+
+              final activeInvoices =
+                  invoices.where((i) => i.status != 'cancelled');
+              final totalSupplier =
+                  activeInvoices.fold(0.0, (s, i) => s + i.totalAmountSupplier);
+
+              return Column(
+                children: [
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: invoices.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1),
+                      itemBuilder: (ctx, i) {
+                        final inv = invoices[i];
+                        final supplier = suppliersMap[inv.supplierId];
+                        final cancelled = inv.status == 'cancelled';
+                        return ListTile(
+                          leading: const Icon(Icons.receipt_long),
+                          title: Text(
+                            inv.displayNumber,
+                            style: cancelled
+                                ? const TextStyle(
+                                    decoration: TextDecoration.lineThrough,
+                                    color: Colors.grey)
+                                : null,
+                          ),
+                          subtitle: Text(
+                            '${supplier?.name ?? 'Unknown supplier'}'
+                            '  •  ${dateFmt.format(inv.receivedDate)}'
+                            '${cancelled ? '  •  CANCELLED' : ''}',
+                            style: cancelled
+                                ? const TextStyle(color: Colors.grey)
+                                : null,
+                          ),
+                          trailing: Text(
+                            formatCurrency(inv.totalAmountSupplier),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              decoration: cancelled
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                              color: cancelled ? Colors.grey : null,
+                            ),
+                          ),
+                          onTap: () => _showDetail(
+                              inv, supplier?.name ?? 'Unknown supplier'),
+                        );
+                      },
+                    ),
+                  ),
+
+                  // Footer: grand total
+                  Container(
+                    color:
+                        Theme.of(context).colorScheme.surfaceContainerHighest,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    child: Row(
+                      children: [
+                        Text('${invoices.length} record(s)',
+                            style: const TextStyle(color: Colors.grey)),
+                        const Spacer(),
+                        Text(
+                          'Total: ${formatCurrency(totalSupplier)}',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Purchase History detail (read-only) ─────────────────────────────────────
+
+class _PurchaseHistoryDetailDialog extends StatelessWidget {
+  final SupplierReceivedInvoice invoice;
+  final String supplierName;
+  final List<SupplierReceivedInvoiceItem> items;
+  final Map<String, Product> productsById;
+
+  const _PurchaseHistoryDetailDialog({
+    required this.invoice,
+    required this.supplierName,
+    required this.items,
+    required this.productsById,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final dateFmt = DateFormat('MMMM dd, yyyy');
+    final cancelled = invoice.status == 'cancelled';
+
+    return Dialog(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 640, maxHeight: 640),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      invoice.displayNumber,
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  if (cancelled)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade100,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'CANCELLED',
+                        style: TextStyle(
+                            color: Colors.red,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12),
+                      ),
+                    ),
+                ],
+              ),
+              Text(
+                'Supplier Reference / DR Number',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 12),
+              _infoRow('Supplier', supplierName),
+              _infoRow('Received Date', dateFmt.format(invoice.receivedDate)),
+              if (invoice.notes != null && invoice.notes!.isNotEmpty)
+                _infoRow('Notes', invoice.notes!),
+              const SizedBox(height: 12),
+              const Divider(height: 1),
+              const SizedBox(height: 8),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Table(
+                    border: TableBorder.all(color: Colors.grey.shade300),
+                    columnWidths: const {
+                      0: FlexColumnWidth(3),
+                      1: FlexColumnWidth(2),
+                      2: FlexColumnWidth(1.6),
+                      3: FlexColumnWidth(1.6),
+                    },
+                    children: [
+                      _tableHeader(
+                          ['Product', 'Qty', 'Price (Box)', 'Amount']),
+                      ...items.map((item) {
+                        final product = productsById[item.productId];
+                        final perBox = product?.piecesPerBox ?? 1;
+                        final boxes = perBox > 0 ? item.quantity ~/ perBox : 0;
+                        final pcs = perBox > 0 ? item.quantity % perBox : item.quantity;
+                        final qtyParts = [
+                          if (boxes > 0) '$boxes box(es)',
+                          if (pcs > 0) '$pcs pc(s)',
+                        ];
+                        final qtyLabel =
+                            qtyParts.isEmpty ? '0' : qtyParts.join(' + ');
+                        final priceDiffers = (item.supplierPrice * 100).round() !=
+                            (item.systemPrice * 100).round();
+                        return TableRow(children: [
+                          Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: Text(product?.name ?? item.productId),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: Text(item.isFree ? '$qtyLabel (FREE)' : qtyLabel),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: Text(
+                              formatCurrency(item.supplierPrice * perBox),
+                              style: TextStyle(
+                                color: priceDiffers
+                                    ? Colors.orange.shade800
+                                    : null,
+                                fontWeight:
+                                    priceDiffers ? FontWeight.bold : null,
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: Text(
+                              formatCurrency(item.subtotalSupplier),
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ]);
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Divider(height: 1),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text(
+                    'System Total: ${formatCurrency(invoice.totalAmountSystem)}',
+                    style: TextStyle(
+                      color: invoice.totalAmountSystem != invoice.totalAmountSupplier
+                          ? Colors.orange.shade800
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    'Supplier Total: ${formatCurrency(invoice.totalAmountSupplier)}',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Close'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _infoRow(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 140,
+              child:
+                  Text(label, style: TextStyle(color: Colors.grey.shade600)),
+            ),
+            Expanded(child: Text(value)),
+          ],
+        ),
+      );
+
+  TableRow _tableHeader(List<String> cells) => TableRow(
+        decoration: BoxDecoration(color: Colors.grey.shade200),
+        children: cells
+            .map((c) => Padding(
+                  padding: const EdgeInsets.all(8),
+                  child:
+                      Text(c, style: const TextStyle(fontWeight: FontWeight.bold)),
+                ))
+            .toList(),
+      );
 }

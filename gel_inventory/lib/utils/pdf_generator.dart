@@ -1473,6 +1473,131 @@ Future<void> printSupplierReceivedInvoice({
     doc: doc, format: pageFormat, slot: PrinterSettingsService.supplierDelivery);
 }
 
+// ── Purchase History Report PDF (saved directly to disk) ─────────────────────
+
+class PurchaseHistoryReportRow {
+  final String referenceNumber;
+  final String supplierName;
+  final DateTime date;
+  final String status;
+  final double totalAmountSystem;
+  final double totalAmountSupplier;
+
+  const PurchaseHistoryReportRow({
+    required this.referenceNumber,
+    required this.supplierName,
+    required this.date,
+    required this.status,
+    required this.totalAmountSystem,
+    required this.totalAmountSupplier,
+  });
+
+  bool get isCancelled => status == 'cancelled';
+}
+
+/// Builds a Purchase History summary PDF and saves it directly to the user's
+/// Desktop (no print dialog), returning the saved file path.
+Future<String> exportPurchaseHistoryReport({
+  String? supplierName,
+  DateTime? fromDate,
+  DateTime? toDate,
+  required List<PurchaseHistoryReportRow> rows,
+}) async {
+  final doc     = pw.Document();
+  final dateFmt = DateFormat('MMM dd, yyyy');
+
+  final pageFormat = PdfPageFormat.a4.copyWith(
+    marginTop: 40, marginBottom: 40,
+    marginLeft: 40, marginRight: 40,
+  );
+  final usableW = pageFormat.availableWidth;
+  final refW    = usableW * 0.24;
+  final supW    = usableW * 0.24;
+  final dateW   = usableW * 0.14;
+  final statusW = usableW * 0.10;
+  final amtW    = (usableW - refW - supW - dateW - statusW) / 2;
+
+  final font     = pw.Font.helvetica();
+  final fontBold = pw.Font.helveticaBold();
+  const double fs     = 9.5;
+  const double fsHead = 13;
+
+  pw.TextStyle ts({bool bold = false, double? size}) =>
+      pw.TextStyle(font: bold ? fontBold : font, fontSize: size ?? fs);
+
+  pw.Widget col(String text, double width,
+          {bool bold = false, pw.TextAlign align = pw.TextAlign.left}) =>
+      pw.SizedBox(
+        width: width,
+        child: pw.Text(text, style: ts(bold: bold), textAlign: align),
+      );
+
+  final grandTotal = rows
+      .where((r) => !r.isCancelled)
+      .fold(0.0, (s, r) => s + r.totalAmountSupplier);
+
+  final String rangeLabel;
+  if (fromDate == null && toDate == null) {
+    rangeLabel = 'All dates';
+  } else {
+    final from = fromDate != null ? dateFmt.format(fromDate) : 'Earliest';
+    final to   = toDate   != null ? dateFmt.format(toDate)   : 'Latest';
+    rangeLabel = '$from – $to';
+  }
+
+  doc.addPage(pw.MultiPage(
+    pageFormat: pageFormat,
+    build: (ctx) => [
+      pw.Text('Purchase History Report', style: ts(bold: true, size: fsHead)),
+      pw.SizedBox(height: 4),
+      pw.Text('Supplier: ${supplierName ?? 'All Suppliers'}', style: ts()),
+      pw.Text('Date Range: $rangeLabel', style: ts()),
+      pw.SizedBox(height: 10),
+
+      pw.Row(children: [
+        col('Supplier Reference /\n DR #', refW, bold: true),
+        col('Supplier', supW, bold: true),
+        col('Date', dateW, bold: true),
+        col('Status', statusW, bold: true),
+        col('System Total', amtW, bold: true, align: pw.TextAlign.right),
+        col('Supplier Total', amtW, bold: true, align: pw.TextAlign.right),
+      ]),
+      pw.Divider(height: 6, thickness: 0.5),
+
+      for (int i = 0; i < rows.length; i++) ...[
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 3),
+          child: pw.Row(children: [
+            col(rows[i].referenceNumber, refW),
+            col(rows[i].supplierName, supW),
+            col(dateFmt.format(rows[i].date), dateW),
+            col(rows[i].isCancelled ? 'CANCELLED' : '', statusW),
+            col(_n(rows[i].totalAmountSystem), amtW, align: pw.TextAlign.right),
+            col(_n(rows[i].totalAmountSupplier), amtW, align: pw.TextAlign.right),
+          ]),
+        ),
+        if (i < rows.length - 1) pw.Divider(height: 1, thickness: 0.3),
+      ],
+
+      pw.Divider(height: 8, thickness: 0.5),
+      pw.SizedBox(height: 8),
+      pw.Align(
+        alignment: pw.Alignment.centerRight,
+        child: pw.Text('Grand Total: ${_n(grandTotal)}',
+            style: ts(bold: true, size: fsHead - 1)),
+      ),
+    ],
+  ));
+
+  final bytes = await doc.save();
+  final home  = Platform.environment['USERPROFILE'] ??
+      Platform.environment['HOME'] ?? '.';
+  final tag   = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+  final file  = File('$home\\Desktop\\purchase_history_$tag.pdf');
+  await file.writeAsBytes(bytes);
+  return file.path;
+}
+
 Future<void> printPurchaseOrder({
   required PurchaseOrder order,
   required Supplier supplier,

@@ -23,6 +23,7 @@ class _SupplierReceivedInvoiceListScreenState
     extends ConsumerState<SupplierReceivedInvoiceListScreen> {
   _FilterType _filter = _FilterType.day;
   DateTime _anchor = DateTime.now();
+  String? _selectedSupplierId;
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
 
@@ -263,6 +264,36 @@ class _SupplierReceivedInvoiceListScreenState
             ),
           ),
 
+          // ── Supplier filter ───────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+            child: suppliersAsync.maybeWhen(
+              data: (suppliers) => Row(
+                children: [
+                  const Text('Supplier:',
+                      style: TextStyle(fontSize: 13, color: Colors.grey)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: DropdownButton<String?>(
+                      value: _selectedSupplierId,
+                      isDense: true,
+                      isExpanded: true,
+                      underline: const SizedBox(),
+                      items: [
+                        const DropdownMenuItem(
+                            value: null, child: Text('All Suppliers')),
+                        ...suppliers.map((s) => DropdownMenuItem(
+                            value: s.id, child: Text(s.name))),
+                      ],
+                      onChanged: (v) => setState(() => _selectedSupplierId = v),
+                    ),
+                  ),
+                ],
+              ),
+              orElse: () => const SizedBox.shrink(),
+            ),
+          ),
+
           // ── Search bar ────────────────────────────────────────────────
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
@@ -299,11 +330,17 @@ class _SupplierReceivedInvoiceListScreenState
                   for (final s in suppliersAsync.valueOrNull ?? []) s.id: s
                 };
 
-                final invoices = _searchQuery.isEmpty
+                final bySupplier = _selectedSupplierId == null
                     ? allInvoices
+                    : allInvoices
+                        .where((inv) => inv.supplierId == _selectedSupplierId)
+                        .toList();
+
+                final invoices = _searchQuery.isEmpty
+                    ? bySupplier
                     : () {
                         final q = _searchQuery.toLowerCase();
-                        return allInvoices.where((inv) {
+                        return bySupplier.where((inv) {
                           final supplierName =
                               (suppliersMap[inv.supplierId]?.name ?? '')
                                   .toLowerCase();

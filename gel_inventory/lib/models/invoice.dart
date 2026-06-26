@@ -13,6 +13,7 @@ class Invoice {
   final DateTime? partialDate;
   final String?   checkReference;
   final double?   checkAmount;
+  final DateTime? checkIssuedDate;
   final DateTime? checkDueDate;
   final String?   notes; // internal note — never shown on the printed invoice
   final double?   actualAmount; // optional actual amount on referenced receipt
@@ -32,6 +33,7 @@ class Invoice {
     this.partialDate,
     this.checkReference,
     this.checkAmount,
+    this.checkIssuedDate,
     this.checkDueDate,
     this.notes,
     this.actualAmount,
@@ -54,6 +56,9 @@ class Invoice {
             : DateTime.parse(j['partial_date'] as String),
         checkReference:  j['check_reference'] as String?,
         checkAmount:     (j['check_amount'] as num?)?.toDouble(),
+        checkIssuedDate: j['check_issued_date'] == null
+            ? null
+            : DateTime.parse(j['check_issued_date'] as String),
         checkDueDate:    j['check_due_date'] == null
             ? null
             : DateTime.parse(j['check_due_date'] as String),
@@ -76,6 +81,7 @@ class Invoice {
         'partial_date':    partialDate?.toIso8601String(),
         'check_reference': checkReference,
         'check_amount':    checkAmount,
+        'check_issued_date': checkIssuedDate?.toIso8601String(),
         'check_due_date':  checkDueDate?.toIso8601String(),
         'notes': notes,
         'actual_amount': actualAmount,
@@ -109,6 +115,7 @@ class Invoice {
     Object? partialDate    = _sentinel,
     Object? checkReference = _sentinel,
     Object? checkAmount    = _sentinel,
+    Object? checkIssuedDate = _sentinel,
     Object? checkDueDate   = _sentinel,
     Object? notes          = _sentinel,
     Object? actualAmount   = _sentinel,
@@ -138,6 +145,9 @@ class Invoice {
         checkAmount: checkAmount == _sentinel
             ? this.checkAmount
             : checkAmount as double?,
+        checkIssuedDate: checkIssuedDate == _sentinel
+            ? this.checkIssuedDate
+            : checkIssuedDate as DateTime?,
         checkDueDate: checkDueDate == _sentinel
             ? this.checkDueDate
             : checkDueDate as DateTime?,

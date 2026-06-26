@@ -2605,6 +2605,18 @@ class $InvoicesTable extends Invoices with TableInfo<$InvoicesTable, Invoice> {
     type: DriftSqlType.double,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _checkIssuedDateMeta = const VerificationMeta(
+    'checkIssuedDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> checkIssuedDate =
+      GeneratedColumn<DateTime>(
+        'check_issued_date',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _checkDueDateMeta = const VerificationMeta(
     'checkDueDate',
   );
@@ -2652,6 +2664,7 @@ class $InvoicesTable extends Invoices with TableInfo<$InvoicesTable, Invoice> {
     partialDate,
     checkReference,
     checkAmount,
+    checkIssuedDate,
     checkDueDate,
     notes,
     actualAmount,
@@ -2783,6 +2796,15 @@ class $InvoicesTable extends Invoices with TableInfo<$InvoicesTable, Invoice> {
         ),
       );
     }
+    if (data.containsKey('check_issued_date')) {
+      context.handle(
+        _checkIssuedDateMeta,
+        checkIssuedDate.isAcceptableOrUnknown(
+          data['check_issued_date']!,
+          _checkIssuedDateMeta,
+        ),
+      );
+    }
     if (data.containsKey('check_due_date')) {
       context.handle(
         _checkDueDateMeta,
@@ -2872,6 +2894,10 @@ class $InvoicesTable extends Invoices with TableInfo<$InvoicesTable, Invoice> {
         DriftSqlType.double,
         data['${effectivePrefix}check_amount'],
       ),
+      checkIssuedDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}check_issued_date'],
+      ),
       checkDueDate: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}check_due_date'],
@@ -2908,6 +2934,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
   final DateTime? partialDate;
   final String? checkReference;
   final double? checkAmount;
+  final DateTime? checkIssuedDate;
   final DateTime? checkDueDate;
   final String? notes;
   final double? actualAmount;
@@ -2926,6 +2953,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     this.partialDate,
     this.checkReference,
     this.checkAmount,
+    this.checkIssuedDate,
     this.checkDueDate,
     this.notes,
     this.actualAmount,
@@ -2958,6 +2986,9 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     }
     if (!nullToAbsent || checkAmount != null) {
       map['check_amount'] = Variable<double>(checkAmount);
+    }
+    if (!nullToAbsent || checkIssuedDate != null) {
+      map['check_issued_date'] = Variable<DateTime>(checkIssuedDate);
     }
     if (!nullToAbsent || checkDueDate != null) {
       map['check_due_date'] = Variable<DateTime>(checkDueDate);
@@ -2999,6 +3030,9 @@ class Invoice extends DataClass implements Insertable<Invoice> {
       checkAmount: checkAmount == null && nullToAbsent
           ? const Value.absent()
           : Value(checkAmount),
+      checkIssuedDate: checkIssuedDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(checkIssuedDate),
       checkDueDate: checkDueDate == null && nullToAbsent
           ? const Value.absent()
           : Value(checkDueDate),
@@ -3031,6 +3065,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
       partialDate: serializer.fromJson<DateTime?>(json['partialDate']),
       checkReference: serializer.fromJson<String?>(json['checkReference']),
       checkAmount: serializer.fromJson<double?>(json['checkAmount']),
+      checkIssuedDate: serializer.fromJson<DateTime?>(json['checkIssuedDate']),
       checkDueDate: serializer.fromJson<DateTime?>(json['checkDueDate']),
       notes: serializer.fromJson<String?>(json['notes']),
       actualAmount: serializer.fromJson<double?>(json['actualAmount']),
@@ -3054,6 +3089,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
       'partialDate': serializer.toJson<DateTime?>(partialDate),
       'checkReference': serializer.toJson<String?>(checkReference),
       'checkAmount': serializer.toJson<double?>(checkAmount),
+      'checkIssuedDate': serializer.toJson<DateTime?>(checkIssuedDate),
       'checkDueDate': serializer.toJson<DateTime?>(checkDueDate),
       'notes': serializer.toJson<String?>(notes),
       'actualAmount': serializer.toJson<double?>(actualAmount),
@@ -3075,6 +3111,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     Value<DateTime?> partialDate = const Value.absent(),
     Value<String?> checkReference = const Value.absent(),
     Value<double?> checkAmount = const Value.absent(),
+    Value<DateTime?> checkIssuedDate = const Value.absent(),
     Value<DateTime?> checkDueDate = const Value.absent(),
     Value<String?> notes = const Value.absent(),
     Value<double?> actualAmount = const Value.absent(),
@@ -3101,6 +3138,9 @@ class Invoice extends DataClass implements Insertable<Invoice> {
         ? checkReference.value
         : this.checkReference,
     checkAmount: checkAmount.present ? checkAmount.value : this.checkAmount,
+    checkIssuedDate: checkIssuedDate.present
+        ? checkIssuedDate.value
+        : this.checkIssuedDate,
     checkDueDate: checkDueDate.present ? checkDueDate.value : this.checkDueDate,
     notes: notes.present ? notes.value : this.notes,
     actualAmount: actualAmount.present ? actualAmount.value : this.actualAmount,
@@ -3141,6 +3181,9 @@ class Invoice extends DataClass implements Insertable<Invoice> {
       checkAmount: data.checkAmount.present
           ? data.checkAmount.value
           : this.checkAmount,
+      checkIssuedDate: data.checkIssuedDate.present
+          ? data.checkIssuedDate.value
+          : this.checkIssuedDate,
       checkDueDate: data.checkDueDate.present
           ? data.checkDueDate.value
           : this.checkDueDate,
@@ -3168,6 +3211,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
           ..write('partialDate: $partialDate, ')
           ..write('checkReference: $checkReference, ')
           ..write('checkAmount: $checkAmount, ')
+          ..write('checkIssuedDate: $checkIssuedDate, ')
           ..write('checkDueDate: $checkDueDate, ')
           ..write('notes: $notes, ')
           ..write('actualAmount: $actualAmount')
@@ -3191,6 +3235,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     partialDate,
     checkReference,
     checkAmount,
+    checkIssuedDate,
     checkDueDate,
     notes,
     actualAmount,
@@ -3213,6 +3258,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
           other.partialDate == this.partialDate &&
           other.checkReference == this.checkReference &&
           other.checkAmount == this.checkAmount &&
+          other.checkIssuedDate == this.checkIssuedDate &&
           other.checkDueDate == this.checkDueDate &&
           other.notes == this.notes &&
           other.actualAmount == this.actualAmount);
@@ -3233,6 +3279,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
   final Value<DateTime?> partialDate;
   final Value<String?> checkReference;
   final Value<double?> checkAmount;
+  final Value<DateTime?> checkIssuedDate;
   final Value<DateTime?> checkDueDate;
   final Value<String?> notes;
   final Value<double?> actualAmount;
@@ -3252,6 +3299,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     this.partialDate = const Value.absent(),
     this.checkReference = const Value.absent(),
     this.checkAmount = const Value.absent(),
+    this.checkIssuedDate = const Value.absent(),
     this.checkDueDate = const Value.absent(),
     this.notes = const Value.absent(),
     this.actualAmount = const Value.absent(),
@@ -3272,6 +3320,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     this.partialDate = const Value.absent(),
     this.checkReference = const Value.absent(),
     this.checkAmount = const Value.absent(),
+    this.checkIssuedDate = const Value.absent(),
     this.checkDueDate = const Value.absent(),
     this.notes = const Value.absent(),
     this.actualAmount = const Value.absent(),
@@ -3293,6 +3342,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     Expression<DateTime>? partialDate,
     Expression<String>? checkReference,
     Expression<double>? checkAmount,
+    Expression<DateTime>? checkIssuedDate,
     Expression<DateTime>? checkDueDate,
     Expression<String>? notes,
     Expression<double>? actualAmount,
@@ -3313,6 +3363,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
       if (partialDate != null) 'partial_date': partialDate,
       if (checkReference != null) 'check_reference': checkReference,
       if (checkAmount != null) 'check_amount': checkAmount,
+      if (checkIssuedDate != null) 'check_issued_date': checkIssuedDate,
       if (checkDueDate != null) 'check_due_date': checkDueDate,
       if (notes != null) 'notes': notes,
       if (actualAmount != null) 'actual_amount': actualAmount,
@@ -3335,6 +3386,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     Value<DateTime?>? partialDate,
     Value<String?>? checkReference,
     Value<double?>? checkAmount,
+    Value<DateTime?>? checkIssuedDate,
     Value<DateTime?>? checkDueDate,
     Value<String?>? notes,
     Value<double?>? actualAmount,
@@ -3355,6 +3407,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
       partialDate: partialDate ?? this.partialDate,
       checkReference: checkReference ?? this.checkReference,
       checkAmount: checkAmount ?? this.checkAmount,
+      checkIssuedDate: checkIssuedDate ?? this.checkIssuedDate,
       checkDueDate: checkDueDate ?? this.checkDueDate,
       notes: notes ?? this.notes,
       actualAmount: actualAmount ?? this.actualAmount,
@@ -3407,6 +3460,9 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     if (checkAmount.present) {
       map['check_amount'] = Variable<double>(checkAmount.value);
     }
+    if (checkIssuedDate.present) {
+      map['check_issued_date'] = Variable<DateTime>(checkIssuedDate.value);
+    }
     if (checkDueDate.present) {
       map['check_due_date'] = Variable<DateTime>(checkDueDate.value);
     }
@@ -3439,6 +3495,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
           ..write('partialDate: $partialDate, ')
           ..write('checkReference: $checkReference, ')
           ..write('checkAmount: $checkAmount, ')
+          ..write('checkIssuedDate: $checkIssuedDate, ')
           ..write('checkDueDate: $checkDueDate, ')
           ..write('notes: $notes, ')
           ..write('actualAmount: $actualAmount, ')
@@ -14010,6 +14067,7 @@ typedef $$InvoicesTableCreateCompanionBuilder =
       Value<DateTime?> partialDate,
       Value<String?> checkReference,
       Value<double?> checkAmount,
+      Value<DateTime?> checkIssuedDate,
       Value<DateTime?> checkDueDate,
       Value<String?> notes,
       Value<double?> actualAmount,
@@ -14031,6 +14089,7 @@ typedef $$InvoicesTableUpdateCompanionBuilder =
       Value<DateTime?> partialDate,
       Value<String?> checkReference,
       Value<double?> checkAmount,
+      Value<DateTime?> checkIssuedDate,
       Value<DateTime?> checkDueDate,
       Value<String?> notes,
       Value<double?> actualAmount,
@@ -14199,6 +14258,11 @@ class $$InvoicesTableFilterComposer
 
   ColumnFilters<double> get checkAmount => $composableBuilder(
     column: $table.checkAmount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get checkIssuedDate => $composableBuilder(
+    column: $table.checkIssuedDate,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -14390,6 +14454,11 @@ class $$InvoicesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get checkIssuedDate => $composableBuilder(
+    column: $table.checkIssuedDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get checkDueDate => $composableBuilder(
     column: $table.checkDueDate,
     builder: (column) => ColumnOrderings(column),
@@ -14494,6 +14563,11 @@ class $$InvoicesTableAnnotationComposer
 
   GeneratedColumn<double> get checkAmount => $composableBuilder(
     column: $table.checkAmount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get checkIssuedDate => $composableBuilder(
+    column: $table.checkIssuedDate,
     builder: (column) => column,
   );
 
@@ -14657,6 +14731,7 @@ class $$InvoicesTableTableManager
                 Value<DateTime?> partialDate = const Value.absent(),
                 Value<String?> checkReference = const Value.absent(),
                 Value<double?> checkAmount = const Value.absent(),
+                Value<DateTime?> checkIssuedDate = const Value.absent(),
                 Value<DateTime?> checkDueDate = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<double?> actualAmount = const Value.absent(),
@@ -14676,6 +14751,7 @@ class $$InvoicesTableTableManager
                 partialDate: partialDate,
                 checkReference: checkReference,
                 checkAmount: checkAmount,
+                checkIssuedDate: checkIssuedDate,
                 checkDueDate: checkDueDate,
                 notes: notes,
                 actualAmount: actualAmount,
@@ -14697,6 +14773,7 @@ class $$InvoicesTableTableManager
                 Value<DateTime?> partialDate = const Value.absent(),
                 Value<String?> checkReference = const Value.absent(),
                 Value<double?> checkAmount = const Value.absent(),
+                Value<DateTime?> checkIssuedDate = const Value.absent(),
                 Value<DateTime?> checkDueDate = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<double?> actualAmount = const Value.absent(),
@@ -14716,6 +14793,7 @@ class $$InvoicesTableTableManager
                 partialDate: partialDate,
                 checkReference: checkReference,
                 checkAmount: checkAmount,
+                checkIssuedDate: checkIssuedDate,
                 checkDueDate: checkDueDate,
                 notes: notes,
                 actualAmount: actualAmount,

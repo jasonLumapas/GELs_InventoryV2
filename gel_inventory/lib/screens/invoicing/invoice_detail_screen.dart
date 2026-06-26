@@ -133,6 +133,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   final _checkAmountCtrl   = TextEditingController();
   final _notesCtrl         = TextEditingController();
   final _actualAmountCtrl  = TextEditingController();
+  DateTime? _checkIssuedDate;
   DateTime? _checkDueDate;
   DateTime? _partialDate;
   List<InvoicePayment> _payments = [];
@@ -194,6 +195,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     _checkAmountCtrl.text = _invoice!.checkAmount != null
         ? _invoice!.checkAmount!.toStringAsFixed(2)
         : '';
+    _checkIssuedDate = _invoice!.checkIssuedDate;
     _checkDueDate = _invoice!.checkDueDate;
     _notesCtrl.text = _invoice!.notes ?? '';
     _actualAmountCtrl.text = _invoice!.actualAmount != null
@@ -239,6 +241,13 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
         .toList();
 
     setState(() => _loading = false);
+  }
+
+  /// True once both a valid amount and a date have been entered in the
+  /// "Add Payment" row — i.e. the entry is ready to be committed via Add.
+  bool get _canAddPayment {
+    final amount = double.tryParse(_partialAmountCtrl.text);
+    return amount != null && amount > 0 && _partialDate != null;
   }
 
   Future<void> _addPayment() async {
@@ -397,6 +406,10 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
 
   bool get _canSave {
     if (_selectedClient == null || _editItems.isEmpty) return false;
+    // Block saving while a fully-entered payment (amount + date) is still
+    // sitting in the Add Payment row — it must be committed via Add first,
+    // otherwise it would be silently discarded.
+    if (_canAddPayment) return false;
     return _editItems.every((item) {
       final currentInv = item.inventory?.quantityPieces ?? 0;
       return item.hasEnoughStock(currentInv);
@@ -422,6 +435,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
       checkAmount: _paymentType == 'check'
           ? double.tryParse(_checkAmountCtrl.text)
           : null,
+      checkIssuedDate: _paymentType == 'check' ? _checkIssuedDate : null,
       checkDueDate: _paymentType == 'check' ? _checkDueDate : null,
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
       actualAmount: _actualAmount,
@@ -462,6 +476,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
       checkAmount: _paymentType == 'check'
           ? double.tryParse(_checkAmountCtrl.text)
           : null,
+      checkIssuedDate: _paymentType == 'check' ? _checkIssuedDate : null,
       checkDueDate: _paymentType == 'check' ? _checkDueDate : null,
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
       actualAmount: _actualAmount,
@@ -701,6 +716,44 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                                 final picked = await showDatePicker(
                                   context: context,
                                   initialDate:
+                                      _checkIssuedDate ?? DateTime.now(),
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime(2100),
+                                );
+                                if (picked != null) {
+                                  setState(() => _checkIssuedDate = picked);
+                                }
+                              },
+                              child: InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText: 'Issued Date',
+                                  suffixIcon: Icon(
+                                      Icons.calendar_today, size: 18),
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                ),
+                                child: Text(
+                                  _checkIssuedDate == null
+                                      ? 'Select date'
+                                      : '${_checkIssuedDate!.year}-'
+                                        '${_checkIssuedDate!.month.toString().padLeft(2, '0')}-'
+                                        '${_checkIssuedDate!.day.toString().padLeft(2, '0')}',
+                                  style: TextStyle(
+                                    color: _checkIssuedDate == null
+                                        ? Theme.of(context).hintColor
+                                        : null,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: InkWell(
+                              onTap: isCancelled ? null : () async {
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate:
                                       _checkDueDate ?? DateTime.now(),
                                   firstDate: DateTime(2020),
                                   lastDate: DateTime(2100),
@@ -765,6 +818,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                               keyboardType: const TextInputType
                                   .numberWithOptions(decimal: true),
                               readOnly: isCancelled,
+                              onChanged: (_) => setState(() {}),
                             ),
                           ),
                           const SizedBox(width: 6),
@@ -807,8 +861,9 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                           ),
                           const SizedBox(width: 6),
                           FilledButton(
-                            onPressed:
-                                isCancelled ? null : _addPayment,
+                            onPressed: (isCancelled || !_canAddPayment)
+                                ? null
+                                : _addPayment,
                             style: FilledButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 12)),
@@ -929,6 +984,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                               keyboardType: const TextInputType
                                   .numberWithOptions(decimal: true),
                               readOnly: isCancelled,
+                              onChanged: (_) => setState(() {}),
                             ),
                           ),
                           const SizedBox(width: 6),
@@ -971,7 +1027,9 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                           ),
                           const SizedBox(width: 6),
                           FilledButton(
-                            onPressed: isCancelled ? null : _addPayment,
+                            onPressed: (isCancelled || !_canAddPayment)
+                                ? null
+                                : _addPayment,
                             style: FilledButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 12)),

@@ -113,6 +113,7 @@ class Invoices extends Table {
   DateTimeColumn get partialDate => dateTime().nullable()();
   TextColumn get checkReference => text().nullable()();
   RealColumn get checkAmount  => real().nullable()();
+  DateTimeColumn get checkIssuedDate => dateTime().nullable()();
   DateTimeColumn get checkDueDate => dateTime().nullable()();
   // Internal note — never included on the printed invoice.
   TextColumn get notes => text().nullable()();
@@ -402,7 +403,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 27;
+  int get schemaVersion => 28;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -525,6 +526,10 @@ class LocalDatabase extends _$LocalDatabase {
             await _addColumnIfMissing(m.database,
                 'supplier_received_invoice_items', 'raw_supplier_price',
                 'REAL');
+          }
+          if (from < 28) {
+            await _addColumnIfMissing(
+                m.database, 'invoices', 'check_issued_date', 'INTEGER');
           }
         },
       );

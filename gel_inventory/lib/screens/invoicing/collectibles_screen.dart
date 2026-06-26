@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import '../../models/client.dart';
 import '../../models/invoice.dart';
 import '../../models/invoice_payment.dart';
 import '../../repositories/client_repository.dart';
@@ -10,6 +11,7 @@ import '../../repositories/invoice_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../utils/pdf_generator.dart';
 import '../../widgets/common/app_scaffold.dart';
+import '../../widgets/common/search_picker.dart';
 
 enum _DateFilter { day, week, month, year }
 
@@ -20,8 +22,8 @@ class _CollectibleItem {
   // Overrides invoice.paymentType for chip routing (e.g. cash portion of a
   // check invoice appears under the Cash chip).
   final String displayPaymentType;
-  // Only populated for partial invoices that still have a remaining balance.
-  // Used to compute date-filtered paid amounts dynamically.
+  // Populated for all partial invoices (fully paid or not) so paidInRange()
+  // and paymentDatesInRange() can filter by date dynamically.
   final List<InvoicePayment> _partialPayments;
 
   _CollectibleItem({
@@ -34,7 +36,7 @@ class _CollectibleItem {
         _partialPayments = partialPayments ?? const [];
 
   /// Amount collected within [start, end).
-  /// For partial-with-balance: sum of payments in that range.
+  /// For partial: sum of payments in that range.
   /// For everything else (fully paid, cash, etc.): full invoice total.
   double paidInRange(DateTime start, DateTime end) {
     if (_partialPayments.isEmpty) return invoice.totalAmount;
@@ -44,6 +46,18 @@ class _CollectibleItem {
             !p.paymentDate!.isBefore(start) &&
             p.paymentDate!.isBefore(end))
         .fold<double>(0.0, (s, p) => s + p.amount);
+  }
+
+  /// Dates of partial payments that landed within [start, end) — used to
+  /// show which day(s) a partial invoice was actually paid on.
+  List<DateTime> paymentDatesInRange(DateTime start, DateTime end) {
+    return _partialPayments
+        .where((p) =>
+            p.paymentDate != null &&
+            !p.paymentDate!.isBefore(start) &&
+            p.paymentDate!.isBefore(end))
+        .map((p) => p.paymentDate!)
+        .toList();
   }
 }
 
@@ -59,6 +73,8 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
   bool _loading = true;
   List<_CollectibleItem> _items = [];
   String? _filterType = 'cash';
+  List<Client> _clients = [];
+  Client? _selectedClient;
 
   _DateFilter _dateFilter = _DateFilter.day;
   DateTime _anchor = DateTime.now();
@@ -153,6 +169,19 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
     if (picked != null) setState(() => _anchor = picked);
   }
 
+  Future<void> _pickClientFilter() async {
+    final sorted = List<Client>.from(_clients)
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final picked = await showSearchPicker<Client>(
+      context: context,
+      title: 'Filter by Client / Store',
+      items: sorted,
+      labelOf: (c) => c.name,
+      subtitleOf: (c) => c.address,
+    );
+    if (picked != null) setState(() => _selectedClient = picked);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -165,6 +194,7 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
     final invoices = await ref.read(invoiceRepositoryProvider).getAll();
     final clients  = await ref.read(clientRepositoryProvider).getAll();
     final clientMap = {for (final c in clients) c.id: c};
+    _clients = clients;
 
     // Only non-cancelled invoices
     final nonCash = invoices.where(
@@ -184,8 +214,9 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
         // outstanding uses ALL payments so the Balance subtitle stays correct.
         final totalPaid = payments.fold(0.0, (s, p) => s + p.amount);
         outstanding = inv.totalAmount - totalPaid;
-        // Store payments so paidInRange() can filter by date dynamically.
-        if (outstanding > 0.01) partialPayments = payments;
+        // Store payments (even once fully paid) so paidInRange() and
+        // paymentDatesInRange() stay correct by date.
+        partialPayments = payments;
       } else if (inv.paymentType == 'check') {
         final checkPaid = inv.checkAmount ?? 0.0;
         final payments = await ref
@@ -234,17 +265,23 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
   }
 
   List<_CollectibleItem> get _filtered => _items.where((i) {
+        if (_selectedClient != null &&
+            i.invoice.clientId != _selectedClient!.id) {
+          return false;
+        }
         if (_filterType != null) {
           final type = i.displayPaymentType;
           if (_filterType == 'paid_accounts') {
-            // Fully paid credit/check/partial, OR partial with some payment made.
+            // Fully paid credit/check, OR partial with a payment landing
+            // in the selected date range (fully paid or not).
             if (type != 'credit' && type != 'partial' && type != 'check') {
               return false;
             }
-            final isFullyPaid = i.outstanding <= 0.01;
-            final hasPartialPayment = type == 'partial' &&
-                i.paidInRange(_startDate, _endDate) > 0.01;
-            if (!isFullyPaid && !hasPartialPayment) return false;
+            if (type == 'partial') {
+              if (i.paidInRange(_startDate, _endDate) <= 0.01) return false;
+            } else if (i.outstanding > 0.01) {
+              return false;
+            }
           } else if (_filterType == 'check') {
             // Check chip: only unpaid/partially-paid check invoices
             if (type != 'check' || i.outstanding <= 0.01) {
@@ -260,14 +297,21 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
             return false;
           }
         }
-        // Partial-with-balance: already date-gated by paidInRange above;
-        // skip the invoice-date filter so payments on old invoices still appear.
+        // Partial: already date-gated by paidInRange above (whether fully
+        // paid or still carrying a balance) — skip the invoice-date filter
+        // so payments on old invoices still appear under the date they
+        // were actually paid.
         if (_filterType == 'paid_accounts' &&
-            i.displayPaymentType == 'partial' &&
-            i.outstanding > 0.01) {
+            i.displayPaymentType == 'partial') {
           return true;
         }
-        final d = i.invoice.invoiceDate;
+        // Paid Accounts + check: gate by when the check was issued (the
+        // actual collection date), not the original invoice date, falling
+        // back to the invoice date for checks with no issued date recorded.
+        final d = (_filterType == 'paid_accounts' &&
+                i.displayPaymentType == 'check')
+            ? (i.invoice.checkIssuedDate ?? i.invoice.invoiceDate)
+            : i.invoice.invoiceDate;
         return !d.isBefore(_startDate) && d.isBefore(_endDate);
       }).toList();
 
@@ -367,6 +411,40 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
               ],
             ),
           ),
+
+          // Client filter
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+            child: Row(
+              children: [
+                const Text('Client:',
+                    style: TextStyle(fontSize: 13, color: Colors.grey)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: InkWell(
+                    onTap: _pickClientFilter,
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                        suffixIcon: Icon(Icons.search, size: 18),
+                        contentPadding:
+                            EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                      child: Text(_selectedClient?.name ?? 'All Clients'),
+                    ),
+                  ),
+                ),
+                if (_selectedClient != null)
+                  IconButton(
+                    icon: const Icon(Icons.clear, size: 18),
+                    tooltip: 'Clear client filter',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => setState(() => _selectedClient = null),
+                  ),
+              ],
+            ),
+          ),
           const Divider(height: 1),
 
           // List
@@ -420,8 +498,15 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
                               '${inv.displayNumber}  •  '
                               '${dateFmt.format(inv.invoiceDate)}  •  '
                               '${isCashOfCheck ? "Cash payment (Check)" : inv.paymentLabel}'
+                              '${isCheck && inv.checkIssuedDate != null
+                                  ? '  •  Issued: ${dateFmt.format(inv.checkIssuedDate!)}'
+                                  : ''}'
                               '${isCheck && item.outstanding > 0.01
                                   ? '  •  Balance: ${formatCurrency(item.outstanding)}'
+                                  : ''}'
+                              '${_filterType == 'paid_accounts' &&
+                                      inv.paymentType == 'partial'
+                                  ? _paidDatesLabel(item)
                                   : ''}'
                               '${_filterType == 'paid_accounts' &&
                                       inv.paymentType == 'partial' &&
@@ -473,6 +558,16 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
         ],
       ),
     );
+  }
+
+  /// `  •  Paid: <date(s)>` segment showing which day(s), within the
+  /// selected filter range, a partial invoice's payment(s) landed on.
+  String _paidDatesLabel(_CollectibleItem item) {
+    final dates = item.paymentDatesInRange(_startDate, _endDate)..sort();
+    if (dates.isEmpty) return '';
+    final dateFmt = DateFormat('MMM dd, yyyy');
+    final labels = dates.map(dateFmt.format).toSet().join(', ');
+    return '  •  Paid: $labels';
   }
 
   Widget _chip(String label, String? type) => ChoiceChip(

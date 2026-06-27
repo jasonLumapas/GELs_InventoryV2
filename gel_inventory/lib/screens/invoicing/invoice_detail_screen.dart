@@ -953,7 +953,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                                 style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.bold,
-                                  color: balance > 0
+                                  color: balance > 0.01
                                       ? Colors.red.shade700
                                       : Colors.green.shade700,
                                 ),
@@ -1101,7 +1101,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                                 style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.bold,
-                                  color: balance > 0
+                                  color: balance > 0.01
                                       ? Colors.red.shade700
                                       : Colors.green.shade700,
                                 ),

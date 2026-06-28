@@ -13,6 +13,11 @@ import '../../widgets/common/app_scaffold.dart';
 
 enum _DateFilter { day, week, month, year }
 
+/// Sentinel passed as the `supplierId` query parameter when the "All
+/// Suppliers" filter is active, so [ClientPurchaseDetailScreen] knows to
+/// skip supplier-specific product filtering.
+const kAllSuppliersId = 'all';
+
 class _ClientPurchaseRow {
   final String clientId;
   final String clientName;
@@ -40,6 +45,14 @@ class _ClientPurchasesScreenState
   DateTime _anchor = DateTime.now();
   bool _loading = false;
   List<_ClientPurchaseRow> _rows = [];
+
+  String get _supplierLabel => _selectedSupplier?.name ?? 'All Suppliers';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
 
   DateTime get _startDate {
     switch (_dateFilter) {
@@ -134,7 +147,7 @@ class _ClientPurchasesScreenState
 
   Future<void> _print() async {
     await printClientPurchases(
-      supplierName: _selectedSupplier!.name,
+      supplierName: _supplierLabel,
       periodLabel: _periodLabel,
       rows: _pdfRows,
     );
@@ -142,7 +155,7 @@ class _ClientPurchasesScreenState
 
   Future<void> _download() async {
     final path = await exportClientPurchasesReport(
-      supplierName: _selectedSupplier!.name,
+      supplierName: _supplierLabel,
       periodLabel: _periodLabel,
       rows: _pdfRows,
     );
@@ -153,18 +166,17 @@ class _ClientPurchasesScreenState
   }
 
   Future<void> _load() async {
-    if (_selectedSupplier == null) {
-      setState(() => _rows = []);
-      return;
-    }
     setState(() => _loading = true);
 
-    final supplierId = _selectedSupplier!.id;
+    final selectedSupplierId = _selectedSupplier?.id;
     final products = await ref.read(productRepositoryProvider).getAll();
-    final supplierProductIds = products
-        .where((p) => p.supplierId == supplierId)
-        .map((p) => p.id)
-        .toSet();
+    // null = no supplier filter, i.e. every product counts.
+    final supplierProductIds = selectedSupplierId == null
+        ? null
+        : products
+            .where((p) => p.supplierId == selectedSupplierId)
+            .map((p) => p.id)
+            .toSet();
 
     final clients = await ref.read(clientRepositoryProvider).getAll();
     final clientsById = {for (final c in clients) c.id: c};
@@ -178,7 +190,10 @@ class _ClientPurchasesScreenState
     for (final inv in invoices) {
       final items = await invoiceRepo.getItems(inv.id);
       for (final item in items) {
-        if (!supplierProductIds.contains(item.productId)) continue;
+        if (supplierProductIds != null &&
+            !supplierProductIds.contains(item.productId)) {
+          continue;
+        }
         totalsByClient[inv.clientId] =
             (totalsByClient[inv.clientId] ?? 0) + item.quantity;
       }
@@ -206,7 +221,7 @@ class _ClientPurchasesScreenState
     final grandTotal =
         _rows.fold<int>(0, (s, r) => s + r.totalPieces);
 
-    final canExport = _selectedSupplier != null && _rows.isNotEmpty;
+    final canExport = _rows.isNotEmpty;
 
     return AppScaffold(
       title: 'Client Purchases',
@@ -239,11 +254,12 @@ class _ClientPurchasesScreenState
                       isDense: true,
                       isExpanded: true,
                       underline: const SizedBox(),
-                      hint: const Text('Select a supplier'),
-                      items: suppliers
-                          .map((s) => DropdownMenuItem(
-                              value: s.id, child: Text(s.name)))
-                          .toList(),
+                      items: [
+                        const DropdownMenuItem(
+                            value: null, child: Text('All Suppliers')),
+                        ...suppliers.map((s) => DropdownMenuItem(
+                            value: s.id, child: Text(s.name))),
+                      ],
                       onChanged: (id) {
                         setState(() => _selectedSupplier =
                             suppliers.where((s) => s.id == id).firstOrNull);
@@ -316,17 +332,14 @@ class _ClientPurchasesScreenState
 
           // List
           Expanded(
-            child: _selectedSupplier == null
-                ? const Center(
-                    child: Text('Select a supplier to see their clients.'))
-                : _loading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _rows.isEmpty
-                        ? Center(
-                            child: Text(
-                                'No purchases of ${_selectedSupplier!.name}\'s '
-                                'products for $_periodLabel.'))
-                        : ListView.separated(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _rows.isEmpty
+                    ? Center(
+                        child: Text(
+                            'No purchases of $_supplierLabel\'s '
+                            'products for $_periodLabel.'))
+                    : ListView.separated(
                             padding: const EdgeInsets.all(8),
                             itemCount: _rows.length,
                             separatorBuilder: (_, _) =>
@@ -363,7 +376,8 @@ class _ClientPurchasesScreenState
                                   final uri = Uri(
                                     path: '/client-purchases/${row.clientId}',
                                     queryParameters: {
-                                      'supplierId': _selectedSupplier!.id,
+                                      'supplierId': _selectedSupplier?.id ??
+                                          kAllSuppliersId,
                                       'from': _startDate.toIso8601String(),
                                       'to': _endDate.toIso8601String(),
                                     },
@@ -376,7 +390,7 @@ class _ClientPurchasesScreenState
           ),
 
           // Footer
-          if (_selectedSupplier != null && !_loading && _rows.isNotEmpty)
+          if (!_loading && _rows.isNotEmpty)
             Container(
               color: Theme.of(context).colorScheme.surfaceContainerHighest,
               padding:

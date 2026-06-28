@@ -11,6 +11,7 @@ import '../../repositories/supplier_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../utils/pdf_generator.dart';
 import '../../widgets/common/app_scaffold.dart';
+import 'client_purchases_screen.dart' show kAllSuppliersId;
 
 class _ProductPurchaseRow {
   final String productName;
@@ -67,6 +68,11 @@ class _ClientPurchaseDetailScreenState
     }
   }
 
+  bool get _isAllSuppliers => widget.supplierId == kAllSuppliersId;
+
+  String get _supplierLabel =>
+      _isAllSuppliers ? 'All Suppliers' : (_supplier?.name ?? widget.supplierId);
+
   String get _periodLabel {
     final dateFmt = DateFormat('MMM d, y');
     return '${dateFmt.format(widget.fromDate)} - '
@@ -84,7 +90,7 @@ class _ClientPurchaseDetailScreenState
   Future<void> _print() async {
     await printClientPurchaseDetail(
       clientName: _client?.name ?? widget.clientId,
-      supplierName: _supplier?.name ?? widget.supplierId,
+      supplierName: _supplierLabel,
       periodLabel: _periodLabel,
       rows: _pdfRows,
     );
@@ -93,7 +99,7 @@ class _ClientPurchaseDetailScreenState
   Future<void> _download() async {
     final path = await exportClientPurchaseDetailReport(
       clientName: _client?.name ?? widget.clientId,
-      supplierName: _supplier?.name ?? widget.supplierId,
+      supplierName: _supplierLabel,
       periodLabel: _periodLabel,
       rows: _pdfRows,
     );
@@ -106,16 +112,21 @@ class _ClientPurchaseDetailScreenState
   Future<void> _load() async {
     final clients = await ref.read(clientRepositoryProvider).getAll();
     final client = clients.where((c) => c.id == widget.clientId).firstOrNull;
-    final suppliers = await ref.read(supplierRepositoryProvider).getAll();
-    final supplier =
-        suppliers.where((s) => s.id == widget.supplierId).firstOrNull;
+    Supplier? supplier;
+    if (!_isAllSuppliers) {
+      final suppliers = await ref.read(supplierRepositoryProvider).getAll();
+      supplier = suppliers.where((s) => s.id == widget.supplierId).firstOrNull;
+    }
 
     final products = await ref.read(productRepositoryProvider).getAll();
     final productsById = {for (final p in products) p.id: p};
-    final supplierProductIds = products
-        .where((p) => p.supplierId == widget.supplierId)
-        .map((p) => p.id)
-        .toSet();
+    // null = no supplier filter, i.e. every product counts.
+    final supplierProductIds = _isAllSuppliers
+        ? null
+        : products
+            .where((p) => p.supplierId == widget.supplierId)
+            .map((p) => p.id)
+            .toSet();
 
     final invoiceRepo = ref.read(invoiceRepositoryProvider);
     final invoices = await invoiceRepo.getAll(
@@ -129,7 +140,10 @@ class _ClientPurchaseDetailScreenState
     for (final inv in clientInvoices) {
       final items = await invoiceRepo.getItems(inv.id);
       for (final item in items) {
-        if (!supplierProductIds.contains(item.productId)) continue;
+        if (supplierProductIds != null &&
+            !supplierProductIds.contains(item.productId)) {
+          continue;
+        }
         totalsByProduct[item.productId] =
             (totalsByProduct[item.productId] ?? 0) + item.quantity;
       }
@@ -190,7 +204,7 @@ class _ClientPurchaseDetailScreenState
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Supplier: ${_supplier?.name ?? widget.supplierId}',
+                        'Supplier: $_supplierLabel',
                         style: const TextStyle(
                             fontSize: 14, fontWeight: FontWeight.w600),
                       ),

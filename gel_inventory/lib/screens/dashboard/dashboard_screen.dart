@@ -78,6 +78,11 @@ class DashboardScreen extends ConsumerWidget {
             label: 'Reports',
             route: '/reports',
           ),
+          _NavCard(
+            icon: Icons.groups,
+            label: 'Client Purchases',
+            route: '/client-purchases',
+          ),
           if (showOffSiteLoading)
             _NavCard(
               icon: Icons.local_shipping,

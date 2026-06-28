@@ -1542,7 +1542,7 @@ Future<String> exportPurchaseHistoryReport({
   } else {
     final from = fromDate != null ? dateFmt.format(fromDate) : 'Earliest';
     final to   = toDate   != null ? dateFmt.format(toDate)   : 'Latest';
-    rangeLabel = '$from – $to';
+    rangeLabel = '$from - $to';
   }
 
   doc.addPage(pw.MultiPage(
@@ -1690,5 +1690,261 @@ Future<void> printPurchaseOrder({
 
   await _printWithSlot(
     doc: doc, format: pageFormat, slot: PrinterSettingsService.purchaseOrder);
+}
+
+// ── Client Purchases Report PDF (by supplier) ─────────────────────────────────
+
+final _pcsFmt = NumberFormat('#,##0');
+
+class ClientPurchaseRow {
+  final String clientName;
+  final int totalPieces;
+
+  const ClientPurchaseRow({
+    required this.clientName,
+    required this.totalPieces,
+  });
+}
+
+({pw.Document doc, PdfPageFormat format}) _buildClientPurchasesDoc({
+  required String supplierName,
+  required String periodLabel,
+  required List<ClientPurchaseRow> rows,
+}) {
+  final doc = pw.Document();
+  final pageFormat = PdfPageFormat.a4.copyWith(
+    marginTop: 40, marginBottom: 40,
+    marginLeft: 40, marginRight: 40,
+  );
+  final usableW = pageFormat.availableWidth;
+  final nameW = usableW * 0.65;
+  final qtyW  = usableW * 0.35;
+
+  final font     = pw.Font.helvetica();
+  final fontBold = pw.Font.helveticaBold();
+  const double fs     = 10.0;
+  const double fsHead = 13;
+
+  pw.TextStyle ts({bool bold = false, double? size}) =>
+      pw.TextStyle(font: bold ? fontBold : font, fontSize: size ?? fs);
+
+  pw.Widget col(String text, double width,
+          {bool bold = false, pw.TextAlign align = pw.TextAlign.left}) =>
+      pw.SizedBox(
+        width: width,
+        child: pw.Text(text, style: ts(bold: bold), textAlign: align),
+      );
+
+  final grandTotal = rows.fold<int>(0, (s, r) => s + r.totalPieces);
+
+  doc.addPage(pw.MultiPage(
+    pageFormat: pageFormat,
+    build: (ctx) => [
+      pw.Text('Client Purchases Report', style: ts(bold: true, size: fsHead)),
+      pw.SizedBox(height: 4),
+      pw.Text('Supplier: $supplierName', style: ts()),
+      pw.Text('Period: $periodLabel', style: ts()),
+      pw.Text('Clients: ${rows.length}', style: ts()),
+      pw.SizedBox(height: 10),
+
+      pw.Row(children: [
+        col('Client', nameW, bold: true),
+        col('Total Purchased', qtyW, bold: true, align: pw.TextAlign.right),
+      ]),
+      pw.Divider(height: 6, thickness: 0.5),
+
+      for (int i = 0; i < rows.length; i++) ...[
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 3),
+          child: pw.Row(children: [
+            col(rows[i].clientName, nameW),
+            col('${_pcsFmt.format(rows[i].totalPieces)} pcs', qtyW,
+                align: pw.TextAlign.right),
+          ]),
+        ),
+        if (i < rows.length - 1) pw.Divider(height: 1, thickness: 0.3),
+      ],
+
+      pw.Divider(height: 8, thickness: 0.5),
+      pw.SizedBox(height: 8),
+      pw.Align(
+        alignment: pw.Alignment.centerRight,
+        child: pw.Text('Grand Total: ${_pcsFmt.format(grandTotal)} pcs',
+            style: ts(bold: true, size: fsHead - 1)),
+      ),
+    ],
+  ));
+  return (doc: doc, format: pageFormat);
+}
+
+Future<void> printClientPurchases({
+  required String supplierName,
+  required String periodLabel,
+  required List<ClientPurchaseRow> rows,
+}) async {
+  final built = _buildClientPurchasesDoc(
+      supplierName: supplierName, periodLabel: periodLabel, rows: rows);
+  await _printWithSlot(
+    doc: built.doc,
+    format: built.format,
+    slot: PrinterSettingsService.clientPurchases,
+  );
+}
+
+/// Builds the Client Purchases PDF and saves it directly to the user's
+/// Desktop (no print dialog), returning the saved file path.
+Future<String> exportClientPurchasesReport({
+  required String supplierName,
+  required String periodLabel,
+  required List<ClientPurchaseRow> rows,
+}) async {
+  final built = _buildClientPurchasesDoc(
+      supplierName: supplierName, periodLabel: periodLabel, rows: rows);
+  final bytes = await built.doc.save();
+  final home  = Platform.environment['USERPROFILE'] ??
+      Platform.environment['HOME'] ?? '.';
+  final tag   = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+  final file  = File('$home\\Desktop\\client_purchases_$tag.pdf');
+  await file.writeAsBytes(bytes);
+  return file.path;
+}
+
+// ── Client Purchase Detail Report PDF (one client, one supplier) ─────────────
+
+class ClientPurchaseProductRow {
+  final String productName;
+  final int piecesPerBox;
+  final int totalPieces;
+
+  const ClientPurchaseProductRow({
+    required this.productName,
+    required this.piecesPerBox,
+    required this.totalPieces,
+  });
+
+  int get boxes => piecesPerBox > 0 ? totalPieces ~/ piecesPerBox : 0;
+  int get remainPieces =>
+      piecesPerBox > 0 ? totalPieces % piecesPerBox : totalPieces;
+}
+
+({pw.Document doc, PdfPageFormat format}) _buildClientPurchaseDetailDoc({
+  required String clientName,
+  required String supplierName,
+  required String periodLabel,
+  required List<ClientPurchaseProductRow> rows,
+}) {
+  final doc = pw.Document();
+  final pageFormat = PdfPageFormat.a4.copyWith(
+    marginTop: 40, marginBottom: 40,
+    marginLeft: 40, marginRight: 40,
+  );
+  final usableW = pageFormat.availableWidth;
+  final prodW = usableW * 0.55;
+  final qtyW  = usableW * 0.45;
+
+  final font     = pw.Font.helvetica();
+  final fontBold = pw.Font.helveticaBold();
+  const double fs     = 10.0;
+  const double fsHead = 13;
+
+  pw.TextStyle ts({bool bold = false, double? size}) =>
+      pw.TextStyle(font: bold ? fontBold : font, fontSize: size ?? fs);
+
+  pw.Widget col(String text, double width,
+          {bool bold = false, pw.TextAlign align = pw.TextAlign.left}) =>
+      pw.SizedBox(
+        width: width,
+        child: pw.Text(text, style: ts(bold: bold), textAlign: align),
+      );
+
+  String qtyLabel(ClientPurchaseProductRow r) {
+    final parts = [
+      if (r.boxes > 0) '${r.boxes} box(es)',
+      if (r.remainPieces > 0) '${r.remainPieces} pcs',
+    ];
+    return parts.isEmpty ? '0' : parts.join(' + ');
+  }
+
+  final grandTotal = rows.fold<int>(0, (s, r) => s + r.totalPieces);
+
+  doc.addPage(pw.MultiPage(
+    pageFormat: pageFormat,
+    build: (ctx) => [
+      pw.Text('Client Purchase Detail', style: ts(bold: true, size: fsHead)),
+      pw.SizedBox(height: 4),
+      pw.Text('Client: $clientName', style: ts()),
+      pw.Text('Supplier: $supplierName', style: ts()),
+      pw.Text('Period: $periodLabel', style: ts()),
+      pw.SizedBox(height: 10),
+
+      pw.Row(children: [
+        col('Product', prodW, bold: true),
+        col('Quantity Purchased', qtyW, bold: true, align: pw.TextAlign.right),
+      ]),
+      pw.Divider(height: 6, thickness: 0.5),
+
+      for (int i = 0; i < rows.length; i++) ...[
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 3),
+          child: pw.Row(children: [
+            col(rows[i].productName, prodW),
+            col(qtyLabel(rows[i]), qtyW, align: pw.TextAlign.right),
+          ]),
+        ),
+        if (i < rows.length - 1) pw.Divider(height: 1, thickness: 0.3),
+      ],
+
+      pw.Divider(height: 8, thickness: 0.5),
+      pw.SizedBox(height: 8),
+      pw.Align(
+        alignment: pw.Alignment.centerRight,
+        child: pw.Text('Grand Total: ${_pcsFmt.format(grandTotal)} pcs',
+            style: ts(bold: true, size: fsHead - 1)),
+      ),
+    ],
+  ));
+  return (doc: doc, format: pageFormat);
+}
+
+Future<void> printClientPurchaseDetail({
+  required String clientName,
+  required String supplierName,
+  required String periodLabel,
+  required List<ClientPurchaseProductRow> rows,
+}) async {
+  final built = _buildClientPurchaseDetailDoc(
+    clientName: clientName,
+    supplierName: supplierName,
+    periodLabel: periodLabel,
+    rows: rows,
+  );
+  await _printWithSlot(
+    doc: built.doc,
+    format: built.format,
+    slot: PrinterSettingsService.clientPurchases,
+  );
+}
+
+/// Builds the Client Purchase Detail PDF and saves it directly to the
+/// user's Desktop (no print dialog), returning the saved file path.
+Future<String> exportClientPurchaseDetailReport({
+  required String clientName,
+  required String supplierName,
+  required String periodLabel,
+  required List<ClientPurchaseProductRow> rows,
+}) async {
+  final built = _buildClientPurchaseDetailDoc(
+    clientName: clientName,
+    supplierName: supplierName,
+    periodLabel: periodLabel,
+    rows: rows,
+  );
+  final bytes = await built.doc.save();
+  final home  = Platform.environment['USERPROFILE'] ??
+      Platform.environment['HOME'] ?? '.';
+  final tag   = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+  final file  = File('$home\\Desktop\\client_purchase_detail_$tag.pdf');
+  await file.writeAsBytes(bytes);
+  return file.path;
 }
 

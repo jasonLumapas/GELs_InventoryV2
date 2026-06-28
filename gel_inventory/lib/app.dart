@@ -15,6 +15,8 @@ import 'screens/invoicing/invoice_detail_screen.dart';
 import 'screens/invoicing/cancelled_invoices_list_screen.dart';
 import 'screens/reports/reports_screen.dart';
 import 'screens/reports/order_summary_screen.dart';
+import 'screens/reports/client_purchases_screen.dart';
+import 'screens/reports/client_purchase_detail_screen.dart';
 import 'screens/bad_orders/bad_order_list_screen.dart';
 import 'screens/bad_orders/bad_order_form_screen.dart';
 import 'screens/van_selling/van_selling_screen.dart';
@@ -83,6 +85,20 @@ final _router = GoRouter(
     // Reports + Layout
     GoRoute(path: '/reports', builder: (ctx, s) => const ReportsScreen()),
     GoRoute(path: '/layout', builder: (ctx, s) => const OrderSummaryScreen()),
+
+    // Client Purchases (by supplier)
+    GoRoute(
+        path: '/client-purchases',
+        builder: (ctx, s) => const ClientPurchasesScreen()),
+    GoRoute(
+      path: '/client-purchases/:clientId',
+      builder: (_, state) => ClientPurchaseDetailScreen(
+        clientId: state.pathParameters['clientId']!,
+        supplierId: state.uri.queryParameters['supplierId']!,
+        fromDate: DateTime.parse(state.uri.queryParameters['from']!),
+        toDate: DateTime.parse(state.uri.queryParameters['to']!),
+      ),
+    ),
 
     // Bad Orders
     GoRoute(

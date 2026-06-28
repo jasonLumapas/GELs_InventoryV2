@@ -95,6 +95,8 @@ class _AppDrawer extends ConsumerWidget {
           _tile(context, Icons.account_balance_wallet, 'Remittance', '/collectibles'),
           _tile(context, Icons.remove_shopping_cart, 'Returns/Bad Orders', '/bad-orders'),
           _tile(context, Icons.bar_chart, 'Reports', '/reports'),
+          _tile(context, Icons.groups, 'Client Purchases',
+              '/client-purchases'),
           if (showOffSiteLoading)
             _tile(context, Icons.local_shipping, 'Off-site Loading', '/van-selling'),
           _tile(context, Icons.star_rate, 'Incentives', '/incentives'),

@@ -192,6 +192,7 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
     if (ramId != null) {
       final allBo = await ref.read(badOrderRepositoryProvider).getAll();
       for (final bo in allBo) {
+        if (bo.type != 'bad_order') continue;
         if (bo.date.isBefore(monthStart) || !bo.date.isBefore(monthEnd)) {
           continue;
         }

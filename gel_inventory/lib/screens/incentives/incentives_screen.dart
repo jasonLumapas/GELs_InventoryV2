@@ -35,7 +35,7 @@ class _DayData {
 
 class _MonthData {
   final List<_DayData> days;
-  final String ramName;               // displayed name for the RAM column header
+  final String ramName; // displayed name for the RAM column header
   final List<_SupplierCol> additional; // extra configured supplier columns
 
   _MonthData({
@@ -44,12 +44,9 @@ class _MonthData {
     required this.additional,
   });
 
-  double get totalGrand =>
-      days.fold(0.0, (s, d) => s + d.grandTotal);
-  double get totalRamSales =>
-      days.fold(0.0, (s, d) => s + d.ramSales);
-  double get totalRamBoAmount =>
-      days.fold(0.0, (s, d) => s + d.ramBoAmount);
+  double get totalGrand => days.fold(0.0, (s, d) => s + d.grandTotal);
+  double get totalRamSales => days.fold(0.0, (s, d) => s + d.ramSales);
+  double get totalRamBoAmount => days.fold(0.0, (s, d) => s + d.ramBoAmount);
   double totalAdditionalSales(String sid) =>
       days.fold(0.0, (s, d) => s + (d.additionalSales[sid] ?? 0.0));
 }
@@ -63,13 +60,14 @@ class IncentivesScreen extends ConsumerStatefulWidget {
   ConsumerState<IncentivesScreen> createState() => _IncentivesScreenState();
 }
 
-class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
-  DateTime _selectedMonth =
-      DateTime(DateTime.now().year, DateTime.now().month);
+class _IncentivesScreenState extends ConsumerState<IncentivesScreen>
+    with SingleTickerProviderStateMixin {
+  DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
   List<String> _configuredIds = []; // additional supplier IDs (not RAM)
   late Future<_MonthData> _future;
+  late TabController _tabs;
 
-  final TextEditingController _targetCtrl  = TextEditingController(text: '0');
+  final TextEditingController _targetCtrl = TextEditingController(text: '0');
   final TextEditingController _percentCtrl = TextEditingController(text: '90');
   _MonthData? _lastData;
 
@@ -77,12 +75,15 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
   void dispose() {
     _targetCtrl.dispose();
     _percentCtrl.dispose();
+    _tabs.dispose();
     super.dispose();
   }
 
   @override
   void initState() {
     super.initState();
+    _tabs = TabController(length: 2, vsync: this);
+    _tabs.addListener(() => setState(() {}));
     _future = _loadSettingsThenMonth();
   }
 
@@ -92,9 +93,9 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
   }
 
   void _setMonth(DateTime m) => setState(() {
-        _selectedMonth = DateTime(m.year, m.month);
-        _future = _loadMonth(_selectedMonth);
-      });
+    _selectedMonth = DateTime(m.year, m.month);
+    _future = _loadMonth(_selectedMonth);
+  });
 
   Future<void> _pickMonth() async {
     final picked = await showDatePicker(
@@ -150,10 +151,10 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
 
     // ── Product → supplier lookup ─────────────────────────────────────────────
     final productSupplier = <String, String>{
-      for (final p in products) p.id: p.supplierId
+      for (final p in products) p.id: p.supplierId,
     };
     final piecesPerBoxById = <String, int>{
-      for (final p in products) p.id: p.piecesPerBox
+      for (final p in products) p.id: p.piecesPerBox,
     };
 
     final additionalSet = {for (final c in additional) c.id};
@@ -162,10 +163,9 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
     final days = List.generate(daysInMonth, (i) => _DayData(i + 1));
 
     // ── Invoices ──────────────────────────────────────────────────────────────
-    final invoices = await ref.read(invoiceRepositoryProvider).getAll(
-          startDate: monthStart,
-          endDate: monthEnd,
-        );
+    final invoices = await ref
+        .read(invoiceRepositoryProvider)
+        .getAll(startDate: monthStart, endDate: monthEnd);
 
     for (final inv in invoices) {
       final d = inv.invoiceDate.day - 1;
@@ -173,8 +173,9 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
       days[d].grandTotal += inv.totalAmount;
 
       if (needItems) {
-        final items =
-            await ref.read(invoiceRepositoryProvider).getItems(inv.id);
+        final items = await ref
+            .read(invoiceRepositoryProvider)
+            .getItems(inv.id);
         for (final item in items) {
           final sid = productSupplier[item.productId];
           if (sid == null) continue;
@@ -198,13 +199,15 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
         }
         final d = bo.date.day - 1;
         if (d < 0 || d >= daysInMonth) continue;
-        final items =
-            await ref.read(badOrderRepositoryProvider).getItems(bo.id);
+        final items = await ref
+            .read(badOrderRepositoryProvider)
+            .getItems(bo.id);
         for (final item in items) {
           if (productSupplier[item.productId] == ramId) {
             final ppb = piecesPerBoxById[item.productId] ?? 1;
-            final pieces =
-                item.unitType == 'box' ? item.quantity * ppb : item.quantity;
+            final pieces = item.unitType == 'box'
+                ? item.quantity * ppb
+                : item.quantity;
             final price = await ref
                 .read(productRepositoryProvider)
                 .getCurrentPrice(item.productId);
@@ -222,73 +225,39 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final monthLabel = DateFormat('MMMM yyyy').format(_selectedMonth);
-
     return AppScaffold(
       title: 'Incentives',
       actions: [
-        if (_lastData != null)
+        if (_tabs.index == 0) ...[
+          if (_lastData != null)
+            IconButton(
+              icon: const Icon(Icons.print),
+              tooltip: 'Print incentives report',
+              onPressed: () => _printIncentives(_lastData!),
+            ),
           IconButton(
-            icon: const Icon(Icons.print),
-            tooltip: 'Print incentives report',
-            onPressed: () => _printIncentives(_lastData!),
+            icon: const Icon(Icons.settings),
+            tooltip: 'Configure additional supplier columns',
+            onPressed: _openSettings,
           ),
-        IconButton(
-          icon: const Icon(Icons.settings),
-          tooltip: 'Configure additional supplier columns',
-          onPressed: _openSettings,
-        ),
+        ],
       ],
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            child: Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.chevron_left),
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => _setMonth(DateTime(
-                      _selectedMonth.year, _selectedMonth.month - 1)),
-                ),
-                Expanded(
-                  child: GestureDetector(
-                    onTap: _pickMonth,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.calendar_month,
-                            size: 16, color: Colors.grey),
-                        const SizedBox(width: 6),
-                        Text(monthLabel,
-                            style: const TextStyle(
-                                fontSize: 15, fontWeight: FontWeight.w600)),
-                      ],
-                    ),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.chevron_right),
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => _setMonth(DateTime(
-                      _selectedMonth.year, _selectedMonth.month + 1)),
-                ),
-              ],
-            ),
+          TabBar(
+            controller: _tabs,
+            tabs: const [
+              Tab(text: 'Summary'),
+              Tab(text: 'Per-Supplier'),
+            ],
           ),
-          const Divider(height: 1),
           Expanded(
-            child: FutureBuilder<_MonthData>(
-              future: _future,
-              builder: (ctx, snap) {
-                if (snap.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snap.hasError) {
-                  return Center(child: Text('Error: ${snap.error}'));
-                }
-                return _buildTable(snap.data!);
-              },
+            child: TabBarView(
+              controller: _tabs,
+              children: [
+                _buildOverviewTab(),
+                const _PerSupplierIncentivesTab(),
+              ],
             ),
           ),
         ],
@@ -296,29 +265,109 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
     );
   }
 
+  Widget _buildOverviewTab() {
+    final monthLabel = DateFormat('MMMM yyyy').format(_selectedMonth);
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.chevron_left),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => _setMonth(
+                  DateTime(_selectedMonth.year, _selectedMonth.month - 1),
+                ),
+              ),
+              Expanded(
+                child: GestureDetector(
+                  onTap: _pickMonth,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.calendar_month,
+                        size: 16,
+                        color: Colors.grey,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        monthLabel,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.chevron_right),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => _setMonth(
+                  DateTime(_selectedMonth.year, _selectedMonth.month + 1),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: FutureBuilder<_MonthData>(
+            future: _future,
+            builder: (ctx, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snap.hasError) {
+                return Center(child: Text('Error: ${snap.error}'));
+              }
+              return _buildTable(snap.data!);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   // ── Colors ────────────────────────────────────────────────────────────────
   // RAM is always purple. Additional suppliers cycle through the rest.
-  static const _ramDark  = Colors.purple;
-  static const _ramMid   = Colors.purple;
+  static const _ramDark = Colors.purple;
+  static const _ramMid = Colors.purple;
   static const _ramLight = Colors.purple;
 
   static Color _addDark(int i) {
     const palette = [
-      Colors.teal, Colors.orange, Colors.green, Colors.blue, Colors.pink,
+      Colors.teal,
+      Colors.orange,
+      Colors.green,
+      Colors.blue,
+      Colors.pink,
     ];
     return palette[i % palette.length].shade200;
   }
 
   static Color _addMid(int i) {
     const palette = [
-      Colors.teal, Colors.orange, Colors.green, Colors.blue, Colors.pink,
+      Colors.teal,
+      Colors.orange,
+      Colors.green,
+      Colors.blue,
+      Colors.pink,
     ];
     return palette[i % palette.length].shade100;
   }
 
   static Color _addLight(int i) {
     const palette = [
-      Colors.teal, Colors.orange, Colors.green, Colors.blue, Colors.pink,
+      Colors.teal,
+      Colors.orange,
+      Colors.green,
+      Colors.blue,
+      Colors.pink,
     ];
     return palette[i % palette.length].shade50;
   }
@@ -381,7 +430,8 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
               // Group header row
               Container(
                 decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey.shade400)),
+                  border: Border.all(color: Colors.grey.shade400),
+                ),
                 child: Row(
                   children: [
                     Expanded(
@@ -389,7 +439,9 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
                       child: Container(
                         color: Colors.grey.shade300,
                         padding: const EdgeInsets.symmetric(
-                            vertical: 8, horizontal: 8),
+                          vertical: 8,
+                          horizontal: 8,
+                        ),
                         child: const Text(''),
                       ),
                     ),
@@ -398,9 +450,11 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
                       child: Container(
                         color: Colors.grey.shade300,
                         padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: const Text('Grand Total',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        child: const Text(
+                          'Grand Total',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
                       ),
                     ),
                     // RAM — fixed, flex 7 (Sales 4 + BO 3)
@@ -409,10 +463,11 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
                       child: Container(
                         color: _ramDark.shade200,
                         padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Text(data.ramName,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold)),
+                        child: Text(
+                          data.ramName,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
                       ),
                     ),
                     // Additional suppliers — each flex 4 (Sales only)
@@ -422,10 +477,11 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
                         child: Container(
                           color: _addDark(i),
                           padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Text(data.additional[i].name,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold)),
+                          child: Text(
+                            data.additional[i].name,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
                         ),
                       ),
                   ],
@@ -436,18 +492,31 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
                 border: headerBorder,
                 columnWidths: colWidths,
                 children: [
-                  TableRow(children: [
-                    _cell('Date', Colors.grey.shade200,
-                        bold: true, center: true),
-                    _cell('Amount', Colors.grey.shade200,
-                        bold: true, center: true),
-                    _cell('Sales', _ramMid.shade100,
-                        bold: true, center: true),
-                    _cell('BO', _ramMid.shade100,
-                        bold: true, center: true),
-                    for (int i = 0; i < n; i++)
-                      _cell('Sales', _addMid(i), bold: true, center: true),
-                  ]),
+                  TableRow(
+                    children: [
+                      _cell(
+                        'Date',
+                        Colors.grey.shade200,
+                        bold: true,
+                        center: true,
+                      ),
+                      _cell(
+                        'Amount',
+                        Colors.grey.shade200,
+                        bold: true,
+                        center: true,
+                      ),
+                      _cell(
+                        'Sales',
+                        _ramMid.shade100,
+                        bold: true,
+                        center: true,
+                      ),
+                      _cell('BO', _ramMid.shade100, bold: true, center: true),
+                      for (int i = 0; i < n; i++)
+                        _cell('Sales', _addMid(i), bold: true, center: true),
+                    ],
+                  ),
                 ],
               ),
             ],
@@ -466,38 +535,47 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
                   columnWidths: colWidths,
                   children: data.days.map((d) {
                     final date = DateTime(
-                        _selectedMonth.year, _selectedMonth.month, d.day);
-                    final hasData = d.grandTotal > 0 ||
+                      _selectedMonth.year,
+                      _selectedMonth.month,
+                      d.day,
+                    );
+                    final hasData =
+                        d.grandTotal > 0 ||
                         d.ramSales > 0 ||
                         d.ramBoAmount > 0 ||
                         d.additionalSales.values.any((v) => v > 0);
-                    return TableRow(children: [
-                      _cell(dateFmt.format(date), null),
-                      _cell(hasData ? formatCurrency(d.grandTotal) : '—',
+                    return TableRow(
+                      children: [
+                        _cell(dateFmt.format(date), null),
+                        _cell(
+                          hasData ? formatCurrency(d.grandTotal) : '—',
                           null,
-                          center: true),
-                      _cell(
-                          d.ramSales > 0
-                              ? formatCurrency(d.ramSales)
-                              : '—',
+                          center: true,
+                        ),
+                        _cell(
+                          d.ramSales > 0 ? formatCurrency(d.ramSales) : '—',
                           _ramLight.shade50,
-                          center: true),
-                      _cell(
+                          center: true,
+                        ),
+                        _cell(
                           d.ramBoAmount > 0
                               ? formatCurrency(d.ramBoAmount)
                               : '—',
                           _ramLight.shade50,
-                          center: true),
-                      for (int i = 0; i < n; i++)
-                        _cell(
-                            (d.additionalSales[data.additional[i].id] ?? 0) >
-                                    0
+                          center: true,
+                        ),
+                        for (int i = 0; i < n; i++)
+                          _cell(
+                            (d.additionalSales[data.additional[i].id] ?? 0) > 0
                                 ? formatCurrency(
-                                    d.additionalSales[data.additional[i].id]!)
+                                    d.additionalSales[data.additional[i].id]!,
+                                  )
                                 : '—',
                             _addLight(i),
-                            center: true),
-                    ]);
+                            center: true,
+                          ),
+                      ],
+                    );
                   }).toList(),
                 ),
                 // Totals row
@@ -505,29 +583,40 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
                   border: totalBorder,
                   columnWidths: colWidths,
                   children: [
-                    TableRow(children: [
-                      _cell('Total', Colors.grey.shade200, bold: true),
-                      _cell(formatCurrency(data.totalGrand),
+                    TableRow(
+                      children: [
+                        _cell('Total', Colors.grey.shade200, bold: true),
+                        _cell(
+                          formatCurrency(data.totalGrand),
                           Colors.grey.shade200,
-                          bold: true, center: true),
-                      _cell(formatCurrency(data.totalRamSales),
+                          bold: true,
+                          center: true,
+                        ),
+                        _cell(
+                          formatCurrency(data.totalRamSales),
                           _ramMid.shade100,
-                          bold: true, center: true),
-                      _cell(
+                          bold: true,
+                          center: true,
+                        ),
+                        _cell(
                           data.totalRamBoAmount > 0
                               ? formatCurrency(data.totalRamBoAmount)
                               : '—',
                           _ramMid.shade100,
                           bold: true,
-                          center: true),
-                      for (int i = 0; i < n; i++)
-                        _cell(
-                            formatCurrency(data.totalAdditionalSales(
-                                data.additional[i].id)),
+                          center: true,
+                        ),
+                        for (int i = 0; i < n; i++)
+                          _cell(
+                            formatCurrency(
+                              data.totalAdditionalSales(data.additional[i].id),
+                            ),
                             _addMid(i),
                             bold: true,
-                            center: true),
-                    ]),
+                            center: true,
+                          ),
+                      ],
+                    ),
                   ],
                 ),
                 // ── Monthly Target ───────────────────────────────────────────
@@ -543,7 +632,7 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
                 ListenableBuilder(
                   listenable: Listenable.merge([_targetCtrl, _percentCtrl]),
                   builder: (_, _) {
-                    final target  = double.tryParse(_targetCtrl.text) ?? 0.0;
+                    final target = double.tryParse(_targetCtrl.text) ?? 0.0;
                     final percent = double.tryParse(_percentCtrl.text) ?? 90.0;
                     return _summaryRow(
                       'Target Amount',
@@ -582,12 +671,15 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
                             padding: const EdgeInsets.only(top: 8),
                             decoration: BoxDecoration(
                               border: Border(
-                                  top: BorderSide(color: Colors.grey.shade300)),
+                                top: BorderSide(color: Colors.grey.shade300),
+                              ),
                             ),
                             child: const Text(
                               'Net BO Allowance',
                               style: TextStyle(
-                                  fontSize: 13, fontWeight: FontWeight.bold),
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                         ],
@@ -615,13 +707,18 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
                             padding: const EdgeInsets.only(top: 8),
                             decoration: BoxDecoration(
                               border: Border(
-                                  top: BorderSide(color: Colors.grey.shade300)),
+                                top: BorderSide(color: Colors.grey.shade300),
+                              ),
                             ),
                             child: Text(
-                              formatCurrency(data.totalRamSales * 0.01 -
-                                  data.totalRamBoAmount),
+                              formatCurrency(
+                                data.totalRamSales * 0.01 -
+                                    data.totalRamBoAmount,
+                              ),
                               style: const TextStyle(
-                                  fontSize: 13, fontWeight: FontWeight.bold),
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                         ],
@@ -633,113 +730,153 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
                 const SizedBox(height: 32),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Builder(builder: (_) {
-                    final netBo    = data.totalRamSales * 0.01 - data.totalRamBoAmount;
-                    final netSales = data.totalGrand -
-                        data.additional.fold(
-                            0.0, (s, c) => s + data.totalAdditionalSales(c.id));
-                    final eligible = netBo < 0 ? netSales + netBo : netSales;
-                    const ts = TextStyle(fontSize: 13);
-                    const tsBold = TextStyle(fontSize: 13, fontWeight: FontWeight.bold);
-                    return Row(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Labels
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text('Total Gross Sales', style: tsBold),
-                            const SizedBox(height: 4),
-                            const Text('less:', style: ts),
-                            for (final c in data.additional) ...[
-                              const SizedBox(height: 2),
-                              Padding(
-                                padding: const EdgeInsets.only(left: 20),
-                                child: Text(c.name, style: ts),
+                  child: Builder(
+                    builder: (_) {
+                      final netBo =
+                          data.totalRamSales * 0.01 - data.totalRamBoAmount;
+                      final netSales =
+                          data.totalGrand -
+                          data.additional.fold(
+                            0.0,
+                            (s, c) => s + data.totalAdditionalSales(c.id),
+                          );
+                      final eligible = netBo < 0 ? netSales + netBo : netSales;
+                      const ts = TextStyle(fontSize: 13);
+                      const tsBold = TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      );
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Labels
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text('Total Gross Sales', style: tsBold),
+                              const SizedBox(height: 4),
+                              const Text('less:', style: ts),
+                              for (final c in data.additional) ...[
+                                const SizedBox(height: 2),
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 20),
+                                  child: Text(c.name, style: ts),
+                                ),
+                              ],
+                              Container(
+                                padding: const EdgeInsets.only(top: 4),
+                                decoration: BoxDecoration(
+                                  border: Border(
+                                    top: BorderSide(
+                                      color: Colors.grey.shade300,
+                                    ),
+                                  ),
+                                ),
+                                child: const Text('Net Total', style: ts),
+                              ),
+                              if (netBo < 0) ...[
+                                const SizedBox(height: 2),
+                                const Text('Net BO Allowance', style: ts),
+                              ],
+                              Container(
+                                padding: const EdgeInsets.only(top: 6),
+                                decoration: BoxDecoration(
+                                  border: Border(
+                                    top: BorderSide(
+                                      color: Colors.grey.shade300,
+                                    ),
+                                  ),
+                                ),
+                                child: const Text('Net Sales', style: tsBold),
                               ),
                             ],
-                            Container(
-                              padding: const EdgeInsets.only(top: 4),
-                              decoration: BoxDecoration(
-                                border: Border(top: BorderSide(
-                                    color: Colors.grey.shade300)),
+                          ),
+                          const SizedBox(width: 16),
+                          // Values
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                formatCurrency(data.totalGrand),
+                                style: tsBold,
                               ),
-                              child: const Text('Net Total', style: ts),
-                            ),
-                            if (netBo < 0) ...[
-                              const SizedBox(height: 2),
-                              const Text('Net BO Allowance', style: ts),
+                              const SizedBox(height: 4),
+                              const Text('', style: ts),
+                              for (final c in data.additional) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  formatCurrency(
+                                    data.totalAdditionalSales(c.id),
+                                  ),
+                                  style: ts,
+                                ),
+                              ],
+                              Container(
+                                padding: const EdgeInsets.only(top: 4),
+                                decoration: BoxDecoration(
+                                  border: Border(
+                                    top: BorderSide(
+                                      color: Colors.grey.shade300,
+                                    ),
+                                  ),
+                                ),
+                                child: Text(
+                                  formatCurrency(netSales),
+                                  style: ts,
+                                ),
+                              ),
+                              if (netBo < 0) ...[
+                                const SizedBox(height: 2),
+                                Text(formatCurrency(netBo), style: ts),
+                              ],
+                              Container(
+                                padding: const EdgeInsets.only(top: 6),
+                                decoration: BoxDecoration(
+                                  border: Border(
+                                    top: BorderSide(
+                                      color: Colors.grey.shade300,
+                                    ),
+                                  ),
+                                ),
+                                child: Text(
+                                  formatCurrency(eligible),
+                                  style: tsBold,
+                                ),
+                              ),
                             ],
-                            Container(
-                              padding: const EdgeInsets.only(top: 6),
-                              decoration: BoxDecoration(
-                                border: Border(top: BorderSide(
-                                    color: Colors.grey.shade300)),
-                              ),
-                              child: const Text('Net Sales', style: tsBold),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(width: 16),
-                        // Values
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(formatCurrency(data.totalGrand), style: tsBold),
-                            const SizedBox(height: 4),
-                            const Text('', style: ts),
-                            for (final c in data.additional) ...[
-                              const SizedBox(height: 2),
-                              Text(formatCurrency(
-                                  data.totalAdditionalSales(c.id)), style: ts),
-                            ],
-                            Container(
-                              padding: const EdgeInsets.only(top: 4),
-                              decoration: BoxDecoration(
-                                border: Border(top: BorderSide(
-                                    color: Colors.grey.shade300)),
-                              ),
-                              child: Text(formatCurrency(netSales), style: ts),
-                            ),
-                            if (netBo < 0) ...[
-                              const SizedBox(height: 2),
-                              Text(formatCurrency(netBo), style: ts),
-                            ],
-                            Container(
-                              padding: const EdgeInsets.only(top: 6),
-                              decoration: BoxDecoration(
-                                border: Border(top: BorderSide(
-                                    color: Colors.grey.shade300)),
-                              ),
-                              child: Text(formatCurrency(eligible), style: tsBold),
-                            ),
-                          ],
-                        ),
-                      ],
-                    );
-                  }),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
                 ),
                 // ── Eligibility status ───────────────────────────────────────
                 const SizedBox(height: 16),
                 ListenableBuilder(
                   listenable: Listenable.merge([_targetCtrl, _percentCtrl]),
                   builder: (ctx, _) {
-                    final target  = double.tryParse(_targetCtrl.text) ?? 0.0;
+                    final target = double.tryParse(_targetCtrl.text) ?? 0.0;
                     final percent = double.tryParse(_percentCtrl.text) ?? 90.0;
                     final targetAmount = target * percent / 100;
-                    final netBo    = data.totalRamSales * 0.01 - data.totalRamBoAmount;
-                    final netSales = data.totalGrand -
+                    final netBo =
+                        data.totalRamSales * 0.01 - data.totalRamBoAmount;
+                    final netSales =
+                        data.totalGrand -
                         data.additional.fold(
-                            0.0, (s, c) => s + data.totalAdditionalSales(c.id));
+                          0.0,
+                          (s, c) => s + data.totalAdditionalSales(c.id),
+                        );
                     final eligibleAmt = netBo < 0 ? netSales + netBo : netSales;
-                    final isEligible  = eligibleAmt >= targetAmount;
+                    final isEligible = eligibleAmt >= targetAmount;
                     return Container(
                       margin: const EdgeInsets.symmetric(horizontal: 4),
                       padding: const EdgeInsets.symmetric(
-                          vertical: 10, horizontal: 12),
+                        vertical: 10,
+                        horizontal: 12,
+                      ),
                       decoration: BoxDecoration(
                         color: isEligible
                             ? Colors.green.shade50
@@ -788,31 +925,37 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
     );
   }
 
-  Widget _cell(String text, Color? bg,
-          {bool bold = false, bool center = false}) =>
-      Container(
-        color: bg,
-        padding: const EdgeInsets.all(8),
-        child: Text(
-          text,
-          textAlign: center ? TextAlign.center : TextAlign.start,
-          style: TextStyle(
-              fontWeight: bold ? FontWeight.bold : FontWeight.normal),
-        ),
-      );
+  Widget _cell(
+    String text,
+    Color? bg, {
+    bool bold = false,
+    bool center = false,
+  }) => Container(
+    color: bg,
+    padding: const EdgeInsets.all(8),
+    child: Text(
+      text,
+      textAlign: center ? TextAlign.center : TextAlign.start,
+      style: TextStyle(fontWeight: bold ? FontWeight.bold : FontWeight.normal),
+    ),
+  );
 
   // ── PDF / Print ─────────────────────────────────────────────────────────────
 
   Future<void> _printIncentives(_MonthData data) async {
-    final target      = double.tryParse(_targetCtrl.text) ?? 0.0;
-    final percent     = double.tryParse(_percentCtrl.text) ?? 90.0;
-    final targetAmt   = target * percent / 100;
-    final netBo       = data.totalRamSales * 0.01 - data.totalRamBoAmount;
-    final netSales    = data.totalGrand -
-        data.additional.fold(0.0, (s, c) => s + data.totalAdditionalSales(c.id));
-    final eligible    = netBo < 0 ? netSales + netBo : netSales;
-    final isEligible  = eligible >= targetAmt;
-    final numFmt      = NumberFormat('#,##0.00');
+    final target = double.tryParse(_targetCtrl.text) ?? 0.0;
+    final percent = double.tryParse(_percentCtrl.text) ?? 90.0;
+    final targetAmt = target * percent / 100;
+    final netBo = data.totalRamSales * 0.01 - data.totalRamBoAmount;
+    final netSales =
+        data.totalGrand -
+        data.additional.fold(
+          0.0,
+          (s, c) => s + data.totalAdditionalSales(c.id),
+        );
+    final eligible = netBo < 0 ? netSales + netBo : netSales;
+    final isEligible = eligible >= targetAmt;
+    final numFmt = NumberFormat('#,##0.00');
 
     pw.Font loadF(String path, pw.Font fallback) {
       try {
@@ -821,8 +964,12 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
         return fallback;
       }
     }
-    final font     = loadF('C:\\Windows\\Fonts\\arial.ttf',   pw.Font.helvetica());
-    final fontBold = loadF('C:\\Windows\\Fonts\\arialbd.ttf', pw.Font.helveticaBold());
+
+    final font = loadF('C:\\Windows\\Fonts\\arial.ttf', pw.Font.helvetica());
+    final fontBold = loadF(
+      'C:\\Windows\\Fonts\\arialbd.ttf',
+      pw.Font.helveticaBold(),
+    );
 
     String fc(double v) => '₱${numFmt.format(v)}';
     String fsign(double v) =>
@@ -833,14 +980,14 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
         pw.TextStyle(font: bold ? fontBold : font, fontSize: fs);
 
     // ── Page format & column widths ──────────────────────────────────────────
-    final fmt   = PdfPageFormat.a4;
-    final marg  = const pw.EdgeInsets.symmetric(horizontal: 36, vertical: 28);
+    final fmt = PdfPageFormat.a4;
+    final marg = const pw.EdgeInsets.symmetric(horizontal: 36, vertical: 28);
     final usableW = fmt.width - marg.left - marg.right;
 
     final n = data.additional.length;
     const double dateW = 52, amtW = 72, ramSalesW = 72, ramBoW = 62;
-    final fixedW  = dateW + amtW + ramSalesW + ramBoW;
-    final addW    = n > 0 ? (usableW - fixedW) / n : 0.0;
+    final fixedW = dateW + amtW + ramSalesW + ramBoW;
+    final addW = n > 0 ? (usableW - fixedW) / n : 0.0;
 
     Map<int, pw.TableColumnWidth> colWidths = {
       0: const pw.FixedColumnWidth(dateW),
@@ -854,18 +1001,20 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
     const hPad = pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3);
 
     pw.Widget hCell(String t, {PdfColor? bg}) => pw.Container(
-          color: bg ?? PdfColors.grey300,
-          padding: hPad,
-          child: pw.Text(t,
-              style: ts(bold: true), textAlign: pw.TextAlign.center),
-        );
+      color: bg ?? PdfColors.grey300,
+      padding: hPad,
+      child: pw.Text(t, style: ts(bold: true), textAlign: pw.TextAlign.center),
+    );
 
     pw.Widget dCell(String t, {bool bold = false, PdfColor? bg}) =>
         pw.Container(
           color: bg,
           padding: hPad,
-          child: pw.Text(t,
-              style: ts(bold: bold), textAlign: pw.TextAlign.right),
+          child: pw.Text(
+            t,
+            style: ts(bold: bold),
+            textAlign: pw.TextAlign.right,
+          ),
         );
 
     pw.Widget lCell(String t, {bool bold = false, PdfColor? bg}) =>
@@ -878,194 +1027,228 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen> {
     // ── Summary row helper — fixed-width columns so values align ────────────
     const double labelW = 205, valW = 90;
 
-    pw.Widget sumRow(String label, String value,
-            {bool bold = false, double indent = 0}) =>
-        pw.Row(
-          children: [
-            pw.SizedBox(
-              width: labelW - indent,
-              child: pw.Padding(
-                padding: pw.EdgeInsets.only(left: indent),
-                child: pw.Text(label, style: ts(bold: bold)),
-              ),
-            ),
-            pw.SizedBox(
-              width: valW,
-              child: pw.Text(value,
-                  style: ts(bold: bold), textAlign: pw.TextAlign.right),
-            ),
-          ],
-        );
+    pw.Widget sumRow(
+      String label,
+      String value, {
+      bool bold = false,
+      double indent = 0,
+    }) => pw.Row(
+      children: [
+        pw.SizedBox(
+          width: labelW - indent,
+          child: pw.Padding(
+            padding: pw.EdgeInsets.only(left: indent),
+            child: pw.Text(label, style: ts(bold: bold)),
+          ),
+        ),
+        pw.SizedBox(
+          width: valW,
+          child: pw.Text(
+            value,
+            style: ts(bold: bold),
+            textAlign: pw.TextAlign.right,
+          ),
+        ),
+      ],
+    );
 
     // ── Build document ───────────────────────────────────────────────────────
-    final doc        = pw.Document();
+    final doc = pw.Document();
     final monthLabel = DateFormat('MMMM yyyy').format(_selectedMonth);
     final todayLabel = DateFormat('MMMM d, yyyy').format(DateTime.now());
     final rowDateFmt = DateFormat('MM/dd');
 
-    doc.addPage(pw.MultiPage(
-      pageFormat: fmt,
-      margin: marg,
-      build: (ctx) => [
-        // Title
-        pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text("GEL'S CONSUMER GOODS TRADING",
-                    style: pw.TextStyle(font: fontBold, fontSize: 13)),
-                pw.SizedBox(height: 2),
-                pw.Text('Incentives Report — $monthLabel',
-                    style: pw.TextStyle(font: fontBold, fontSize: 10)),
-              ],
-            ),
-            pw.Text('Date: $todayLabel', style: ts()),
-          ],
-        ),
-        pw.SizedBox(height: 10),
-
-        // Daily table
-        pw.Table(
-          border: pw.TableBorder.all(
-              width: 0.5, color: PdfColors.grey500),
-          columnWidths: colWidths,
-          children: [
-            // Header
-            pw.TableRow(children: [
-              hCell('Date'),
-              hCell('Amount'),
-              hCell('RAM Sales'),
-              hCell('RAM BO'),
-              for (final c in data.additional) hCell(c.name),
-            ]),
-            // Data rows
-            for (final d in data.days)
-              pw.TableRow(children: [
-                lCell(rowDateFmt.format(DateTime(
-                    _selectedMonth.year, _selectedMonth.month, d.day))),
-                dCell(d.grandTotal > 0 ? fc(d.grandTotal) : '—'),
-                dCell(d.ramSales > 0 ? fc(d.ramSales) : '—'),
-                dCell(d.ramBoAmount > 0 ? fc(d.ramBoAmount) : '—'),
-                for (final c in data.additional)
-                  dCell((d.additionalSales[c.id] ?? 0) > 0
-                      ? fc(d.additionalSales[c.id]!)
-                      : '—'),
-              ]),
-            // Totals
-            pw.TableRow(
-              decoration:
-                  const pw.BoxDecoration(color: PdfColors.grey200),
-              children: [
-                lCell('Total', bold: true),
-                dCell(fc(data.totalGrand), bold: true),
-                dCell(fc(data.totalRamSales), bold: true),
-                dCell(data.totalRamBoAmount > 0
-                    ? fc(data.totalRamBoAmount)
-                    : '—', bold: true),
-                for (final c in data.additional)
-                  dCell(fc(data.totalAdditionalSales(c.id)), bold: true),
-              ],
-            ),
-          ],
-        ),
-
-        pw.SizedBox(height: 14),
-        pw.Divider(thickness: 0.5),
-        pw.SizedBox(height: 8),
-
-        // Summary
-        sumRow('Monthly Target', fc(target)),
-        pw.SizedBox(height: 3),
-        sumRow('% for incentive eligibility',
-            '${percent.toStringAsFixed(0)}%'),
-        pw.SizedBox(height: 3),
-        sumRow('Target Amount', fc(targetAmt), bold: true),
-
-        pw.SizedBox(height: 10),
-        sumRow('BO Allowance (1% of RAM sales)',
-            fc(data.totalRamSales * 0.01)),
-        pw.SizedBox(height: 3),
-        sumRow('Total RAM BO for the month', fc(data.totalRamBoAmount)),
-        pw.SizedBox(height: 3),
-        sumRow('Net BO Allowance', fsign(netBo), bold: true),
-
-        pw.SizedBox(height: 10),
-        sumRow('Total Gross Sales', fc(data.totalGrand), bold: true),
-        pw.SizedBox(height: 3),
-        pw.Text('less:', style: ts()),
-        for (final c in data.additional) ...[
-          pw.SizedBox(height: 2),
-          sumRow(c.name, fc(data.totalAdditionalSales(c.id)), indent: 12),
-        ],
-        pw.SizedBox(height: 3),
-        sumRow('Net Total', fc(netSales)),
-        if (netBo < 0) ...[
-          pw.SizedBox(height: 3),
-          sumRow('Net BO Allowance', fsign(netBo)),
-        ],
-        pw.SizedBox(height: 3),
-        sumRow('Net Sales', fc(eligible), bold: true),
-
-        pw.SizedBox(height: 12),
-        pw.Text(
-          isEligible
-              ? 'ELIGIBLE FOR INCENTIVE'
-              : 'NOT ELIGIBLE FOR INCENTIVE',
-          style: pw.TextStyle(
-            font: fontBold,
-            fontSize: 11,
-            color: isEligible ? PdfColors.green800 : PdfColors.red800,
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: fmt,
+        margin: marg,
+        build: (ctx) => [
+          // Title
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    "GEL'S CONSUMER GOODS TRADING",
+                    style: pw.TextStyle(font: fontBold, fontSize: 13),
+                  ),
+                  pw.SizedBox(height: 2),
+                  pw.Text(
+                    'Incentives Report — $monthLabel',
+                    style: pw.TextStyle(font: fontBold, fontSize: 10),
+                  ),
+                ],
+              ),
+              pw.Text('Date: $todayLabel', style: ts()),
+            ],
           ),
-        ),
-      ],
-    ));
+          pw.SizedBox(height: 10),
+
+          // Daily table
+          pw.Table(
+            border: pw.TableBorder.all(width: 0.5, color: PdfColors.grey500),
+            columnWidths: colWidths,
+            children: [
+              // Header
+              pw.TableRow(
+                children: [
+                  hCell('Date'),
+                  hCell('Amount'),
+                  hCell('RAM Sales'),
+                  hCell('RAM BO'),
+                  for (final c in data.additional) hCell(c.name),
+                ],
+              ),
+              // Data rows
+              for (final d in data.days)
+                pw.TableRow(
+                  children: [
+                    lCell(
+                      rowDateFmt.format(
+                        DateTime(
+                          _selectedMonth.year,
+                          _selectedMonth.month,
+                          d.day,
+                        ),
+                      ),
+                    ),
+                    dCell(d.grandTotal > 0 ? fc(d.grandTotal) : '—'),
+                    dCell(d.ramSales > 0 ? fc(d.ramSales) : '—'),
+                    dCell(d.ramBoAmount > 0 ? fc(d.ramBoAmount) : '—'),
+                    for (final c in data.additional)
+                      dCell(
+                        (d.additionalSales[c.id] ?? 0) > 0
+                            ? fc(d.additionalSales[c.id]!)
+                            : '—',
+                      ),
+                  ],
+                ),
+              // Totals
+              pw.TableRow(
+                decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                children: [
+                  lCell('Total', bold: true),
+                  dCell(fc(data.totalGrand), bold: true),
+                  dCell(fc(data.totalRamSales), bold: true),
+                  dCell(
+                    data.totalRamBoAmount > 0 ? fc(data.totalRamBoAmount) : '—',
+                    bold: true,
+                  ),
+                  for (final c in data.additional)
+                    dCell(fc(data.totalAdditionalSales(c.id)), bold: true),
+                ],
+              ),
+            ],
+          ),
+
+          pw.SizedBox(height: 14),
+          pw.Divider(thickness: 0.5),
+          pw.SizedBox(height: 8),
+
+          // Summary
+          sumRow('Monthly Target', fc(target)),
+          pw.SizedBox(height: 3),
+          sumRow(
+            '% for incentive eligibility',
+            '${percent.toStringAsFixed(0)}%',
+          ),
+          pw.SizedBox(height: 3),
+          sumRow('Target Amount', fc(targetAmt), bold: true),
+
+          pw.SizedBox(height: 10),
+          sumRow(
+            'BO Allowance (1% of RAM sales)',
+            fc(data.totalRamSales * 0.01),
+          ),
+          pw.SizedBox(height: 3),
+          sumRow('Total RAM BO for the month', fc(data.totalRamBoAmount)),
+          pw.SizedBox(height: 3),
+          sumRow('Net BO Allowance', fsign(netBo), bold: true),
+
+          pw.SizedBox(height: 10),
+          sumRow('Total Gross Sales', fc(data.totalGrand), bold: true),
+          pw.SizedBox(height: 3),
+          pw.Text('less:', style: ts()),
+          for (final c in data.additional) ...[
+            pw.SizedBox(height: 2),
+            sumRow(c.name, fc(data.totalAdditionalSales(c.id)), indent: 12),
+          ],
+          pw.SizedBox(height: 3),
+          sumRow('Net Total', fc(netSales)),
+          if (netBo < 0) ...[
+            pw.SizedBox(height: 3),
+            sumRow('Net BO Allowance', fsign(netBo)),
+          ],
+          pw.SizedBox(height: 3),
+          sumRow('Net Sales', fc(eligible), bold: true),
+
+          pw.SizedBox(height: 12),
+          pw.Text(
+            isEligible
+                ? 'ELIGIBLE FOR INCENTIVE'
+                : 'NOT ELIGIBLE FOR INCENTIVE',
+            style: pw.TextStyle(
+              font: fontBold,
+              fontSize: 11,
+              color: isEligible ? PdfColors.green800 : PdfColors.red800,
+            ),
+          ),
+        ],
+      ),
+    );
 
     final bytes = await doc.save();
 
-    await Printing.layoutPdf(
-      onLayout: (_) => bytes,
-      format: fmt,
-    );
+    await Printing.layoutPdf(onLayout: (_) => bytes, format: fmt);
   }
 
-  Widget _editableRow(String label, TextEditingController ctrl,
-      {String? suffix}) =>
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(label, style: const TextStyle(fontSize: 13)),
-            const Text(': ', style: TextStyle(fontSize: 13)),
-            SizedBox(
-              width: 110,
-              child: TextField(
-                controller: ctrl,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                style: const TextStyle(fontSize: 13),
-                decoration: InputDecoration(
-                  isDense: true,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-                  border: const OutlineInputBorder(),
-                  suffixText: suffix,
-                ),
-                onChanged: (_) => setState(() {}),
+  Widget _editableRow(
+    String label,
+    TextEditingController ctrl, {
+    String? suffix,
+  }) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 4),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 13)),
+        const Text(': ', style: TextStyle(fontSize: 13)),
+        SizedBox(
+          width: 110,
+          child: TextField(
+            controller: ctrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: const TextStyle(fontSize: 13),
+            decoration: InputDecoration(
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 6,
+                vertical: 6,
               ),
+              border: const OutlineInputBorder(),
+              suffixText: suffix,
             ),
-          ],
+            onChanged: (_) => setState(() {}),
+          ),
         ),
-      );
+      ],
+    ),
+  );
 
-  Widget _summaryRow(String label, String value,
-          {bool bold = false, double indent = 0, bool expand = false}) {
+  Widget _summaryRow(
+    String label,
+    String value, {
+    bool bold = false,
+    double indent = 0,
+    bool expand = false,
+  }) {
     final style = TextStyle(
-        fontSize: 13,
-        fontWeight: bold ? FontWeight.bold : FontWeight.normal);
+      fontSize: 13,
+      fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+    );
     return Padding(
       padding: EdgeInsets.only(left: 4 + indent, right: 4),
       child: Row(
@@ -1090,10 +1273,7 @@ class _SettingsDialog extends ConsumerStatefulWidget {
   final List<String> configuredIds;
   final Future<void> Function(List<String>) onSave;
 
-  const _SettingsDialog({
-    required this.configuredIds,
-    required this.onSave,
-  });
+  const _SettingsDialog({required this.configuredIds, required this.onSave});
 
   @override
   ConsumerState<_SettingsDialog> createState() => _SettingsDialogState();
@@ -1115,132 +1295,164 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
       title: const Text('Additional Supplier Columns'),
       content: SizedBox(
         width: 340,
-        child: ref.watch(suppliersListProvider).maybeWhen(
-          data: (suppliers) {
-            // Drop configured IDs that no longer match any supplier
-            // (e.g. left over after the local database was reset).
-            final knownIds = {for (final s in suppliers) s.id};
-            final stale = _ids.where((id) => !knownIds.contains(id)).toList();
-            if (stale.isNotEmpty) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) {
-                  setState(() => _ids.removeWhere((id) => !knownIds.contains(id)));
+        child: ref
+            .watch(suppliersListProvider)
+            .maybeWhen(
+              data: (suppliers) {
+                // Drop configured IDs that no longer match any supplier
+                // (e.g. left over after the local database was reset).
+                final knownIds = {for (final s in suppliers) s.id};
+                final stale = _ids
+                    .where((id) => !knownIds.contains(id))
+                    .toList();
+                if (stale.isNotEmpty) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) {
+                      setState(
+                        () => _ids.removeWhere((id) => !knownIds.contains(id)),
+                      );
+                    }
+                  });
                 }
-              });
-            }
 
-            // Exclude RAM (always shown) and already-configured suppliers
-            final nonRam = suppliers
-                .where((s) => s.name.trim().toLowerCase() != 'ram')
-                .toList();
-            final suppById = {for (final s in nonRam) s.id: s.name};
-            final available =
-                nonRam.where((s) => !_ids.contains(s.id)).toList();
+                // Exclude RAM (always shown) and already-configured suppliers
+                final nonRam = suppliers
+                    .where((s) => s.name.trim().toLowerCase() != 'ram')
+                    .toList();
+                final suppById = {for (final s in nonRam) s.id: s.name};
+                final available = nonRam
+                    .where((s) => !_ids.contains(s.id))
+                    .toList();
 
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                    'The RAM column is always shown. Configure extra supplier columns (Sales only) below.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey)),
-                const SizedBox(height: 12),
-                const Text('Additional columns:',
-                    style: TextStyle(fontSize: 13, color: Colors.grey)),
-                const SizedBox(height: 4),
-                if (_ids.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Text('None configured.',
-                        style: TextStyle(color: Colors.grey)),
-                  )
-                else
-                  ..._ids.asMap().entries.map((e) => ListTile(
-                        dense: true,
-                        contentPadding:
-                            const EdgeInsets.symmetric(horizontal: 4),
-                        leading: CircleAvatar(
-                          radius: 11,
-                          backgroundColor: Theme.of(context)
-                              .colorScheme
-                              .primaryContainer,
-                          child: Text('${e.key + 1}',
-                              style: const TextStyle(fontSize: 11)),
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'The RAM column is always shown. Configure extra supplier columns (Sales only) below.',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Additional columns:',
+                      style: TextStyle(fontSize: 13, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 4),
+                    if (_ids.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: Text(
+                          'None configured.',
+                          style: TextStyle(color: Colors.grey),
                         ),
-                        title: Text(suppById[e.value] ?? e.value),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.remove_circle_outline,
-                              size: 20),
-                          color: Colors.red.shade300,
-                          tooltip: 'Remove',
-                          onPressed: () =>
-                              setState(() => _ids.removeAt(e.key)),
-                        ),
-                      )),
-                const Divider(height: 20),
-                if (available.isNotEmpty) ...[
-                  const Text('Add supplier:',
-                      style: TextStyle(fontSize: 13, color: Colors.grey)),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                                color:
-                                    Theme.of(context).colorScheme.outline),
-                            borderRadius: BorderRadius.circular(4),
+                      )
+                    else
+                      ..._ids.asMap().entries.map(
+                        (e) => ListTile(
+                          dense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 4,
                           ),
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 10),
-                          child: DropdownButton<String>(
-                            value: _selectedToAdd,
-                            hint: const Text('Select supplier...'),
-                            isExpanded: true,
-                            isDense: true,
-                            underline: const SizedBox(),
-                            items: available
-                                .map((s) => DropdownMenuItem(
-                                      value: s.id,
-                                      child: Text(s.name),
-                                    ))
-                                .toList(),
-                            onChanged: (v) =>
-                                setState(() => _selectedToAdd = v),
+                          leading: CircleAvatar(
+                            radius: 11,
+                            backgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primaryContainer,
+                            child: Text(
+                              '${e.key + 1}',
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          ),
+                          title: Text(suppById[e.value] ?? e.value),
+                          trailing: IconButton(
+                            icon: const Icon(
+                              Icons.remove_circle_outline,
+                              size: 20,
+                            ),
+                            color: Colors.red.shade300,
+                            tooltip: 'Remove',
+                            onPressed: () =>
+                                setState(() => _ids.removeAt(e.key)),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      FilledButton.icon(
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('Add'),
-                        onPressed: _selectedToAdd == null
-                            ? null
-                            : () => setState(() {
-                                  _ids.add(_selectedToAdd!);
-                                  _selectedToAdd = null;
-                                }),
+                    const Divider(height: 20),
+                    if (available.isNotEmpty) ...[
+                      const Text(
+                        'Add supplier:',
+                        style: TextStyle(fontSize: 13, color: Colors.grey),
                       ),
-                    ],
-                  ),
-                ] else if (_ids.isNotEmpty)
-                  Text('All non-RAM suppliers are already added.',
-                      style: TextStyle(
-                          fontSize: 13, color: Colors.grey.shade500))
-                else
-                  Text(
-                      'No suppliers found besides RAM. '
-                      'Add a supplier first to configure extra columns.',
-                      style: TextStyle(
-                          fontSize: 13, color: Colors.grey.shade500)),
-              ],
-            );
-          },
-          orElse: () => const SizedBox(
-              height: 80,
-              child: Center(child: CircularProgressIndicator())),
-        ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: Theme.of(context).colorScheme.outline,
+                                ),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                              ),
+                              child: DropdownButton<String>(
+                                value: _selectedToAdd,
+                                hint: const Text('Select supplier...'),
+                                isExpanded: true,
+                                isDense: true,
+                                underline: const SizedBox(),
+                                items: available
+                                    .map(
+                                      (s) => DropdownMenuItem(
+                                        value: s.id,
+                                        child: Text(s.name),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: (v) =>
+                                    setState(() => _selectedToAdd = v),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton.icon(
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Text('Add'),
+                            onPressed: _selectedToAdd == null
+                                ? null
+                                : () => setState(() {
+                                    _ids.add(_selectedToAdd!);
+                                    _selectedToAdd = null;
+                                  }),
+                          ),
+                        ],
+                      ),
+                    ] else if (_ids.isNotEmpty)
+                      Text(
+                        'All non-RAM suppliers are already added.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade500,
+                        ),
+                      )
+                    else
+                      Text(
+                        'No suppliers found besides RAM. '
+                        'Add a supplier first to configure extra columns.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                  ],
+                );
+              },
+              orElse: () => const SizedBox(
+                height: 80,
+                child: Center(child: CircularProgressIndicator()),
+              ),
+            ),
       ),
       actions: [
         TextButton(
@@ -1253,6 +1465,406 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
             if (context.mounted) Navigator.pop(context);
           },
           child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Per-Supplier Incentives tab ─────────────────────────────────────────────
+// Lets the user add any supplier and assign it an incentive percentage,
+// computed against that supplier's total sales for the selected month.
+// Independent of the Summary tab's month, RAM column, and BO/target logic.
+
+class _PerSupplierIncentivesTab extends ConsumerStatefulWidget {
+  const _PerSupplierIncentivesTab();
+
+  @override
+  ConsumerState<_PerSupplierIncentivesTab> createState() =>
+      _PerSupplierIncentivesTabState();
+}
+
+class _PerSupplierIncentivesTabState
+    extends ConsumerState<_PerSupplierIncentivesTab> {
+  DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
+  Map<String, double> _percents = {}; // supplierId -> percent, insertion order
+  Map<String, double> _salesBySupplier = {};
+  final Map<String, TextEditingController> _percentCtrls = {};
+  bool _loading = true;
+  String? _selectedToAdd;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    for (final c in _percentCtrls.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  TextEditingController _ctrlFor(String supplierId) {
+    return _percentCtrls.putIfAbsent(
+      supplierId,
+      () =>
+          TextEditingController(text: formatNumber(_percents[supplierId] ?? 0)),
+    );
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    _percents = await IncentivesSettingsService.loadSupplierPercents();
+    await _loadSales();
+  }
+
+  Future<void> _loadSales() async {
+    final monthStart = DateTime(_selectedMonth.year, _selectedMonth.month);
+    final monthEnd = DateTime(_selectedMonth.year, _selectedMonth.month + 1);
+    final supplierIds = _percents.keys.toSet();
+
+    final sales = <String, double>{for (final id in supplierIds) id: 0.0};
+    if (supplierIds.isNotEmpty) {
+      final products = await ref.read(productRepositoryProvider).getAll();
+      final productSupplier = <String, String>{
+        for (final p in products) p.id: p.supplierId,
+      };
+      final invoices = await ref
+          .read(invoiceRepositoryProvider)
+          .getAll(startDate: monthStart, endDate: monthEnd);
+      for (final inv in invoices) {
+        final items = await ref
+            .read(invoiceRepositoryProvider)
+            .getItems(inv.id);
+        for (final item in items) {
+          final sid = productSupplier[item.productId];
+          if (sid != null && supplierIds.contains(sid)) {
+            sales[sid] = (sales[sid] ?? 0.0) + item.subtotal;
+          }
+        }
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _salesBySupplier = sales;
+      _loading = false;
+    });
+  }
+
+  void _setMonth(DateTime m) {
+    setState(() => _selectedMonth = DateTime(m.year, m.month));
+    _loadSales();
+  }
+
+  Future<void> _pickMonth() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime(_selectedMonth.year, _selectedMonth.month, 15),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) _setMonth(DateTime(picked.year, picked.month));
+  }
+
+  Future<void> _addSupplier(String id) async {
+    setState(() {
+      _percents = {..._percents, id: 0.0};
+      _selectedToAdd = null;
+    });
+    await IncentivesSettingsService.saveSupplierPercents(_percents);
+    await _loadSales();
+  }
+
+  Future<void> _removeSupplier(String id) async {
+    setState(() {
+      _percents = Map.from(_percents)..remove(id);
+      _percentCtrls.remove(id)?.dispose();
+      _salesBySupplier = Map.from(_salesBySupplier)..remove(id);
+    });
+    await IncentivesSettingsService.saveSupplierPercents(_percents);
+  }
+
+  Future<void> _updatePercent(String id, String text) async {
+    final value = double.tryParse(text) ?? 0.0;
+    _percents = {..._percents, id: value};
+    await IncentivesSettingsService.saveSupplierPercents(_percents);
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final monthLabel = DateFormat('MMMM yyyy').format(_selectedMonth);
+    final suppliersAsync = ref.watch(suppliersListProvider);
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.chevron_left),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => _setMonth(
+                  DateTime(_selectedMonth.year, _selectedMonth.month - 1),
+                ),
+              ),
+              Expanded(
+                child: GestureDetector(
+                  onTap: _pickMonth,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.calendar_month,
+                        size: 16,
+                        color: Colors.grey,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        monthLabel,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.chevron_right),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => _setMonth(
+                  DateTime(_selectedMonth.year, _selectedMonth.month + 1),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : suppliersAsync.maybeWhen(
+                  data: (suppliers) {
+                    final suppById = {for (final s in suppliers) s.id: s.name};
+                    final configuredIds = _percents.keys.toList();
+                    final available = suppliers
+                        .where((s) => !_percents.containsKey(s.id))
+                        .toList();
+                    final totalIncentive = configuredIds.fold<double>(0.0, (
+                      sum,
+                      id,
+                    ) {
+                      final sales = _salesBySupplier[id] ?? 0.0;
+                      final pct = _percents[id] ?? 0.0;
+                      return sum + sales * pct / 100;
+                    });
+
+                    return ListView(
+                      padding: const EdgeInsets.all(12),
+                      children: [
+                        if (configuredIds.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 24),
+                            child: Center(
+                              child: Text(
+                                'No suppliers configured yet. Add one below.',
+                              ),
+                            ),
+                          )
+                        else
+                          ...configuredIds.map((id) {
+                            final sales = _salesBySupplier[id] ?? 0.0;
+                            final pct = _percents[id] ?? 0.0;
+                            final incentive = sales * pct / 100;
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            suppById[id] ?? id,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 15,
+                                            ),
+                                          ),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.remove_circle_outline,
+                                            size: 20,
+                                          ),
+                                          color: Colors.red.shade300,
+                                          tooltip: 'Remove',
+                                          onPressed: () => _removeSupplier(id),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.center,
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            'Total Sales: ${formatCurrency(sales)}',
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
+                                        SizedBox(
+                                          width: 100,
+                                          child: TextField(
+                                            controller: _ctrlFor(id),
+                                            keyboardType:
+                                                const TextInputType.numberWithOptions(
+                                                  decimal: true,
+                                                ),
+                                            decoration: const InputDecoration(
+                                              labelText: 'Incentive %',
+                                              isDense: true,
+                                              suffixText: '%',
+                                            ),
+                                            onChanged: (v) =>
+                                                _updatePercent(id, v),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const Divider(height: 16),
+                                    Align(
+                                      alignment: Alignment.centerRight,
+                                      child: Text(
+                                        'Incentive Amount: ${formatCurrency(incentive)}',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                          color: Colors.green.shade700,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }),
+                        const SizedBox(height: 8),
+                        if (available.isNotEmpty) ...[
+                          const Text(
+                            'Add supplier:',
+                            style: TextStyle(fontSize: 13, color: Colors.grey),
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.outline,
+                                    ),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                  ),
+                                  child: DropdownButton<String>(
+                                    value: _selectedToAdd,
+                                    hint: const Text('Select supplier...'),
+                                    isExpanded: true,
+                                    isDense: true,
+                                    underline: const SizedBox(),
+                                    items: available
+                                        .map(
+                                          (s) => DropdownMenuItem(
+                                            value: s.id,
+                                            child: Text(s.name),
+                                          ),
+                                        )
+                                        .toList(),
+                                    onChanged: (v) =>
+                                        setState(() => _selectedToAdd = v),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              FilledButton.icon(
+                                icon: const Icon(Icons.add, size: 18),
+                                label: const Text('Add'),
+                                onPressed: _selectedToAdd == null
+                                    ? null
+                                    : () => _addSupplier(_selectedToAdd!),
+                              ),
+                            ],
+                          ),
+                        ] else if (configuredIds.isNotEmpty)
+                          Text(
+                            'All suppliers are already added.',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade500,
+                            ),
+                          )
+                        else
+                          Text(
+                            'No suppliers found. Add a supplier first.',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                        if (configuredIds.isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.green.shade200),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  'Total Incentive',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                                Text(
+                                  formatCurrency(totalIncentive),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                    color: Colors.green.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    );
+                  },
+                  orElse: () =>
+                      const Center(child: CircularProgressIndicator()),
+                ),
         ),
       ],
     );

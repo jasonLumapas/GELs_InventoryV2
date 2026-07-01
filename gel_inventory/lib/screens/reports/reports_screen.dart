@@ -56,6 +56,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
   List<_SummaryRow> _summary = [];
   double _grandTotal = 0;
   double _capital = 0;
+  String? _sortColumn; // 'amount' | 'quantity'
+  bool _sortAscending = false;
 
   double get _profit => _grandTotal - _capital;
 
@@ -165,6 +167,72 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
     );
   }
 
+  List<DailySummaryRow> _buildDailyRows() {
+    final filtered = _selectedSupplierId == null
+        ? _summary
+        : _summary.where((r) => r.supplierId == _selectedSupplierId).toList();
+    final sorted = List<_SummaryRow>.from(filtered);
+    if (_sortColumn == 'amount') {
+      sorted.sort((a, b) => _sortAscending
+          ? a.totalAmount.compareTo(b.totalAmount)
+          : b.totalAmount.compareTo(a.totalAmount));
+    } else if (_sortColumn == 'quantity') {
+      sorted.sort((a, b) => _sortAscending
+          ? a.totalPieces.compareTo(b.totalPieces)
+          : b.totalPieces.compareTo(a.totalPieces));
+    }
+    return sorted
+        .map((r) => DailySummaryRow(
+              productName: r.productName,
+              totalBoxes: r.totalBoxes,
+              remainPieces: r.remainPieces,
+              totalAmount: r.totalAmount,
+            ))
+        .toList();
+  }
+
+  Future<void> _printDailySummary() async {
+    final rows = _buildDailyRows();
+    final grandTotal = rows.fold(0.0, (s, r) => s + r.totalAmount);
+    String? supplierName;
+    if (_selectedSupplierId != null) {
+      final suppliers = ref.read(suppliersListProvider).valueOrNull ?? [];
+      supplierName = suppliers
+          .where((s) => s.id == _selectedSupplierId)
+          .map((s) => s.name)
+          .firstOrNull;
+    }
+    await printDailySummary(
+      date: _selectedDate,
+      supplierName: supplierName,
+      rows: rows,
+      grandTotal: grandTotal,
+    );
+  }
+
+  Future<void> _exportDailySummary() async {
+    final rows = _buildDailyRows();
+    final grandTotal = rows.fold(0.0, (s, r) => s + r.totalAmount);
+    String? supplierName;
+    if (_selectedSupplierId != null) {
+      final suppliers = ref.read(suppliersListProvider).valueOrNull ?? [];
+      supplierName = suppliers
+          .where((s) => s.id == _selectedSupplierId)
+          .map((s) => s.name)
+          .firstOrNull;
+    }
+    final path = await exportDailySummaryReport(
+      date: _selectedDate,
+      supplierName: supplierName,
+      rows: rows,
+      grandTotal: grandTotal,
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Saved to $path')));
+    }
+  }
+
   Widget _buildDailySummary(BuildContext context) {
     final dateFmt = DateFormat('MMMM dd, yyyy');
     final filtered = _selectedSupplierId == null
@@ -172,7 +240,68 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
         : _summary
             .where((r) => r.supplierId == _selectedSupplierId)
             .toList();
-    final filteredTotal   = filtered.fold(0.0, (s, r) => s + r.totalAmount);
+
+    final sorted = List<_SummaryRow>.from(filtered);
+    if (_sortColumn == 'amount') {
+      sorted.sort((a, b) => _sortAscending
+          ? a.totalAmount.compareTo(b.totalAmount)
+          : b.totalAmount.compareTo(a.totalAmount));
+    } else if (_sortColumn == 'quantity') {
+      sorted.sort((a, b) => _sortAscending
+          ? a.totalPieces.compareTo(b.totalPieces)
+          : b.totalPieces.compareTo(a.totalPieces));
+    }
+
+    final filteredTotal = filtered.fold(0.0, (s, r) => s + r.totalAmount);
+
+    const colWidths = {
+      0: FlexColumnWidth(4),
+      1: FlexColumnWidth(2),
+      2: FlexColumnWidth(2),
+      3: FlexColumnWidth(2),
+    };
+    final borderAll = TableBorder.all(color: Colors.grey.shade300);
+    final borderNoTop = TableBorder(
+      left: BorderSide(color: Colors.grey.shade300),
+      right: BorderSide(color: Colors.grey.shade300),
+      bottom: BorderSide(color: Colors.grey.shade300),
+      horizontalInside: BorderSide(color: Colors.grey.shade300),
+      verticalInside: BorderSide(color: Colors.grey.shade300),
+    );
+
+    Widget sortableHeader(String label, String col) {
+      final active = _sortColumn == col;
+      return GestureDetector(
+        onTap: () => setState(() {
+          if (_sortColumn == col) {
+            _sortAscending = !_sortAscending;
+          } else {
+            _sortColumn = col;
+            _sortAscending = false;
+          }
+        }),
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(label,
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(width: 2),
+              Icon(
+                active
+                    ? (_sortAscending
+                        ? Icons.arrow_upward
+                        : Icons.arrow_downward)
+                    : Icons.unfold_more,
+                size: 14,
+                color: active ? Colors.blue.shade700 : Colors.grey,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Column(
       children: [
@@ -183,9 +312,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
             children: [
               const Icon(Icons.calendar_today),
               const SizedBox(width: 8),
-              Text(dateFmt.format(_selectedDate),
-                  style: const TextStyle(fontSize: 16)),
-              const SizedBox(width: 8),
+              Expanded(
+                child: Text(dateFmt.format(_selectedDate),
+                    style: const TextStyle(fontSize: 16)),
+              ),
               OutlinedButton(
                 onPressed: () async {
                   final picked = await showDatePicker(
@@ -200,6 +330,18 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
                   }
                 },
                 child: const Text('Change Date'),
+              ),
+              IconButton(
+                icon: const Icon(Icons.print),
+                tooltip: 'Print daily summary',
+                visualDensity: VisualDensity.compact,
+                onPressed: _summary.isEmpty ? null : _printDailySummary,
+              ),
+              IconButton(
+                icon: const Icon(Icons.file_download),
+                tooltip: 'Save daily summary to Desktop',
+                visualDensity: VisualDensity.compact,
+                onPressed: _summary.isEmpty ? null : _exportDailySummary,
               ),
             ],
           ),
@@ -245,69 +387,91 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
               : filtered.isEmpty
                   ? const Center(
                       child: Text('No invoices for selected date.'))
-                  : SingleChildScrollView(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        children: [
-                          Table(
-                            border: TableBorder.all(
-                                color: Colors.grey.shade300),
-                            columnWidths: const {
-                              0: FlexColumnWidth(4),
-                              1: FlexColumnWidth(2),
-                              2: FlexColumnWidth(2),
-                              3: FlexColumnWidth(2),
-                            },
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Pinned header
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                          child: Table(
+                            border: borderAll,
+                            columnWidths: colWidths,
                             children: [
-                              _tableHeader([
-                                'Product',
-                                'Boxes',
-                                'Pieces',
-                                'Amount'
-                              ]),
-                              ...filtered.map(
-                                (row) => _tableRow([
-                                  row.productName,
-                                  row.totalBoxes > 0 ? '${row.totalBoxes}' : '',
-                                  row.remainPieces > 0 ? '${row.remainPieces}' : '',
-                                  formatCurrency(row.totalAmount),
-                                ]),
+                              TableRow(
+                                decoration: BoxDecoration(
+                                    color: Colors.grey.shade200),
+                                children: [
+                                  const Padding(
+                                    padding: EdgeInsets.all(8),
+                                    child: Text('Product',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold)),
+                                  ),
+                                  sortableHeader('Boxes', 'quantity'),
+                                  const Padding(
+                                    padding: EdgeInsets.all(8),
+                                    child: Text('Pieces',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold)),
+                                  ),
+                                  sortableHeader('Amount', 'amount'),
+                                ],
                               ),
                             ],
                           ),
-                          const Divider(height: 24),
-                          _summaryFooterRow('Grand Total', filteredTotal,
-                              bold: true),
-                          if (_selectedSupplierId == null &&
-                              (ref.watch(showCapitalProfitProvider).valueOrNull ??
-                                  true)) ...[
-                            const SizedBox(height: 6),
-                            _summaryFooterRow('Capital', _capital),
-                            const SizedBox(height: 6),
-                            _summaryFooterRow('Profit', _profit,
-                                color: _profit >= 0
-                                    ? Colors.green.shade700
-                                    : Colors.red),
-                          ],
-                        ],
-                      ),
+                        ),
+                        // Scrollable data rows + footer
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding:
+                                const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Table(
+                                  border: borderNoTop,
+                                  columnWidths: colWidths,
+                                  children: sorted
+                                      .map(
+                                        (row) => _tableRow([
+                                          row.productName,
+                                          row.totalBoxes > 0
+                                              ? '${row.totalBoxes}'
+                                              : '',
+                                          row.remainPieces > 0
+                                              ? '${row.remainPieces}'
+                                              : '',
+                                          formatCurrency(row.totalAmount),
+                                        ]),
+                                      )
+                                      .toList(),
+                                ),
+                                const Divider(height: 24),
+                                _summaryFooterRow('Grand Total', filteredTotal,
+                                    bold: true),
+                                if (_selectedSupplierId == null &&
+                                    (ref
+                                            .watch(showCapitalProfitProvider)
+                                            .valueOrNull ??
+                                        true)) ...[
+                                  const SizedBox(height: 6),
+                                  _summaryFooterRow('Capital', _capital),
+                                  const SizedBox(height: 6),
+                                  _summaryFooterRow('Profit', _profit,
+                                      color: _profit >= 0
+                                          ? Colors.green.shade700
+                                          : Colors.red),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
         ),
       ],
     );
   }
-
-  TableRow _tableHeader(List<String> cells) => TableRow(
-        decoration: BoxDecoration(color: Colors.grey.shade200),
-        children: cells
-            .map((c) => Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Text(c,
-                      style:
-                          const TextStyle(fontWeight: FontWeight.bold)),
-                ))
-            .toList(),
-      );
 
   TableRow _tableRow(List<String> cells) => TableRow(
         children: cells

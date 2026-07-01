@@ -1692,6 +1692,143 @@ Future<void> printPurchaseOrder({
     doc: doc, format: pageFormat, slot: PrinterSettingsService.purchaseOrder);
 }
 
+// ── Daily Sales Summary PDF ───────────────────────────────────────────────────
+
+class DailySummaryRow {
+  final String productName;
+  final int totalBoxes;
+  final int remainPieces;
+  final double totalAmount;
+
+  const DailySummaryRow({
+    required this.productName,
+    required this.totalBoxes,
+    required this.remainPieces,
+    required this.totalAmount,
+  });
+}
+
+({pw.Document doc, PdfPageFormat format}) _buildDailySummaryDoc({
+  required DateTime date,
+  String? supplierName,
+  required List<DailySummaryRow> rows,
+  required double grandTotal,
+}) {
+  final doc     = pw.Document();
+  final dateFmt = DateFormat('MMMM dd, yyyy');
+  final numFmt  = NumberFormat('#,##0.00');
+
+  final pageFormat = PdfPageFormat.a4.copyWith(
+    marginTop: 40, marginBottom: 40,
+    marginLeft: 40, marginRight: 40,
+  );
+  final usableW = pageFormat.availableWidth;
+  final prodW = usableW * 0.50;
+  final boxW  = usableW * 0.14;
+  final pcsW  = usableW * 0.14;
+  final amtW  = usableW * 0.22;
+
+  final font     = pw.Font.helvetica();
+  final fontBold = pw.Font.helveticaBold();
+  const double fs     = 10.0;
+  const double fsHead = 13.0;
+
+  pw.TextStyle ts({bool bold = false, double? size}) =>
+      pw.TextStyle(font: bold ? fontBold : font, fontSize: size ?? fs);
+
+  pw.Widget col(String text, double width,
+          {bool bold = false, pw.TextAlign align = pw.TextAlign.left}) =>
+      pw.SizedBox(
+        width: width,
+        child: pw.Text(text, style: ts(bold: bold), textAlign: align),
+      );
+
+  String php(double v) => 'Php ${numFmt.format(v)}';
+
+  doc.addPage(pw.MultiPage(
+    pageFormat: pageFormat,
+    build: (ctx) => [
+      pw.Text('Daily Sales Summary', style: ts(bold: true, size: fsHead)),
+      pw.SizedBox(height: 4),
+      pw.Text('Date: ${dateFmt.format(date)}', style: ts()),
+      pw.Text('Supplier: ${supplierName ?? 'All Suppliers'}', style: ts()),
+      pw.SizedBox(height: 10),
+
+      // Column headers
+      pw.Row(children: [
+        col('Product', prodW, bold: true),
+        col('Boxes',   boxW,  bold: true, align: pw.TextAlign.center),
+        col('Pieces',  pcsW,  bold: true, align: pw.TextAlign.center),
+        col('Amount',  amtW,  bold: true, align: pw.TextAlign.right),
+      ]),
+      pw.Divider(height: 6, thickness: 0.5),
+
+      for (int i = 0; i < rows.length; i++) ...[
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 3),
+          child: pw.Row(children: [
+            col(rows[i].productName, prodW),
+            col(rows[i].totalBoxes  > 0 ? '${rows[i].totalBoxes}'  : '',
+                boxW, align: pw.TextAlign.center),
+            col(rows[i].remainPieces > 0 ? '${rows[i].remainPieces}' : '',
+                pcsW, align: pw.TextAlign.center),
+            col(php(rows[i].totalAmount), amtW, align: pw.TextAlign.right),
+          ]),
+        ),
+        if (i < rows.length - 1) pw.Divider(height: 1, thickness: 0.2),
+      ],
+
+      pw.Divider(height: 8, thickness: 0.5),
+      pw.SizedBox(height: 6),
+      pw.Align(
+        alignment: pw.Alignment.centerRight,
+        child: pw.Text('Grand Total: ${php(grandTotal)}',
+            style: ts(bold: true, size: fsHead - 1)),
+      ),
+    ],
+  ));
+
+  return (doc: doc, format: pageFormat);
+}
+
+Future<void> printDailySummary({
+  required DateTime date,
+  String? supplierName,
+  required List<DailySummaryRow> rows,
+  required double grandTotal,
+}) async {
+  final built = _buildDailySummaryDoc(
+    date: date,
+    supplierName: supplierName,
+    rows: rows,
+    grandTotal: grandTotal,
+  );
+  await _printWithSlot(
+    doc: built.doc, format: built.format, slot: PrinterSettingsService.layout);
+}
+
+/// Saves the Daily Summary PDF to the Desktop and returns the file path.
+Future<String> exportDailySummaryReport({
+  required DateTime date,
+  String? supplierName,
+  required List<DailySummaryRow> rows,
+  required double grandTotal,
+}) async {
+  final built = _buildDailySummaryDoc(
+    date: date,
+    supplierName: supplierName,
+    rows: rows,
+    grandTotal: grandTotal,
+  );
+  final bytes = await built.doc.save();
+  final home  = Platform.environment['USERPROFILE'] ??
+      Platform.environment['HOME'] ?? '.';
+  final tag   = DateFormat('yyyyMMdd').format(date);
+  final file  = File('$home\\Desktop\\daily_summary_$tag.pdf');
+  await file.writeAsBytes(bytes);
+  return file.path;
+}
+
 // ── Client Purchases Report PDF (by supplier) ─────────────────────────────────
 
 final _pcsFmt = NumberFormat('#,##0');

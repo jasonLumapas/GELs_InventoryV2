@@ -698,6 +698,113 @@ Future<void> printOrderSummary({
     doc: doc, format: pageFormat, slot: PrinterSettingsService.layout);
 }
 
+// ── Pre-Order Draft Layout PDF ────────────────────────────────────────────────
+
+({pw.Document doc, PdfPageFormat format}) _buildPreOrderLayoutDoc({
+  required List<OrderSummaryRow> rows,
+}) {
+  final doc    = pw.Document();
+  final numFmt = NumberFormat('#,##0.00');
+  final grandTotal = rows.fold(0.0, (s, r) => s + r.totalAmount);
+
+  final pageFormat = PdfPageFormat.a4.copyWith(
+    marginTop: 40, marginBottom: 40, marginLeft: 40, marginRight: 40,
+  );
+  final usableW = pageFormat.availableWidth;
+  final prodW   = usableW * 0.46;
+  final boxW    = usableW * 0.14;
+  final pcsW    = usableW * 0.24;
+
+  final font     = _loadFont('C:\\Windows\\Fonts\\arial.ttf')   ?? pw.Font.helvetica();
+  final fontBold = _loadFont('C:\\Windows\\Fonts\\arialbd.ttf') ?? pw.Font.helveticaBold();
+  const double fs     = 9.5;
+  const double fsHead = 10.5;
+
+  pw.TextStyle ts({bool bold = false, double? size}) =>
+      pw.TextStyle(font: bold ? fontBold : font, fontSize: size ?? fs);
+
+  pw.Widget col(String text, double width,
+          {bool bold = false,
+           pw.TextAlign align = pw.TextAlign.left,
+           double? size}) =>
+      pw.SizedBox(
+        width: width,
+        child: pw.Text(text, style: ts(bold: bold, size: size), textAlign: align),
+      );
+
+  doc.addPage(pw.MultiPage(
+    pageFormat: pageFormat,
+    build: (ctx) => [
+      pw.Text('Pre-Order Draft Layout', style: ts(bold: true, size: fsHead + 1)),
+      pw.SizedBox(height: 4),
+      pw.Text('Date: ${DateFormat('MMMM dd, yyyy').format(DateTime.now())}',
+          style: ts(size: fsHead - 1)),
+      pw.SizedBox(height: 10),
+
+      pw.Text('Driver:      _____________________________', style: ts(size: fsHead)),
+      pw.SizedBox(height: 6),
+      pw.Text('Junior 1:  ___________________________', style: ts(size: fsHead)),
+      pw.SizedBox(height: 6),
+      pw.Text('Junior 2:  ___________________________', style: ts(size: fsHead)),
+      pw.SizedBox(height: 10),
+
+      pw.Row(children: [
+        col('Product Description', prodW, bold: true, size: fsHead),
+        col('No. of case', boxW, bold: true,
+            align: pw.TextAlign.center, size: fsHead),
+        col('No. of pieces/packs', pcsW, bold: true,
+            align: pw.TextAlign.center, size: fsHead),
+      ]),
+      pw.Divider(height: 4, thickness: 0.5),
+
+      for (int i = 0; i < rows.length; i++) ...[
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 1.5),
+          child: pw.Row(children: [
+            col(rows[i].productName, prodW),
+            col(rows[i].boxes > 0 ? '${rows[i].boxes}' : '',
+                boxW, align: pw.TextAlign.center),
+            col(rows[i].remainingPieces > 0 ? '${rows[i].remainingPieces}' : '',
+                pcsW, align: pw.TextAlign.center),
+          ]),
+        ),
+        if (i < rows.length - 1) pw.Divider(height: 1, thickness: 0.2),
+      ],
+
+      pw.Divider(height: 8, thickness: 0.5),
+      pw.Align(
+        alignment: pw.Alignment.centerRight,
+        child: pw.Text('Grand Total: Php ${numFmt.format(grandTotal)}',
+            style: ts(bold: true, size: fsHead)),
+      ),
+    ],
+  ));
+  return (doc: doc, format: pageFormat);
+}
+
+Future<void> printPreOrderLayout({
+  required List<OrderSummaryRow> rows,
+}) async {
+  final built = _buildPreOrderLayoutDoc(rows: rows);
+  await _printWithSlot(
+    doc: built.doc, format: built.format, slot: PrinterSettingsService.layout);
+}
+
+/// Builds the Pre-Order Draft Layout PDF and saves it directly to the
+/// user's Desktop (no print dialog), returning the saved file path.
+Future<String> exportPreOrderLayout({
+  required List<OrderSummaryRow> rows,
+}) async {
+  final built = _buildPreOrderLayoutDoc(rows: rows);
+  final bytes = await built.doc.save();
+  final home  = Platform.environment['USERPROFILE'] ??
+      Platform.environment['HOME'] ?? '.';
+  final tag   = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+  final file  = File('$home\\Desktop\\pre_order_layout_$tag.pdf');
+  await file.writeAsBytes(bytes);
+  return file.path;
+}
+
 // ── Inventory Report PDF ──────────────────────────────────────────────────────
 
 class InventoryReportRow {

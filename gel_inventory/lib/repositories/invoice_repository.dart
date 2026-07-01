@@ -195,18 +195,44 @@ class InvoiceRepository extends BaseRepository {
   }
 
   /// Returns all draft invoices (status == 'draft'), most recently created first.
+  /// Regular invoice drafts — excludes pre-order drafts so they don't
+  /// appear in the "unfinished invoice" banner on the Invoices screen.
   Future<List<Invoice>> getDrafts() async {
     if (isOnline) {
       final data = await Supabase.instance.client
           .from('invoices')
           .select()
           .eq('status', 'draft')
+          .neq('invoice_type', 'pre_order')
           .order('created_at', ascending: false);
       return (data as List).map((j) => Invoice.fromJson(j)).toList();
     }
     final rows = await (db.select(db.invoices)
-          ..where((t) => t.status.equals('draft'))
+          ..where((t) =>
+              t.status.equals('draft') &
+              t.invoiceType.isNotValue('pre_order'))
           ..orderBy([(t) => drift.OrderingTerm.desc(t.createdAt)]))
+        .get();
+    return rows.map(_invoiceFromRow).toList();
+  }
+
+  /// Pre-order draft invoices (invoiceType == 'pre_order', status == 'draft').
+  /// These are planning/layout drafts that never deduct inventory.
+  Future<List<Invoice>> getPreOrderDrafts() async {
+    if (isOnline) {
+      final data = await Supabase.instance.client
+          .from('invoices')
+          .select()
+          .eq('status', 'draft')
+          .eq('invoice_type', 'pre_order')
+          .order('invoice_date', ascending: false);
+      return (data as List).map((j) => Invoice.fromJson(j)).toList();
+    }
+    final rows = await (db.select(db.invoices)
+          ..where((t) =>
+              t.status.equals('draft') &
+              t.invoiceType.equals('pre_order'))
+          ..orderBy([(t) => drift.OrderingTerm.desc(t.invoiceDate)]))
         .get();
     return rows.map(_invoiceFromRow).toList();
   }
@@ -855,10 +881,15 @@ final invoicesListProvider = FutureProvider<List<Invoice>>((ref) {
   return ref.watch(invoiceRepositoryProvider).getAll();
 });
 
-/// Draft invoices (status == 'draft') â€” used to offer resuming unfinished
-/// invoices from the Invoices list.
+/// Draft invoices (status == 'draft', invoiceType != 'pre_order') — used to
+/// offer resuming unfinished invoices from the Invoices list.
 final draftInvoicesProvider = FutureProvider<List<Invoice>>((ref) {
   return ref.watch(invoiceRepositoryProvider).getDrafts();
+});
+
+/// Pre-order draft invoices (invoiceType == 'pre_order', status == 'draft').
+final preOrderDraftsProvider = FutureProvider<List<Invoice>>((ref) {
+  return ref.watch(invoiceRepositoryProvider).getPreOrderDrafts();
 });
 
 final cancelledInvoicesProvider = FutureProvider<List<Invoice>>((ref) {

@@ -11354,6 +11354,1035 @@ class PurchaseOrderItemsCompanion extends UpdateCompanion<PurchaseOrderItem> {
   }
 }
 
+class $PreOrderReviewsTable extends PreOrderReviews
+    with TableInfo<$PreOrderReviewsTable, PreOrderReview> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PreOrderReviewsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceFileMeta = const VerificationMeta(
+    'sourceFile',
+  );
+  @override
+  late final GeneratedColumn<String> sourceFile = GeneratedColumn<String>(
+    'source_file',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _originalExportedAtMeta =
+      const VerificationMeta('originalExportedAt');
+  @override
+  late final GeneratedColumn<String> originalExportedAt =
+      GeneratedColumn<String>(
+        'original_exported_at',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _reviewedAtMeta = const VerificationMeta(
+    'reviewedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> reviewedAt = GeneratedColumn<DateTime>(
+    'reviewed_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    sourceFile,
+    originalExportedAt,
+    reviewedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'pre_order_reviews';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PreOrderReview> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('source_file')) {
+      context.handle(
+        _sourceFileMeta,
+        sourceFile.isAcceptableOrUnknown(data['source_file']!, _sourceFileMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceFileMeta);
+    }
+    if (data.containsKey('original_exported_at')) {
+      context.handle(
+        _originalExportedAtMeta,
+        originalExportedAt.isAcceptableOrUnknown(
+          data['original_exported_at']!,
+          _originalExportedAtMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_originalExportedAtMeta);
+    }
+    if (data.containsKey('reviewed_at')) {
+      context.handle(
+        _reviewedAtMeta,
+        reviewedAt.isAcceptableOrUnknown(data['reviewed_at']!, _reviewedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  PreOrderReview map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PreOrderReview(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      sourceFile: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_file'],
+      )!,
+      originalExportedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}original_exported_at'],
+      )!,
+      reviewedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}reviewed_at'],
+      )!,
+    );
+  }
+
+  @override
+  $PreOrderReviewsTable createAlias(String alias) {
+    return $PreOrderReviewsTable(attachedDatabase, alias);
+  }
+}
+
+class PreOrderReview extends DataClass implements Insertable<PreOrderReview> {
+  final String id;
+  final String sourceFile;
+  final String originalExportedAt;
+  final DateTime reviewedAt;
+  const PreOrderReview({
+    required this.id,
+    required this.sourceFile,
+    required this.originalExportedAt,
+    required this.reviewedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['source_file'] = Variable<String>(sourceFile);
+    map['original_exported_at'] = Variable<String>(originalExportedAt);
+    map['reviewed_at'] = Variable<DateTime>(reviewedAt);
+    return map;
+  }
+
+  PreOrderReviewsCompanion toCompanion(bool nullToAbsent) {
+    return PreOrderReviewsCompanion(
+      id: Value(id),
+      sourceFile: Value(sourceFile),
+      originalExportedAt: Value(originalExportedAt),
+      reviewedAt: Value(reviewedAt),
+    );
+  }
+
+  factory PreOrderReview.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PreOrderReview(
+      id: serializer.fromJson<String>(json['id']),
+      sourceFile: serializer.fromJson<String>(json['sourceFile']),
+      originalExportedAt: serializer.fromJson<String>(
+        json['originalExportedAt'],
+      ),
+      reviewedAt: serializer.fromJson<DateTime>(json['reviewedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'sourceFile': serializer.toJson<String>(sourceFile),
+      'originalExportedAt': serializer.toJson<String>(originalExportedAt),
+      'reviewedAt': serializer.toJson<DateTime>(reviewedAt),
+    };
+  }
+
+  PreOrderReview copyWith({
+    String? id,
+    String? sourceFile,
+    String? originalExportedAt,
+    DateTime? reviewedAt,
+  }) => PreOrderReview(
+    id: id ?? this.id,
+    sourceFile: sourceFile ?? this.sourceFile,
+    originalExportedAt: originalExportedAt ?? this.originalExportedAt,
+    reviewedAt: reviewedAt ?? this.reviewedAt,
+  );
+  PreOrderReview copyWithCompanion(PreOrderReviewsCompanion data) {
+    return PreOrderReview(
+      id: data.id.present ? data.id.value : this.id,
+      sourceFile: data.sourceFile.present
+          ? data.sourceFile.value
+          : this.sourceFile,
+      originalExportedAt: data.originalExportedAt.present
+          ? data.originalExportedAt.value
+          : this.originalExportedAt,
+      reviewedAt: data.reviewedAt.present
+          ? data.reviewedAt.value
+          : this.reviewedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PreOrderReview(')
+          ..write('id: $id, ')
+          ..write('sourceFile: $sourceFile, ')
+          ..write('originalExportedAt: $originalExportedAt, ')
+          ..write('reviewedAt: $reviewedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, sourceFile, originalExportedAt, reviewedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PreOrderReview &&
+          other.id == this.id &&
+          other.sourceFile == this.sourceFile &&
+          other.originalExportedAt == this.originalExportedAt &&
+          other.reviewedAt == this.reviewedAt);
+}
+
+class PreOrderReviewsCompanion extends UpdateCompanion<PreOrderReview> {
+  final Value<String> id;
+  final Value<String> sourceFile;
+  final Value<String> originalExportedAt;
+  final Value<DateTime> reviewedAt;
+  final Value<int> rowid;
+  const PreOrderReviewsCompanion({
+    this.id = const Value.absent(),
+    this.sourceFile = const Value.absent(),
+    this.originalExportedAt = const Value.absent(),
+    this.reviewedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  PreOrderReviewsCompanion.insert({
+    required String id,
+    required String sourceFile,
+    required String originalExportedAt,
+    this.reviewedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       sourceFile = Value(sourceFile),
+       originalExportedAt = Value(originalExportedAt);
+  static Insertable<PreOrderReview> custom({
+    Expression<String>? id,
+    Expression<String>? sourceFile,
+    Expression<String>? originalExportedAt,
+    Expression<DateTime>? reviewedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (sourceFile != null) 'source_file': sourceFile,
+      if (originalExportedAt != null)
+        'original_exported_at': originalExportedAt,
+      if (reviewedAt != null) 'reviewed_at': reviewedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  PreOrderReviewsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? sourceFile,
+    Value<String>? originalExportedAt,
+    Value<DateTime>? reviewedAt,
+    Value<int>? rowid,
+  }) {
+    return PreOrderReviewsCompanion(
+      id: id ?? this.id,
+      sourceFile: sourceFile ?? this.sourceFile,
+      originalExportedAt: originalExportedAt ?? this.originalExportedAt,
+      reviewedAt: reviewedAt ?? this.reviewedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (sourceFile.present) {
+      map['source_file'] = Variable<String>(sourceFile.value);
+    }
+    if (originalExportedAt.present) {
+      map['original_exported_at'] = Variable<String>(originalExportedAt.value);
+    }
+    if (reviewedAt.present) {
+      map['reviewed_at'] = Variable<DateTime>(reviewedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PreOrderReviewsCompanion(')
+          ..write('id: $id, ')
+          ..write('sourceFile: $sourceFile, ')
+          ..write('originalExportedAt: $originalExportedAt, ')
+          ..write('reviewedAt: $reviewedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $PreOrderReviewItemsTable extends PreOrderReviewItems
+    with TableInfo<$PreOrderReviewItemsTable, PreOrderReviewItem> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PreOrderReviewItemsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _reviewIdMeta = const VerificationMeta(
+    'reviewId',
+  );
+  @override
+  late final GeneratedColumn<String> reviewId = GeneratedColumn<String>(
+    'review_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES pre_order_reviews (id)',
+    ),
+  );
+  static const VerificationMeta _productIdMeta = const VerificationMeta(
+    'productId',
+  );
+  @override
+  late final GeneratedColumn<String> productId = GeneratedColumn<String>(
+    'product_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _matchedProductIdMeta = const VerificationMeta(
+    'matchedProductId',
+  );
+  @override
+  late final GeneratedColumn<String> matchedProductId = GeneratedColumn<String>(
+    'matched_product_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _productNameMeta = const VerificationMeta(
+    'productName',
+  );
+  @override
+  late final GeneratedColumn<String> productName = GeneratedColumn<String>(
+    'product_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _productCodeMeta = const VerificationMeta(
+    'productCode',
+  );
+  @override
+  late final GeneratedColumn<String> productCode = GeneratedColumn<String>(
+    'product_code',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _supplierNameMeta = const VerificationMeta(
+    'supplierName',
+  );
+  @override
+  late final GeneratedColumn<String> supplierName = GeneratedColumn<String>(
+    'supplier_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _piecesPerBoxMeta = const VerificationMeta(
+    'piecesPerBox',
+  );
+  @override
+  late final GeneratedColumn<int> piecesPerBox = GeneratedColumn<int>(
+    'pieces_per_box',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _requestedPiecesMeta = const VerificationMeta(
+    'requestedPieces',
+  );
+  @override
+  late final GeneratedColumn<int> requestedPieces = GeneratedColumn<int>(
+    'requested_pieces',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _availablePiecesMeta = const VerificationMeta(
+    'availablePieces',
+  );
+  @override
+  late final GeneratedColumn<int> availablePieces = GeneratedColumn<int>(
+    'available_pieces',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _confirmedPiecesMeta = const VerificationMeta(
+    'confirmedPieces',
+  );
+  @override
+  late final GeneratedColumn<int> confirmedPieces = GeneratedColumn<int>(
+    'confirmed_pieces',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    reviewId,
+    productId,
+    matchedProductId,
+    productName,
+    productCode,
+    supplierName,
+    piecesPerBox,
+    requestedPieces,
+    availablePieces,
+    confirmedPieces,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'pre_order_review_items';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PreOrderReviewItem> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('review_id')) {
+      context.handle(
+        _reviewIdMeta,
+        reviewId.isAcceptableOrUnknown(data['review_id']!, _reviewIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_reviewIdMeta);
+    }
+    if (data.containsKey('product_id')) {
+      context.handle(
+        _productIdMeta,
+        productId.isAcceptableOrUnknown(data['product_id']!, _productIdMeta),
+      );
+    }
+    if (data.containsKey('matched_product_id')) {
+      context.handle(
+        _matchedProductIdMeta,
+        matchedProductId.isAcceptableOrUnknown(
+          data['matched_product_id']!,
+          _matchedProductIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('product_name')) {
+      context.handle(
+        _productNameMeta,
+        productName.isAcceptableOrUnknown(
+          data['product_name']!,
+          _productNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_productNameMeta);
+    }
+    if (data.containsKey('product_code')) {
+      context.handle(
+        _productCodeMeta,
+        productCode.isAcceptableOrUnknown(
+          data['product_code']!,
+          _productCodeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('supplier_name')) {
+      context.handle(
+        _supplierNameMeta,
+        supplierName.isAcceptableOrUnknown(
+          data['supplier_name']!,
+          _supplierNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_supplierNameMeta);
+    }
+    if (data.containsKey('pieces_per_box')) {
+      context.handle(
+        _piecesPerBoxMeta,
+        piecesPerBox.isAcceptableOrUnknown(
+          data['pieces_per_box']!,
+          _piecesPerBoxMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_piecesPerBoxMeta);
+    }
+    if (data.containsKey('requested_pieces')) {
+      context.handle(
+        _requestedPiecesMeta,
+        requestedPieces.isAcceptableOrUnknown(
+          data['requested_pieces']!,
+          _requestedPiecesMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_requestedPiecesMeta);
+    }
+    if (data.containsKey('available_pieces')) {
+      context.handle(
+        _availablePiecesMeta,
+        availablePieces.isAcceptableOrUnknown(
+          data['available_pieces']!,
+          _availablePiecesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('confirmed_pieces')) {
+      context.handle(
+        _confirmedPiecesMeta,
+        confirmedPieces.isAcceptableOrUnknown(
+          data['confirmed_pieces']!,
+          _confirmedPiecesMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_confirmedPiecesMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  PreOrderReviewItem map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PreOrderReviewItem(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      reviewId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}review_id'],
+      )!,
+      productId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}product_id'],
+      ),
+      matchedProductId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}matched_product_id'],
+      ),
+      productName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}product_name'],
+      )!,
+      productCode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}product_code'],
+      ),
+      supplierName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}supplier_name'],
+      )!,
+      piecesPerBox: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}pieces_per_box'],
+      )!,
+      requestedPieces: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}requested_pieces'],
+      )!,
+      availablePieces: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}available_pieces'],
+      )!,
+      confirmedPieces: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}confirmed_pieces'],
+      )!,
+    );
+  }
+
+  @override
+  $PreOrderReviewItemsTable createAlias(String alias) {
+    return $PreOrderReviewItemsTable(attachedDatabase, alias);
+  }
+}
+
+class PreOrderReviewItem extends DataClass
+    implements Insertable<PreOrderReviewItem> {
+  final String id;
+  final String reviewId;
+  final String? productId;
+  final String? matchedProductId;
+  final String productName;
+  final String? productCode;
+  final String supplierName;
+  final int piecesPerBox;
+  final int requestedPieces;
+  final int availablePieces;
+  final int confirmedPieces;
+  const PreOrderReviewItem({
+    required this.id,
+    required this.reviewId,
+    this.productId,
+    this.matchedProductId,
+    required this.productName,
+    this.productCode,
+    required this.supplierName,
+    required this.piecesPerBox,
+    required this.requestedPieces,
+    required this.availablePieces,
+    required this.confirmedPieces,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['review_id'] = Variable<String>(reviewId);
+    if (!nullToAbsent || productId != null) {
+      map['product_id'] = Variable<String>(productId);
+    }
+    if (!nullToAbsent || matchedProductId != null) {
+      map['matched_product_id'] = Variable<String>(matchedProductId);
+    }
+    map['product_name'] = Variable<String>(productName);
+    if (!nullToAbsent || productCode != null) {
+      map['product_code'] = Variable<String>(productCode);
+    }
+    map['supplier_name'] = Variable<String>(supplierName);
+    map['pieces_per_box'] = Variable<int>(piecesPerBox);
+    map['requested_pieces'] = Variable<int>(requestedPieces);
+    map['available_pieces'] = Variable<int>(availablePieces);
+    map['confirmed_pieces'] = Variable<int>(confirmedPieces);
+    return map;
+  }
+
+  PreOrderReviewItemsCompanion toCompanion(bool nullToAbsent) {
+    return PreOrderReviewItemsCompanion(
+      id: Value(id),
+      reviewId: Value(reviewId),
+      productId: productId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(productId),
+      matchedProductId: matchedProductId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(matchedProductId),
+      productName: Value(productName),
+      productCode: productCode == null && nullToAbsent
+          ? const Value.absent()
+          : Value(productCode),
+      supplierName: Value(supplierName),
+      piecesPerBox: Value(piecesPerBox),
+      requestedPieces: Value(requestedPieces),
+      availablePieces: Value(availablePieces),
+      confirmedPieces: Value(confirmedPieces),
+    );
+  }
+
+  factory PreOrderReviewItem.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PreOrderReviewItem(
+      id: serializer.fromJson<String>(json['id']),
+      reviewId: serializer.fromJson<String>(json['reviewId']),
+      productId: serializer.fromJson<String?>(json['productId']),
+      matchedProductId: serializer.fromJson<String?>(json['matchedProductId']),
+      productName: serializer.fromJson<String>(json['productName']),
+      productCode: serializer.fromJson<String?>(json['productCode']),
+      supplierName: serializer.fromJson<String>(json['supplierName']),
+      piecesPerBox: serializer.fromJson<int>(json['piecesPerBox']),
+      requestedPieces: serializer.fromJson<int>(json['requestedPieces']),
+      availablePieces: serializer.fromJson<int>(json['availablePieces']),
+      confirmedPieces: serializer.fromJson<int>(json['confirmedPieces']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'reviewId': serializer.toJson<String>(reviewId),
+      'productId': serializer.toJson<String?>(productId),
+      'matchedProductId': serializer.toJson<String?>(matchedProductId),
+      'productName': serializer.toJson<String>(productName),
+      'productCode': serializer.toJson<String?>(productCode),
+      'supplierName': serializer.toJson<String>(supplierName),
+      'piecesPerBox': serializer.toJson<int>(piecesPerBox),
+      'requestedPieces': serializer.toJson<int>(requestedPieces),
+      'availablePieces': serializer.toJson<int>(availablePieces),
+      'confirmedPieces': serializer.toJson<int>(confirmedPieces),
+    };
+  }
+
+  PreOrderReviewItem copyWith({
+    String? id,
+    String? reviewId,
+    Value<String?> productId = const Value.absent(),
+    Value<String?> matchedProductId = const Value.absent(),
+    String? productName,
+    Value<String?> productCode = const Value.absent(),
+    String? supplierName,
+    int? piecesPerBox,
+    int? requestedPieces,
+    int? availablePieces,
+    int? confirmedPieces,
+  }) => PreOrderReviewItem(
+    id: id ?? this.id,
+    reviewId: reviewId ?? this.reviewId,
+    productId: productId.present ? productId.value : this.productId,
+    matchedProductId: matchedProductId.present
+        ? matchedProductId.value
+        : this.matchedProductId,
+    productName: productName ?? this.productName,
+    productCode: productCode.present ? productCode.value : this.productCode,
+    supplierName: supplierName ?? this.supplierName,
+    piecesPerBox: piecesPerBox ?? this.piecesPerBox,
+    requestedPieces: requestedPieces ?? this.requestedPieces,
+    availablePieces: availablePieces ?? this.availablePieces,
+    confirmedPieces: confirmedPieces ?? this.confirmedPieces,
+  );
+  PreOrderReviewItem copyWithCompanion(PreOrderReviewItemsCompanion data) {
+    return PreOrderReviewItem(
+      id: data.id.present ? data.id.value : this.id,
+      reviewId: data.reviewId.present ? data.reviewId.value : this.reviewId,
+      productId: data.productId.present ? data.productId.value : this.productId,
+      matchedProductId: data.matchedProductId.present
+          ? data.matchedProductId.value
+          : this.matchedProductId,
+      productName: data.productName.present
+          ? data.productName.value
+          : this.productName,
+      productCode: data.productCode.present
+          ? data.productCode.value
+          : this.productCode,
+      supplierName: data.supplierName.present
+          ? data.supplierName.value
+          : this.supplierName,
+      piecesPerBox: data.piecesPerBox.present
+          ? data.piecesPerBox.value
+          : this.piecesPerBox,
+      requestedPieces: data.requestedPieces.present
+          ? data.requestedPieces.value
+          : this.requestedPieces,
+      availablePieces: data.availablePieces.present
+          ? data.availablePieces.value
+          : this.availablePieces,
+      confirmedPieces: data.confirmedPieces.present
+          ? data.confirmedPieces.value
+          : this.confirmedPieces,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PreOrderReviewItem(')
+          ..write('id: $id, ')
+          ..write('reviewId: $reviewId, ')
+          ..write('productId: $productId, ')
+          ..write('matchedProductId: $matchedProductId, ')
+          ..write('productName: $productName, ')
+          ..write('productCode: $productCode, ')
+          ..write('supplierName: $supplierName, ')
+          ..write('piecesPerBox: $piecesPerBox, ')
+          ..write('requestedPieces: $requestedPieces, ')
+          ..write('availablePieces: $availablePieces, ')
+          ..write('confirmedPieces: $confirmedPieces')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    reviewId,
+    productId,
+    matchedProductId,
+    productName,
+    productCode,
+    supplierName,
+    piecesPerBox,
+    requestedPieces,
+    availablePieces,
+    confirmedPieces,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PreOrderReviewItem &&
+          other.id == this.id &&
+          other.reviewId == this.reviewId &&
+          other.productId == this.productId &&
+          other.matchedProductId == this.matchedProductId &&
+          other.productName == this.productName &&
+          other.productCode == this.productCode &&
+          other.supplierName == this.supplierName &&
+          other.piecesPerBox == this.piecesPerBox &&
+          other.requestedPieces == this.requestedPieces &&
+          other.availablePieces == this.availablePieces &&
+          other.confirmedPieces == this.confirmedPieces);
+}
+
+class PreOrderReviewItemsCompanion extends UpdateCompanion<PreOrderReviewItem> {
+  final Value<String> id;
+  final Value<String> reviewId;
+  final Value<String?> productId;
+  final Value<String?> matchedProductId;
+  final Value<String> productName;
+  final Value<String?> productCode;
+  final Value<String> supplierName;
+  final Value<int> piecesPerBox;
+  final Value<int> requestedPieces;
+  final Value<int> availablePieces;
+  final Value<int> confirmedPieces;
+  final Value<int> rowid;
+  const PreOrderReviewItemsCompanion({
+    this.id = const Value.absent(),
+    this.reviewId = const Value.absent(),
+    this.productId = const Value.absent(),
+    this.matchedProductId = const Value.absent(),
+    this.productName = const Value.absent(),
+    this.productCode = const Value.absent(),
+    this.supplierName = const Value.absent(),
+    this.piecesPerBox = const Value.absent(),
+    this.requestedPieces = const Value.absent(),
+    this.availablePieces = const Value.absent(),
+    this.confirmedPieces = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  PreOrderReviewItemsCompanion.insert({
+    required String id,
+    required String reviewId,
+    this.productId = const Value.absent(),
+    this.matchedProductId = const Value.absent(),
+    required String productName,
+    this.productCode = const Value.absent(),
+    required String supplierName,
+    required int piecesPerBox,
+    required int requestedPieces,
+    this.availablePieces = const Value.absent(),
+    required int confirmedPieces,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       reviewId = Value(reviewId),
+       productName = Value(productName),
+       supplierName = Value(supplierName),
+       piecesPerBox = Value(piecesPerBox),
+       requestedPieces = Value(requestedPieces),
+       confirmedPieces = Value(confirmedPieces);
+  static Insertable<PreOrderReviewItem> custom({
+    Expression<String>? id,
+    Expression<String>? reviewId,
+    Expression<String>? productId,
+    Expression<String>? matchedProductId,
+    Expression<String>? productName,
+    Expression<String>? productCode,
+    Expression<String>? supplierName,
+    Expression<int>? piecesPerBox,
+    Expression<int>? requestedPieces,
+    Expression<int>? availablePieces,
+    Expression<int>? confirmedPieces,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (reviewId != null) 'review_id': reviewId,
+      if (productId != null) 'product_id': productId,
+      if (matchedProductId != null) 'matched_product_id': matchedProductId,
+      if (productName != null) 'product_name': productName,
+      if (productCode != null) 'product_code': productCode,
+      if (supplierName != null) 'supplier_name': supplierName,
+      if (piecesPerBox != null) 'pieces_per_box': piecesPerBox,
+      if (requestedPieces != null) 'requested_pieces': requestedPieces,
+      if (availablePieces != null) 'available_pieces': availablePieces,
+      if (confirmedPieces != null) 'confirmed_pieces': confirmedPieces,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  PreOrderReviewItemsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? reviewId,
+    Value<String?>? productId,
+    Value<String?>? matchedProductId,
+    Value<String>? productName,
+    Value<String?>? productCode,
+    Value<String>? supplierName,
+    Value<int>? piecesPerBox,
+    Value<int>? requestedPieces,
+    Value<int>? availablePieces,
+    Value<int>? confirmedPieces,
+    Value<int>? rowid,
+  }) {
+    return PreOrderReviewItemsCompanion(
+      id: id ?? this.id,
+      reviewId: reviewId ?? this.reviewId,
+      productId: productId ?? this.productId,
+      matchedProductId: matchedProductId ?? this.matchedProductId,
+      productName: productName ?? this.productName,
+      productCode: productCode ?? this.productCode,
+      supplierName: supplierName ?? this.supplierName,
+      piecesPerBox: piecesPerBox ?? this.piecesPerBox,
+      requestedPieces: requestedPieces ?? this.requestedPieces,
+      availablePieces: availablePieces ?? this.availablePieces,
+      confirmedPieces: confirmedPieces ?? this.confirmedPieces,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (reviewId.present) {
+      map['review_id'] = Variable<String>(reviewId.value);
+    }
+    if (productId.present) {
+      map['product_id'] = Variable<String>(productId.value);
+    }
+    if (matchedProductId.present) {
+      map['matched_product_id'] = Variable<String>(matchedProductId.value);
+    }
+    if (productName.present) {
+      map['product_name'] = Variable<String>(productName.value);
+    }
+    if (productCode.present) {
+      map['product_code'] = Variable<String>(productCode.value);
+    }
+    if (supplierName.present) {
+      map['supplier_name'] = Variable<String>(supplierName.value);
+    }
+    if (piecesPerBox.present) {
+      map['pieces_per_box'] = Variable<int>(piecesPerBox.value);
+    }
+    if (requestedPieces.present) {
+      map['requested_pieces'] = Variable<int>(requestedPieces.value);
+    }
+    if (availablePieces.present) {
+      map['available_pieces'] = Variable<int>(availablePieces.value);
+    }
+    if (confirmedPieces.present) {
+      map['confirmed_pieces'] = Variable<int>(confirmedPieces.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PreOrderReviewItemsCompanion(')
+          ..write('id: $id, ')
+          ..write('reviewId: $reviewId, ')
+          ..write('productId: $productId, ')
+          ..write('matchedProductId: $matchedProductId, ')
+          ..write('productName: $productName, ')
+          ..write('productCode: $productCode, ')
+          ..write('supplierName: $supplierName, ')
+          ..write('piecesPerBox: $piecesPerBox, ')
+          ..write('requestedPieces: $requestedPieces, ')
+          ..write('availablePieces: $availablePieces, ')
+          ..write('confirmedPieces: $confirmedPieces, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $SyncQueueTable extends SyncQueue
     with TableInfo<$SyncQueueTable, SyncQueueData> {
   @override
@@ -11801,6 +12830,11 @@ abstract class _$LocalDatabase extends GeneratedDatabase {
   late final $PurchaseOrdersTable purchaseOrders = $PurchaseOrdersTable(this);
   late final $PurchaseOrderItemsTable purchaseOrderItems =
       $PurchaseOrderItemsTable(this);
+  late final $PreOrderReviewsTable preOrderReviews = $PreOrderReviewsTable(
+    this,
+  );
+  late final $PreOrderReviewItemsTable preOrderReviewItems =
+      $PreOrderReviewItemsTable(this);
   late final $SyncQueueTable syncQueue = $SyncQueueTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -11829,6 +12863,8 @@ abstract class _$LocalDatabase extends GeneratedDatabase {
     supplierReceivedInvoiceItems,
     purchaseOrders,
     purchaseOrderItems,
+    preOrderReviews,
+    preOrderReviewItems,
     syncQueue,
   ];
 }
@@ -22400,6 +23436,784 @@ typedef $$PurchaseOrderItemsTableProcessedTableManager =
       PurchaseOrderItem,
       PrefetchHooks Function({bool purchaseOrderId, bool productId})
     >;
+typedef $$PreOrderReviewsTableCreateCompanionBuilder =
+    PreOrderReviewsCompanion Function({
+      required String id,
+      required String sourceFile,
+      required String originalExportedAt,
+      Value<DateTime> reviewedAt,
+      Value<int> rowid,
+    });
+typedef $$PreOrderReviewsTableUpdateCompanionBuilder =
+    PreOrderReviewsCompanion Function({
+      Value<String> id,
+      Value<String> sourceFile,
+      Value<String> originalExportedAt,
+      Value<DateTime> reviewedAt,
+      Value<int> rowid,
+    });
+
+final class $$PreOrderReviewsTableReferences
+    extends
+        BaseReferences<_$LocalDatabase, $PreOrderReviewsTable, PreOrderReview> {
+  $$PreOrderReviewsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static MultiTypedResultKey<
+    $PreOrderReviewItemsTable,
+    List<PreOrderReviewItem>
+  >
+  _preOrderReviewItemsRefsTable(_$LocalDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.preOrderReviewItems,
+        aliasName: $_aliasNameGenerator(
+          db.preOrderReviews.id,
+          db.preOrderReviewItems.reviewId,
+        ),
+      );
+
+  $$PreOrderReviewItemsTableProcessedTableManager get preOrderReviewItemsRefs {
+    final manager = $$PreOrderReviewItemsTableTableManager(
+      $_db,
+      $_db.preOrderReviewItems,
+    ).filter((f) => f.reviewId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _preOrderReviewItemsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$PreOrderReviewsTableFilterComposer
+    extends Composer<_$LocalDatabase, $PreOrderReviewsTable> {
+  $$PreOrderReviewsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceFile => $composableBuilder(
+    column: $table.sourceFile,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get originalExportedAt => $composableBuilder(
+    column: $table.originalExportedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get reviewedAt => $composableBuilder(
+    column: $table.reviewedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> preOrderReviewItemsRefs(
+    Expression<bool> Function($$PreOrderReviewItemsTableFilterComposer f) f,
+  ) {
+    final $$PreOrderReviewItemsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.preOrderReviewItems,
+      getReferencedColumn: (t) => t.reviewId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PreOrderReviewItemsTableFilterComposer(
+            $db: $db,
+            $table: $db.preOrderReviewItems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$PreOrderReviewsTableOrderingComposer
+    extends Composer<_$LocalDatabase, $PreOrderReviewsTable> {
+  $$PreOrderReviewsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceFile => $composableBuilder(
+    column: $table.sourceFile,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get originalExportedAt => $composableBuilder(
+    column: $table.originalExportedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get reviewedAt => $composableBuilder(
+    column: $table.reviewedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$PreOrderReviewsTableAnnotationComposer
+    extends Composer<_$LocalDatabase, $PreOrderReviewsTable> {
+  $$PreOrderReviewsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get sourceFile => $composableBuilder(
+    column: $table.sourceFile,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get originalExportedAt => $composableBuilder(
+    column: $table.originalExportedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get reviewedAt => $composableBuilder(
+    column: $table.reviewedAt,
+    builder: (column) => column,
+  );
+
+  Expression<T> preOrderReviewItemsRefs<T extends Object>(
+    Expression<T> Function($$PreOrderReviewItemsTableAnnotationComposer a) f,
+  ) {
+    final $$PreOrderReviewItemsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.preOrderReviewItems,
+          getReferencedColumn: (t) => t.reviewId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$PreOrderReviewItemsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.preOrderReviewItems,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+}
+
+class $$PreOrderReviewsTableTableManager
+    extends
+        RootTableManager<
+          _$LocalDatabase,
+          $PreOrderReviewsTable,
+          PreOrderReview,
+          $$PreOrderReviewsTableFilterComposer,
+          $$PreOrderReviewsTableOrderingComposer,
+          $$PreOrderReviewsTableAnnotationComposer,
+          $$PreOrderReviewsTableCreateCompanionBuilder,
+          $$PreOrderReviewsTableUpdateCompanionBuilder,
+          (PreOrderReview, $$PreOrderReviewsTableReferences),
+          PreOrderReview,
+          PrefetchHooks Function({bool preOrderReviewItemsRefs})
+        > {
+  $$PreOrderReviewsTableTableManager(
+    _$LocalDatabase db,
+    $PreOrderReviewsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PreOrderReviewsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PreOrderReviewsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PreOrderReviewsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> sourceFile = const Value.absent(),
+                Value<String> originalExportedAt = const Value.absent(),
+                Value<DateTime> reviewedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PreOrderReviewsCompanion(
+                id: id,
+                sourceFile: sourceFile,
+                originalExportedAt: originalExportedAt,
+                reviewedAt: reviewedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String sourceFile,
+                required String originalExportedAt,
+                Value<DateTime> reviewedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PreOrderReviewsCompanion.insert(
+                id: id,
+                sourceFile: sourceFile,
+                originalExportedAt: originalExportedAt,
+                reviewedAt: reviewedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$PreOrderReviewsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({preOrderReviewItemsRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [
+                if (preOrderReviewItemsRefs) db.preOrderReviewItems,
+              ],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (preOrderReviewItemsRefs)
+                    await $_getPrefetchedData<
+                      PreOrderReview,
+                      $PreOrderReviewsTable,
+                      PreOrderReviewItem
+                    >(
+                      currentTable: table,
+                      referencedTable: $$PreOrderReviewsTableReferences
+                          ._preOrderReviewItemsRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$PreOrderReviewsTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).preOrderReviewItemsRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.reviewId == item.id),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$PreOrderReviewsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LocalDatabase,
+      $PreOrderReviewsTable,
+      PreOrderReview,
+      $$PreOrderReviewsTableFilterComposer,
+      $$PreOrderReviewsTableOrderingComposer,
+      $$PreOrderReviewsTableAnnotationComposer,
+      $$PreOrderReviewsTableCreateCompanionBuilder,
+      $$PreOrderReviewsTableUpdateCompanionBuilder,
+      (PreOrderReview, $$PreOrderReviewsTableReferences),
+      PreOrderReview,
+      PrefetchHooks Function({bool preOrderReviewItemsRefs})
+    >;
+typedef $$PreOrderReviewItemsTableCreateCompanionBuilder =
+    PreOrderReviewItemsCompanion Function({
+      required String id,
+      required String reviewId,
+      Value<String?> productId,
+      Value<String?> matchedProductId,
+      required String productName,
+      Value<String?> productCode,
+      required String supplierName,
+      required int piecesPerBox,
+      required int requestedPieces,
+      Value<int> availablePieces,
+      required int confirmedPieces,
+      Value<int> rowid,
+    });
+typedef $$PreOrderReviewItemsTableUpdateCompanionBuilder =
+    PreOrderReviewItemsCompanion Function({
+      Value<String> id,
+      Value<String> reviewId,
+      Value<String?> productId,
+      Value<String?> matchedProductId,
+      Value<String> productName,
+      Value<String?> productCode,
+      Value<String> supplierName,
+      Value<int> piecesPerBox,
+      Value<int> requestedPieces,
+      Value<int> availablePieces,
+      Value<int> confirmedPieces,
+      Value<int> rowid,
+    });
+
+final class $$PreOrderReviewItemsTableReferences
+    extends
+        BaseReferences<
+          _$LocalDatabase,
+          $PreOrderReviewItemsTable,
+          PreOrderReviewItem
+        > {
+  $$PreOrderReviewItemsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $PreOrderReviewsTable _reviewIdTable(_$LocalDatabase db) =>
+      db.preOrderReviews.createAlias(
+        $_aliasNameGenerator(
+          db.preOrderReviewItems.reviewId,
+          db.preOrderReviews.id,
+        ),
+      );
+
+  $$PreOrderReviewsTableProcessedTableManager get reviewId {
+    final $_column = $_itemColumn<String>('review_id')!;
+
+    final manager = $$PreOrderReviewsTableTableManager(
+      $_db,
+      $_db.preOrderReviews,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_reviewIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$PreOrderReviewItemsTableFilterComposer
+    extends Composer<_$LocalDatabase, $PreOrderReviewItemsTable> {
+  $$PreOrderReviewItemsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get productId => $composableBuilder(
+    column: $table.productId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get matchedProductId => $composableBuilder(
+    column: $table.matchedProductId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get productName => $composableBuilder(
+    column: $table.productName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get productCode => $composableBuilder(
+    column: $table.productCode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get supplierName => $composableBuilder(
+    column: $table.supplierName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get piecesPerBox => $composableBuilder(
+    column: $table.piecesPerBox,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get requestedPieces => $composableBuilder(
+    column: $table.requestedPieces,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get availablePieces => $composableBuilder(
+    column: $table.availablePieces,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get confirmedPieces => $composableBuilder(
+    column: $table.confirmedPieces,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$PreOrderReviewsTableFilterComposer get reviewId {
+    final $$PreOrderReviewsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.reviewId,
+      referencedTable: $db.preOrderReviews,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PreOrderReviewsTableFilterComposer(
+            $db: $db,
+            $table: $db.preOrderReviews,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PreOrderReviewItemsTableOrderingComposer
+    extends Composer<_$LocalDatabase, $PreOrderReviewItemsTable> {
+  $$PreOrderReviewItemsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get productId => $composableBuilder(
+    column: $table.productId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get matchedProductId => $composableBuilder(
+    column: $table.matchedProductId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get productName => $composableBuilder(
+    column: $table.productName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get productCode => $composableBuilder(
+    column: $table.productCode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get supplierName => $composableBuilder(
+    column: $table.supplierName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get piecesPerBox => $composableBuilder(
+    column: $table.piecesPerBox,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get requestedPieces => $composableBuilder(
+    column: $table.requestedPieces,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get availablePieces => $composableBuilder(
+    column: $table.availablePieces,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get confirmedPieces => $composableBuilder(
+    column: $table.confirmedPieces,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$PreOrderReviewsTableOrderingComposer get reviewId {
+    final $$PreOrderReviewsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.reviewId,
+      referencedTable: $db.preOrderReviews,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PreOrderReviewsTableOrderingComposer(
+            $db: $db,
+            $table: $db.preOrderReviews,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PreOrderReviewItemsTableAnnotationComposer
+    extends Composer<_$LocalDatabase, $PreOrderReviewItemsTable> {
+  $$PreOrderReviewItemsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get productId =>
+      $composableBuilder(column: $table.productId, builder: (column) => column);
+
+  GeneratedColumn<String> get matchedProductId => $composableBuilder(
+    column: $table.matchedProductId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get productName => $composableBuilder(
+    column: $table.productName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get productCode => $composableBuilder(
+    column: $table.productCode,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get supplierName => $composableBuilder(
+    column: $table.supplierName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get piecesPerBox => $composableBuilder(
+    column: $table.piecesPerBox,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get requestedPieces => $composableBuilder(
+    column: $table.requestedPieces,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get availablePieces => $composableBuilder(
+    column: $table.availablePieces,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get confirmedPieces => $composableBuilder(
+    column: $table.confirmedPieces,
+    builder: (column) => column,
+  );
+
+  $$PreOrderReviewsTableAnnotationComposer get reviewId {
+    final $$PreOrderReviewsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.reviewId,
+      referencedTable: $db.preOrderReviews,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PreOrderReviewsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.preOrderReviews,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PreOrderReviewItemsTableTableManager
+    extends
+        RootTableManager<
+          _$LocalDatabase,
+          $PreOrderReviewItemsTable,
+          PreOrderReviewItem,
+          $$PreOrderReviewItemsTableFilterComposer,
+          $$PreOrderReviewItemsTableOrderingComposer,
+          $$PreOrderReviewItemsTableAnnotationComposer,
+          $$PreOrderReviewItemsTableCreateCompanionBuilder,
+          $$PreOrderReviewItemsTableUpdateCompanionBuilder,
+          (PreOrderReviewItem, $$PreOrderReviewItemsTableReferences),
+          PreOrderReviewItem,
+          PrefetchHooks Function({bool reviewId})
+        > {
+  $$PreOrderReviewItemsTableTableManager(
+    _$LocalDatabase db,
+    $PreOrderReviewItemsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PreOrderReviewItemsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PreOrderReviewItemsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$PreOrderReviewItemsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> reviewId = const Value.absent(),
+                Value<String?> productId = const Value.absent(),
+                Value<String?> matchedProductId = const Value.absent(),
+                Value<String> productName = const Value.absent(),
+                Value<String?> productCode = const Value.absent(),
+                Value<String> supplierName = const Value.absent(),
+                Value<int> piecesPerBox = const Value.absent(),
+                Value<int> requestedPieces = const Value.absent(),
+                Value<int> availablePieces = const Value.absent(),
+                Value<int> confirmedPieces = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PreOrderReviewItemsCompanion(
+                id: id,
+                reviewId: reviewId,
+                productId: productId,
+                matchedProductId: matchedProductId,
+                productName: productName,
+                productCode: productCode,
+                supplierName: supplierName,
+                piecesPerBox: piecesPerBox,
+                requestedPieces: requestedPieces,
+                availablePieces: availablePieces,
+                confirmedPieces: confirmedPieces,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String reviewId,
+                Value<String?> productId = const Value.absent(),
+                Value<String?> matchedProductId = const Value.absent(),
+                required String productName,
+                Value<String?> productCode = const Value.absent(),
+                required String supplierName,
+                required int piecesPerBox,
+                required int requestedPieces,
+                Value<int> availablePieces = const Value.absent(),
+                required int confirmedPieces,
+                Value<int> rowid = const Value.absent(),
+              }) => PreOrderReviewItemsCompanion.insert(
+                id: id,
+                reviewId: reviewId,
+                productId: productId,
+                matchedProductId: matchedProductId,
+                productName: productName,
+                productCode: productCode,
+                supplierName: supplierName,
+                piecesPerBox: piecesPerBox,
+                requestedPieces: requestedPieces,
+                availablePieces: availablePieces,
+                confirmedPieces: confirmedPieces,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$PreOrderReviewItemsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({reviewId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (reviewId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.reviewId,
+                                referencedTable:
+                                    $$PreOrderReviewItemsTableReferences
+                                        ._reviewIdTable(db),
+                                referencedColumn:
+                                    $$PreOrderReviewItemsTableReferences
+                                        ._reviewIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$PreOrderReviewItemsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LocalDatabase,
+      $PreOrderReviewItemsTable,
+      PreOrderReviewItem,
+      $$PreOrderReviewItemsTableFilterComposer,
+      $$PreOrderReviewItemsTableOrderingComposer,
+      $$PreOrderReviewItemsTableAnnotationComposer,
+      $$PreOrderReviewItemsTableCreateCompanionBuilder,
+      $$PreOrderReviewItemsTableUpdateCompanionBuilder,
+      (PreOrderReviewItem, $$PreOrderReviewItemsTableReferences),
+      PreOrderReviewItem,
+      PrefetchHooks Function({bool reviewId})
+    >;
 typedef $$SyncQueueTableCreateCompanionBuilder =
     SyncQueueCompanion Function({
       required String id,
@@ -22676,6 +24490,10 @@ class $LocalDatabaseManager {
       $$PurchaseOrdersTableTableManager(_db, _db.purchaseOrders);
   $$PurchaseOrderItemsTableTableManager get purchaseOrderItems =>
       $$PurchaseOrderItemsTableTableManager(_db, _db.purchaseOrderItems);
+  $$PreOrderReviewsTableTableManager get preOrderReviews =>
+      $$PreOrderReviewsTableTableManager(_db, _db.preOrderReviews);
+  $$PreOrderReviewItemsTableTableManager get preOrderReviewItems =>
+      $$PreOrderReviewItemsTableTableManager(_db, _db.preOrderReviewItems);
   $$SyncQueueTableTableManager get syncQueue =>
       $$SyncQueueTableTableManager(_db, _db.syncQueue);
 }

@@ -401,6 +401,36 @@ class PurchaseOrderItems extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Header record for a saved pre-order review (local-only, no sync).
+class PreOrderReviews extends Table {
+  TextColumn get id => text()();
+  TextColumn get sourceFile => text()();
+  TextColumn get originalExportedAt => text()();
+  DateTimeColumn get reviewedAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Line items for a saved pre-order review.
+class PreOrderReviewItems extends Table {
+  TextColumn get id => text()();
+  TextColumn get reviewId => text().references(PreOrderReviews, #id)();
+  TextColumn get productId => text().nullable()();
+  TextColumn get matchedProductId => text().nullable()();
+  TextColumn get productName => text()();
+  TextColumn get productCode => text().nullable()();
+  TextColumn get supplierName => text()();
+  IntColumn get piecesPerBox => integer()();
+  IntColumn get requestedPieces => integer()();
+  IntColumn get availablePieces => integer().withDefault(const Constant(0))();
+  IntColumn get confirmedPieces => integer()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 class SyncQueue extends Table {
   TextColumn get id => text()();
   TextColumn get targetTable => text()();
@@ -440,6 +470,8 @@ class SyncQueue extends Table {
   SupplierReceivedInvoiceItems,
   PurchaseOrders,
   PurchaseOrderItems,
+  PreOrderReviews,
+  PreOrderReviewItems,
   SyncQueue,
 ])
 class LocalDatabase extends _$LocalDatabase {
@@ -581,12 +613,16 @@ class LocalDatabase extends _$LocalDatabase {
                 'vat_enabled', 'INTEGER NOT NULL DEFAULT 0');
             await _addColumnIfMissing(
                 m.database, 'purchase_order_items', 'raw_price', 'REAL');
+            await m.createTable(preOrderReviews);
+            await m.createTable(preOrderReviewItems);
           }
           if (from < 30) {
             await _addColumnIfMissing(m.database, 'purchase_order_items',
                 'system_price', 'REAL NOT NULL DEFAULT 0');
             await _addColumnIfMissing(m.database, 'purchase_order_items',
                 'is_free', 'INTEGER NOT NULL DEFAULT 0');
+            await _addColumnIfMissing(m.database, 'pre_order_review_items',
+                'available_pieces', 'INTEGER NOT NULL DEFAULT 0');
           }
           if (from < 31) {
             await m.createTable(productSupplierPrices);

@@ -31,6 +31,7 @@ import 'screens/purchase_orders/purchase_order_list_screen.dart';
 import 'screens/purchase_orders/purchase_order_form_screen.dart';
 import 'screens/invoicing/pre_order_list_screen.dart';
 import 'screens/invoicing/pre_order_form_screen.dart';
+import 'screens/invoicing/pre_order_import_screen.dart';
 
 final _router = GoRouter(
   initialLocation: '/',
@@ -160,6 +161,9 @@ final _router = GoRouter(
     GoRoute(
         path: '/pre-orders',
         builder: (ctx, s) => const PreOrderListScreen()),
+    GoRoute(
+        path: '/pre-order-import',
+        builder: (ctx, s) => const PreOrderImportScreen()),
     GoRoute(
         path: '/pre-orders/new',
         builder: (ctx, s) => const PreOrderFormScreen()),

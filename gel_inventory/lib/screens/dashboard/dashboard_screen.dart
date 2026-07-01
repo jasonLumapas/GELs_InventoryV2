@@ -17,7 +17,7 @@ class DashboardScreen extends ConsumerWidget {
     return AppScaffold(
       title: "GEL's Inventory",
       body: GridView.count(
-        crossAxisCount: 4,
+        crossAxisCount: 5,
         childAspectRatio: 1.4,
         padding: const EdgeInsets.all(16),
         mainAxisSpacing: 8,
@@ -57,6 +57,16 @@ class DashboardScreen extends ConsumerWidget {
             icon: Icons.receipt_long,
             label: 'Invoices',
             route: '/invoices',
+          ),
+          _NavCard(
+            icon: Icons.edit_note,
+            label: 'Pre-Order Drafts',
+            route: '/pre-orders',
+          ),
+          _NavCard(
+            icon: Icons.file_open,
+            label: 'Import Pre-Order',
+            route: '/pre-order-import',
           ),
           _NavCard(
             icon: Icons.summarize,

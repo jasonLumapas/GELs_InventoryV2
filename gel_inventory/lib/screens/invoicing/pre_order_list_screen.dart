@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -39,13 +42,13 @@ class _PreOrderListScreenState
     ref.invalidate(preOrderDraftsProvider);
   }
 
-  Future<List<OrderSummaryRow>> _buildLayoutRows() async {
+  /// Aggregates all pre-order draft items into per-product tallies,
+  /// sorted by supplier then product name.
+  Future<List<_ProductTally>> _aggregateTallies() async {
     final drafts =
         await ref.read(invoiceRepositoryProvider).getPreOrderDrafts();
-    final products =
-        await ref.read(productRepositoryProvider).getAll();
-    final suppliers =
-        await ref.read(supplierRepositoryProvider).getAll();
+    final products = await ref.read(productRepositoryProvider).getAll();
+    final suppliers = await ref.read(supplierRepositoryProvider).getAll();
     final productsById = <String, Product>{
       for (final p in products) p.id: p
     };
@@ -68,9 +71,10 @@ class _PreOrderListScreenState
             return t;
           },
           ifAbsent: () => _ProductTally(
+            productId: product.id,
             productName: product.name,
-            supplierName:
-                suppliersById[product.supplierId] ?? 'Unknown',
+            productCode: product.productCode,
+            supplierName: suppliersById[product.supplierId] ?? 'Unknown',
             piecesPerBox: product.piecesPerBox,
             pieces: item.quantity,
             amount: item.subtotal,
@@ -79,11 +83,16 @@ class _PreOrderListScreenState
       }
     }
 
-    return (tally.values.toList()
-          ..sort((a, b) {
-            final s = a.supplierName.compareTo(b.supplierName);
-            return s != 0 ? s : a.productName.compareTo(b.productName);
-          }))
+    return tally.values.toList()
+      ..sort((a, b) {
+        final s = a.supplierName.compareTo(b.supplierName);
+        return s != 0 ? s : a.productName.compareTo(b.productName);
+      });
+  }
+
+  Future<List<OrderSummaryRow>> _buildLayoutRows() async {
+    final tallies = await _aggregateTallies();
+    return tallies
         .map((t) => OrderSummaryRow(
               productName: t.productName,
               totalPieces: t.pieces,
@@ -105,21 +114,42 @@ class _PreOrderListScreenState
     await printPreOrderLayout(rows: rows);
   }
 
-  Future<void> _download() async {
+  /// Exports a machine-readable JSON file that the main system can import
+  /// to review quantities against its own inventory.
+  Future<void> _exportJson() async {
     setState(() => _exporting = true);
     try {
-      final rows = await _buildLayoutRows();
-      if (rows.isEmpty) {
+      final tallies = await _aggregateTallies();
+      if (tallies.isEmpty) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No items to export.')),
         );
         return;
       }
-      final path = await exportPreOrderLayout(rows: rows);
+      final payload = {
+        'version': '1',
+        'exported_at': DateTime.now().toIso8601String(),
+        'items': tallies
+            .map((t) => {
+                  'product_id': t.productId,
+                  'product_name': t.productName,
+                  'product_code': t.productCode,
+                  'supplier_name': t.supplierName,
+                  'pieces_per_box': t.piecesPerBox,
+                  'total_pieces': t.pieces,
+                })
+            .toList(),
+      };
+      final home = Platform.environment['USERPROFILE'] ??
+          Platform.environment['HOME'] ??
+          '.';
+      final tag = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final file = File('$home\\Desktop\\pre_order_$tag.json');
+      await file.writeAsString(jsonEncode(payload));
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Saved to $path')),
+        SnackBar(content: Text('Exported to ${file.path}')),
       );
     } finally {
       if (mounted) setState(() => _exporting = false);
@@ -150,8 +180,8 @@ class _PreOrderListScreenState
               )
             : IconButton(
                 icon: const Icon(Icons.file_download),
-                tooltip: 'Download layout as PDF',
-                onPressed: _download,
+                tooltip: 'Export for main system (JSON)',
+                onPressed: _exportJson,
               ),
         FilledButton.icon(
           icon: const Icon(Icons.add, size: 18),
@@ -243,14 +273,18 @@ class _PreOrderListScreenState
 }
 
 class _ProductTally {
+  final String productId;
   final String productName;
+  final String? productCode;
   final String supplierName;
   final int piecesPerBox;
   int pieces;
   double amount;
 
   _ProductTally({
+    required this.productId,
     required this.productName,
+    this.productCode,
     required this.supplierName,
     required this.piecesPerBox,
     required this.pieces,

@@ -971,9 +971,9 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen>
       pw.Font.helveticaBold(),
     );
 
-    String fc(double v) => '₱${numFmt.format(v)}';
+    String fc(double v) => 'Php ${numFmt.format(v)}';
     String fsign(double v) =>
-        v < 0 ? '-₱${numFmt.format(-v)}' : '₱${numFmt.format(v)}';
+        v < 0 ? '-Php ${numFmt.format(-v)}' : 'Php ${numFmt.format(v)}';
 
     const double fs = 8.5;
     pw.TextStyle ts({bool bold = false}) =>
@@ -1595,6 +1595,121 @@ class _PerSupplierIncentivesTabState
     setState(() {});
   }
 
+  Future<pw.Document> _buildPerSupplierDoc() async {
+    final suppliers = await ref.read(supplierRepositoryProvider).getAll();
+    final suppById = {for (final s in suppliers) s.id: s.name};
+    final monthLabel = DateFormat('MMMM yyyy').format(_selectedMonth);
+    final numFmt = NumberFormat('#,##0.00');
+
+    final font = pw.Font.helvetica();
+    final fontBold = pw.Font.helveticaBold();
+    const double fs = 9.5;
+    const double fsHead = 13;
+
+    pw.TextStyle ts({bool bold = false, double? size}) =>
+        pw.TextStyle(font: bold ? fontBold : font, fontSize: size ?? fs);
+
+    final pageFormat = PdfPageFormat.a4.copyWith(
+      marginTop: 40,
+      marginBottom: 40,
+      marginLeft: 40,
+      marginRight: 40,
+    );
+    final usableW = pageFormat.availableWidth;
+    final nameW = usableW * 0.34;
+    final salesW = usableW * 0.26;
+    final pctW = usableW * 0.14;
+    final incentiveW = usableW * 0.26;
+
+    pw.Widget col(
+      String text,
+      double width, {
+      bool bold = false,
+      pw.TextAlign align = pw.TextAlign.left,
+    }) =>
+        pw.SizedBox(
+          width: width,
+          child: pw.Text(text, style: ts(bold: bold), textAlign: align),
+        );
+
+    String fc(double v) => 'Php ${numFmt.format(v)}';
+
+    final configuredIds = _percents.keys.toList();
+    double totalIncentive = 0;
+
+    final doc = pw.Document();
+    doc.addPage(pw.MultiPage(
+      pageFormat: pageFormat,
+      build: (ctx) => [
+        pw.Text('Per-Supplier Incentives', style: ts(bold: true, size: fsHead)),
+        pw.SizedBox(height: 4),
+        pw.Text('Month: $monthLabel', style: ts()),
+        pw.SizedBox(height: 10),
+
+        pw.Row(children: [
+          col('Supplier', nameW, bold: true),
+          col('Total Sales', salesW, bold: true, align: pw.TextAlign.right),
+          col('Incentive %', pctW, bold: true, align: pw.TextAlign.right),
+          col('Incentive Amount', incentiveW,
+              bold: true, align: pw.TextAlign.right),
+        ]),
+        pw.Divider(height: 6, thickness: 0.5),
+
+        for (final id in configuredIds) ...[
+          pw.Padding(
+            padding: const pw.EdgeInsets.symmetric(vertical: 3),
+            child: pw.Row(children: [
+              col(suppById[id] ?? id, nameW),
+              col(fc(_salesBySupplier[id] ?? 0), salesW,
+                  align: pw.TextAlign.right),
+              col('${(_percents[id] ?? 0).toStringAsFixed(1)}%', pctW,
+                  align: pw.TextAlign.right),
+              col(() {
+                final amt = (_salesBySupplier[id] ?? 0) *
+                    (_percents[id] ?? 0) /
+                    100;
+                totalIncentive += amt;
+                return fc(amt);
+              }(), incentiveW, align: pw.TextAlign.right),
+            ]),
+          ),
+          pw.Divider(height: 1, thickness: 0.3),
+        ],
+
+        pw.SizedBox(height: 8),
+        pw.Align(
+          alignment: pw.Alignment.centerRight,
+          child: pw.Text(
+            'Total Incentive: ${fc(totalIncentive)}',
+            style: ts(bold: true, size: fsHead - 1),
+          ),
+        ),
+      ],
+    ));
+    return doc;
+  }
+
+  Future<void> _print() async {
+    final doc = await _buildPerSupplierDoc();
+    await Printing.layoutPdf(onLayout: (_) => doc.save());
+  }
+
+  Future<void> _download() async {
+    final doc = await _buildPerSupplierDoc();
+    final bytes = await doc.save();
+    final home = Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        '.';
+    final tag = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+    final file =
+        File('$home\\Desktop\\per_supplier_incentives_$tag.pdf');
+    await file.writeAsBytes(bytes);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Saved to ${file.path}')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final monthLabel = DateFormat('MMMM yyyy').format(_selectedMonth);
@@ -1642,6 +1757,19 @@ class _PerSupplierIncentivesTabState
                 onPressed: () => _setMonth(
                   DateTime(_selectedMonth.year, _selectedMonth.month + 1),
                 ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.print),
+                tooltip: 'Print',
+                visualDensity: VisualDensity.compact,
+                onPressed: _percents.isNotEmpty && !_loading ? _print : null,
+              ),
+              IconButton(
+                icon: const Icon(Icons.file_download),
+                tooltip: 'Download as PDF',
+                visualDensity: VisualDensity.compact,
+                onPressed:
+                    _percents.isNotEmpty && !_loading ? _download : null,
               ),
             ],
           ),

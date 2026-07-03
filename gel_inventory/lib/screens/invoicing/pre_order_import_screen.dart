@@ -11,7 +11,6 @@ import '../../repositories/product_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../utils/pdf_generator.dart';
 import '../../widgets/common/app_scaffold.dart';
-import '../../widgets/common/confirm_dialog.dart';
 
 // ── Data model ────────────────────────────────────────────────────────────────
 
@@ -92,6 +91,7 @@ class _PreOrderImportScreenState
   bool _loadingFiles = true;
   bool _loadingReview = false;
   bool _saving = false;
+  bool _isReadOnly = false;
   List<_ReviewRow> _rows = [];
   String _exportedAt = '';
 
@@ -159,6 +159,7 @@ class _PreOrderImportScreenState
   Future<void> _loadReview(PreOrderReview review) async {
     setState(() {
       _loadingReview = true;
+      _isReadOnly = true;
       _selectedFile = null;
       _currentSourceFile = review.sourceFile;
       _exportedAt = review.originalExportedAt;
@@ -220,33 +221,12 @@ class _PreOrderImportScreenState
     }
   }
 
-  Future<void> _deleteReview(PreOrderReview review) async {
-    final confirmed = await showConfirmDialog(
-      context,
-      title: 'Delete Saved Review?',
-      message: 'This removes the saved record only. '
-          'Inventory quantities already applied are NOT reversed.',
-      confirmLabel: 'Delete',
-    );
-    if (!confirmed) return;
-    await ref.read(preOrderReviewRepositoryProvider).delete(review.id);
-    // Clear the editor if the active review was just deleted.
-    if (_currentSourceFile == review.sourceFile && _selectedFile == null) {
-      setState(() {
-        for (final r in _rows) { r.dispose(); }
-        _rows = [];
-        _currentSourceFile = '';
-        _exportedAt = '';
-      });
-    }
-    await _loadSavedReviews();
-  }
-
   // ── File load ───────────────────────────────────────────────────────────────
 
   Future<void> _loadFile(File file) async {
     setState(() {
       _loadingReview = true;
+      _isReadOnly = false;
       _selectedFile = file;
       _currentSourceFile = file.uri.pathSegments.last;
       for (final r in _rows) { r.dispose(); }
@@ -332,6 +312,27 @@ class _PreOrderImportScreenState
 
   Future<void> _saveToInventory() async {
     if (_rows.isEmpty || _saving) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirm Save'),
+        content: const Text(
+          'Once saved, quantities will be locked and inventory will be '
+          'updated immediately. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Save')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
     setState(() => _saving = true);
     try {
       final inventoryRepo = ref.read(inventoryRepositoryProvider);
@@ -373,6 +374,7 @@ class _PreOrderImportScreenState
       }
 
       if (updatedCount > 0) ref.invalidate(inventoryListProvider);
+      _isReadOnly = true;
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -465,25 +467,43 @@ class _PreOrderImportScreenState
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2)),
                 )
-              : IconButton(
-                  icon: const Icon(Icons.save),
-                  tooltip: _rows.any((r) => r.productFound && !r.isSufficient)
-                      ? 'Cannot save — insufficient stock'
-                      : 'Save & deduct inventory',
-                  onPressed: _rows.any((r) => r.productFound && !r.isSufficient)
-                      ? null
-                      : _saveToInventory,
-                ),
-          IconButton(
-            icon: const Icon(Icons.file_download),
-            tooltip: 'Export confirmed file',
-            onPressed: _exportConfirmed,
-          ),
-          IconButton(
-            icon: const Icon(Icons.print),
-            tooltip: 'Print adjusted layout',
-            onPressed: _printAdjusted,
-          ),
+              : Builder(builder: (_) {
+                  final hasInsufficient =
+                      _rows.any((r) => r.productFound && !r.isSufficient);
+                  return IconButton(
+                    icon: const Icon(Icons.save),
+                    tooltip: _isReadOnly
+                        ? 'Already saved'
+                        : hasInsufficient
+                            ? 'Cannot save — insufficient stock'
+                            : 'Save & deduct inventory',
+                    onPressed: _isReadOnly || hasInsufficient
+                        ? null
+                        : _saveToInventory,
+                  );
+                }),
+          Builder(builder: (_) {
+            final hasInsufficient =
+                _rows.any((r) => r.productFound && !r.isSufficient);
+            return IconButton(
+              icon: const Icon(Icons.file_download),
+              tooltip: hasInsufficient
+                  ? 'Cannot export — insufficient stock'
+                  : 'Export confirmed file',
+              onPressed: hasInsufficient ? null : _exportConfirmed,
+            );
+          }),
+          Builder(builder: (_) {
+            final hasInsufficient =
+                _rows.any((r) => r.productFound && !r.isSufficient);
+            return IconButton(
+              icon: const Icon(Icons.print),
+              tooltip: hasInsufficient
+                  ? 'Cannot print — insufficient stock'
+                  : 'Print adjusted layout',
+              onPressed: hasInsufficient ? null : _printAdjusted,
+            );
+          }),
         ],
         IconButton(
           icon: const Icon(Icons.refresh),
@@ -785,6 +805,7 @@ class _PreOrderImportScreenState
                                     Expanded(
                                       child: TextField(
                                         controller: row.adjustedBoxCtrl,
+                                        readOnly: _isReadOnly,
                                         keyboardType: TextInputType.number,
                                         inputFormatters: [
                                           FilteringTextInputFormatter.digitsOnly
@@ -792,13 +813,15 @@ class _PreOrderImportScreenState
                                         textAlign: TextAlign.center,
                                         style:
                                             const TextStyle(fontSize: 13),
-                                        decoration: const InputDecoration(
+                                        decoration: InputDecoration(
                                           isDense: true,
                                           hintText: '0',
                                           suffixText: 'box',
-                                          border: OutlineInputBorder(),
+                                          border: const OutlineInputBorder(),
+                                          filled: _isReadOnly,
+                                          fillColor: Colors.grey.shade100,
                                           contentPadding:
-                                              EdgeInsets.symmetric(
+                                              const EdgeInsets.symmetric(
                                                   horizontal: 6,
                                                   vertical: 6),
                                         ),
@@ -809,6 +832,7 @@ class _PreOrderImportScreenState
                                     Expanded(
                                       child: TextField(
                                         controller: row.adjustedPcsCtrl,
+                                        readOnly: _isReadOnly,
                                         keyboardType: TextInputType.number,
                                         inputFormatters: [
                                           FilteringTextInputFormatter.digitsOnly
@@ -816,13 +840,15 @@ class _PreOrderImportScreenState
                                         textAlign: TextAlign.center,
                                         style:
                                             const TextStyle(fontSize: 13),
-                                        decoration: const InputDecoration(
+                                        decoration: InputDecoration(
                                           isDense: true,
                                           hintText: '0',
                                           suffixText: 'pcs',
-                                          border: OutlineInputBorder(),
+                                          border: const OutlineInputBorder(),
+                                          filled: _isReadOnly,
+                                          fillColor: Colors.grey.shade100,
                                           contentPadding:
-                                              EdgeInsets.symmetric(
+                                              const EdgeInsets.symmetric(
                                                   horizontal: 6,
                                                   vertical: 6),
                                         ),
@@ -913,13 +939,6 @@ class _PreOrderImportScreenState
                 ),
               ),
             ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline, size: 18),
-            tooltip: 'Delete review',
-            color: Colors.red.shade400,
-            visualDensity: VisualDensity.compact,
-            onPressed: () => _deleteReview(review),
           ),
         ],
       ),

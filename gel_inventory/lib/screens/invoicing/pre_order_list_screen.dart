@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../models/product.dart';
 import '../../repositories/client_repository.dart';
+import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../repositories/supplier_repository.dart';
@@ -26,6 +27,247 @@ class PreOrderListScreen extends ConsumerStatefulWidget {
 class _PreOrderListScreenState
     extends ConsumerState<PreOrderListScreen> {
   bool _exporting = false;
+  bool _importingConfirmed = false;
+
+  /// Scans Desktop for pre_order_confirmed_*.json and lets the user pick one.
+  /// The confirmed_pieces for each matched item are added to local inventory
+  /// (representing incoming stock that was approved by the warehouse).
+  Future<void> _importConfirmedJson() async {
+    final home = Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        '';
+    final desktop = Directory('$home\\Desktop');
+    List<File> files = [];
+    try {
+      files = desktop
+          .listSync()
+          .whereType<File>()
+          .where((f) =>
+              f.path.endsWith('.json') &&
+              f.uri.pathSegments.last.startsWith('pre_order_confirmed_'))
+          .toList()
+        ..sort((a, b) =>
+            b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+    } catch (_) {}
+
+    if (!mounted) return;
+    if (files.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text(
+                'No pre_order_confirmed_*.json files found on Desktop.')),
+      );
+      return;
+    }
+
+    // Show file picker.
+    final picked = await showDialog<File>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Select Confirmed Order File'),
+        content: SizedBox(
+          width: 420,
+          child: ListView(
+            shrinkWrap: true,
+            children: files
+                .map((f) => ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.file_present_outlined),
+                      title: Text(f.uri.pathSegments.last,
+                          style: const TextStyle(fontSize: 13)),
+                      onTap: () => Navigator.pop(ctx, f),
+                    ))
+                .toList(),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
+        ],
+      ),
+    );
+    if (picked == null || !mounted) return;
+
+    // Parse file.
+    final Map<String, dynamic> json;
+    try {
+      final raw = await picked.readAsString();
+      json = jsonDecode(raw) as Map<String, dynamic>;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to read file: $e')),
+        );
+      }
+      return;
+    }
+
+    final itemsJson = (json['items'] as List<dynamic>?) ?? [];
+    final products = await ref.read(productRepositoryProvider).getAll();
+    final inventoryRepo = ref.read(inventoryRepositoryProvider);
+
+    // Match each entry to a local product.
+    final entries = <_ConfirmedEntry>[];
+    for (final item in itemsJson) {
+      final productId   = item['product_id']    as String?;
+      final productName = item['product_name']  as String? ?? '';
+      final productCode = item['product_code']  as String?;
+      final confirmedPieces = (item['confirmed_pieces'] as num?)?.toInt() ?? 0;
+      final piecesPerBox    = (item['pieces_per_box']   as num?)?.toInt() ?? 1;
+      if (confirmedPieces <= 0) continue;
+
+      Product? matched;
+      if (productId != null) {
+        matched = products.where((p) => p.id == productId).firstOrNull;
+      }
+      matched ??= products.where((p) => p.name == productName).firstOrNull;
+      matched ??= products
+          .where((p) => p.name.toLowerCase() == productName.toLowerCase())
+          .firstOrNull;
+      if (matched == null && productCode != null && productCode.isNotEmpty) {
+        matched = products
+            .where((p) =>
+                p.productCode?.toLowerCase() == productCode.toLowerCase())
+            .firstOrNull;
+      }
+
+      entries.add(_ConfirmedEntry(
+        productName: productName,
+        confirmedPieces: confirmedPieces,
+        piecesPerBox: piecesPerBox,
+        matched: matched,
+      ));
+    }
+
+    if (!mounted) return;
+    if (entries.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No valid items found in the file.')),
+      );
+      return;
+    }
+
+    // Show preview & confirm.
+    final dateFmt = DateFormat('MMM dd, yyyy HH:mm');
+    final confirmedAt =
+        (json['confirmed_at'] as String?) ?? '';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Import Confirmed Stock'),
+        content: SizedBox(
+          width: 480,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (confirmedAt.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    'Confirmed at: ${dateFmt.format(DateTime.tryParse(confirmedAt) ?? DateTime.now())}',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ),
+              const Text(
+                'The following stock will be added to your inventory:',
+                style: TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 8),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 280),
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: entries.map((e) {
+                      final boxes = e.piecesPerBox > 0
+                          ? e.confirmedPieces ~/ e.piecesPerBox
+                          : 0;
+                      final pcs = e.piecesPerBox > 0
+                          ? e.confirmedPieces % e.piecesPerBox
+                          : e.confirmedPieces;
+                      final qtyStr = boxes > 0 && pcs > 0
+                          ? '$boxes box(es) + $pcs pcs'
+                          : boxes > 0
+                              ? '$boxes box(es)'
+                              : '$pcs pcs';
+                      return ListTile(
+                        dense: true,
+                        leading: Icon(
+                          e.matched != null
+                              ? Icons.check_circle_outline
+                              : Icons.help_outline,
+                          color: e.matched != null
+                              ? Colors.green
+                              : Colors.grey,
+                          size: 18,
+                        ),
+                        title: Text(e.productName,
+                            style: const TextStyle(fontSize: 13)),
+                        subtitle: e.matched == null
+                            ? const Text('Not found in products',
+                                style: TextStyle(
+                                    color: Colors.grey, fontSize: 11))
+                            : null,
+                        trailing: Text('+$qtyStr',
+                            style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.green,
+                                fontWeight: FontWeight.w600)),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${entries.where((e) => e.matched == null).length} item(s) could not be matched and will be skipped.',
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Import')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _importingConfirmed = true);
+    try {
+      int updatedCount = 0;
+      for (final entry in entries) {
+        if (entry.matched == null) continue;
+        await inventoryRepo.adjust(
+          productId: entry.matched!.id,
+          deltaPieces: entry.confirmedPieces,
+        );
+        updatedCount++;
+      }
+      ref.invalidate(inventoryListProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$updatedCount product(s) added to inventory.'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Import failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _importingConfirmed = false);
+    }
+  }
 
   Future<void> _delete(String id) async {
     final ok = await showConfirmDialog(
@@ -165,6 +407,19 @@ class _PreOrderListScreenState
     return AppScaffold(
       title: 'Pre-Order Drafts',
       actions: [
+        _importingConfirmed
+            ? const Padding(
+                padding: EdgeInsets.all(12),
+                child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2)),
+              )
+            : IconButton(
+                icon: const Icon(Icons.file_upload_outlined),
+                tooltip: 'Import confirmed order file',
+                onPressed: _importConfirmedJson,
+              ),
         IconButton(
           icon: const Icon(Icons.print),
           tooltip: 'Print layout',
@@ -270,6 +525,20 @@ class _PreOrderListScreenState
       ),
     );
   }
+}
+
+class _ConfirmedEntry {
+  final String productName;
+  final int confirmedPieces;
+  final int piecesPerBox;
+  final Product? matched;
+
+  _ConfirmedEntry({
+    required this.productName,
+    required this.confirmedPieces,
+    required this.piecesPerBox,
+    required this.matched,
+  });
 }
 
 class _ProductTally {

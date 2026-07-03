@@ -11,6 +11,7 @@ import '../../models/invoice.dart';
 import '../../models/invoice_item.dart';
 import '../../models/product.dart';
 import '../../repositories/client_repository.dart';
+import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../repositories/supplier_repository.dart';
@@ -25,12 +26,14 @@ class _LineItem {
   String unitType;
   final TextEditingController quantityCtrl;
   final TextEditingController priceCtrl;
+  int availablePieces;
 
   _LineItem({
     required this.product,
     required double pricePerPiece,
     this.unitType = 'box',
     int quantity = 0,
+    this.availablePieces = 0,
   })  : quantityCtrl = TextEditingController(
             text: quantity > 0 ? '$quantity' : ''),
         priceCtrl = TextEditingController(
@@ -43,13 +46,19 @@ class _LineItem {
 
   int get quantity => int.tryParse(quantityCtrl.text) ?? 0;
 
-  double get pricePerPiece =>
-      double.tryParse(priceCtrl.text) ?? 0;
+  double get pricePerPiece => double.tryParse(priceCtrl.text) ?? 0;
 
   int get quantityInPieces =>
       unitType == 'box' ? quantity * product.piecesPerBox : quantity;
 
   double get subtotal => quantityInPieces * pricePerPiece;
+
+  bool get isSufficient => quantityInPieces <= availablePieces;
+
+  int get avlBoxes =>
+      product.piecesPerBox > 0 ? availablePieces ~/ product.piecesPerBox : 0;
+  int get avlPcs =>
+      product.piecesPerBox > 0 ? availablePieces % product.piecesPerBox : availablePieces;
 
   String get packagingLabel {
     final ppb = product.piecesPerBox;
@@ -148,6 +157,7 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
   Future<void> _loadData() async {
     final clients = await ref.read(clientRepositoryProvider).getAll();
     final products = await ref.read(productRepositoryProvider).getAll();
+    final inventoryRepo = ref.read(inventoryRepositoryProvider);
 
     if (widget.draftId != null) {
       final repo = ref.read(invoiceRepositoryProvider);
@@ -162,6 +172,7 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
         for (final it in items) {
           final product = productsById[it.productId];
           if (product == null) continue;
+          final inv = await inventoryRepo.getByProductId(it.productId);
           final displayQty = it.unitType == 'box' && product.piecesPerBox > 0
               ? it.quantity ~/ product.piecesPerBox
               : it.quantity;
@@ -170,6 +181,7 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
             pricePerPiece: it.pricePerPiece,
             unitType: it.unitType,
             quantity: displayQty,
+            availablePieces: inv?.quantityPieces ?? 0,
           ));
         }
       }
@@ -317,10 +329,13 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
   Future<void> _addLineItem(Product product) async {
     final price =
         await ref.read(productRepositoryProvider).getCurrentPrice(product.id);
+    final inv =
+        await ref.read(inventoryRepositoryProvider).getByProductId(product.id);
     setState(() {
       _lineItems.add(_LineItem(
         product: product,
         pricePerPiece: price?.sellingPrice ?? 0,
+        availablePieces: inv?.quantityPieces ?? 0,
       ));
     });
     _scheduleAutoSave();
@@ -331,6 +346,13 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
       _selectedClient != null &&
       _lineItems.isNotEmpty &&
       _lineItems.every((li) => li.quantity > 0);
+
+  bool get _canSaveAsInvoice =>
+      !_saving &&
+      _selectedClient != null &&
+      _lineItems.isNotEmpty &&
+      _lineItems.every((li) => li.quantity > 0) &&
+      _lineItems.every((li) => li.isSufficient);
 
   double get _grandTotal =>
       _lineItems.fold(0.0, (s, li) => s + li.subtotal);
@@ -365,6 +387,100 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
     ref.invalidate(preOrderDraftsProvider);
 
     if (mounted) context.go('/pre-orders');
+  }
+
+  Future<void> _saveAsInvoice() async {
+    // Ask for payment type before finalising.
+    // paymentType is mutated directly by onChanged — no StatefulBuilder needed.
+    String paymentType = 'cash';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Save as Invoice'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'This will create a final invoice and deduct the quantities '
+              'from inventory. This cannot be undone.',
+            ),
+            const SizedBox(height: 16),
+            const Text('Payment type:',
+                style: TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            DropdownButtonFormField<String>(
+              initialValue: paymentType,
+              decoration: const InputDecoration(
+                  border: OutlineInputBorder(), isDense: true),
+              items: const [
+                DropdownMenuItem(value: 'cash',   child: Text('Cash')),
+                DropdownMenuItem(value: 'credit', child: Text('Credit')),
+                DropdownMenuItem(value: 'check',  child: Text('Check')),
+              ],
+              onChanged: (v) { if (v != null) paymentType = v; },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Save as Invoice')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _saving = true);
+    try {
+      final repo = ref.read(invoiceRepositoryProvider);
+      final invoiceNumber = await repo.generateInvoiceNumber(_invoiceDate);
+
+      final invoice = Invoice(
+        id: _id,
+        clientId: _selectedClient!.id,
+        invoiceDate: _invoiceDate,
+        totalAmount: _grandTotal,
+        status: 'printed',
+        createdAt: _createdAt,
+        invoiceNumber: invoiceNumber,
+        invoiceType: 'regular',
+        paymentType: paymentType,
+      );
+      final items = _lineItems
+          .map((li) => InvoiceItem(
+                id: const Uuid().v4(),
+                invoiceId: _id,
+                productId: li.product.id,
+                unitType: li.unitType,
+                quantity: li.quantityInPieces,
+                pricePerPiece: li.pricePerPiece,
+                subtotal: li.subtotal,
+              ))
+          .toList();
+
+      await repo.finalizeDraft(invoice: invoice, items: items);
+      ref.invalidate(preOrderDraftsProvider);
+      ref.invalidate(invoicesListProvider);
+      ref.invalidate(inventoryListProvider);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Invoice $invoiceNumber created.')),
+      );
+      context.go('/invoices');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to create invoice: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
@@ -516,6 +632,22 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
                             label: const Text('Save'),
                             onPressed: _canSave ? _save : null,
                           ),
+                          const SizedBox(width: 8),
+                          FilledButton.icon(
+                            icon: _saving
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white))
+                                : const Icon(Icons.receipt_long),
+                            label: const Text('Save as Invoice'),
+                            style: FilledButton.styleFrom(
+                                backgroundColor: Colors.green.shade700),
+                            onPressed:
+                                _canSaveAsInvoice ? _saveAsInvoice : null,
+                          ),
                         ],
                       ),
                     ],
@@ -632,12 +764,46 @@ class _LineItemTileState extends State<_LineItemTile> {
               ],
             ),
             const SizedBox(height: 4),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                'Subtotal: ${formatCurrency(item.subtotal)}',
-                style: const TextStyle(fontSize: 12),
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Inventory badge
+                Row(
+                  children: [
+                    Icon(
+                      item.isSufficient
+                          ? Icons.check_circle_outline
+                          : Icons.warning_amber_rounded,
+                      size: 14,
+                      color: item.isSufficient
+                          ? Colors.green.shade700
+                          : Colors.orange.shade700,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      () {
+                        final b = item.avlBoxes;
+                        final p = item.avlPcs;
+                        if (b > 0 && p > 0) return 'In stock: $b box(es) + $p pcs';
+                        if (b > 0) return 'In stock: $b box(es)';
+                        if (p > 0) return 'In stock: $p pcs';
+                        return 'Out of stock';
+                      }(),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: item.isSufficient
+                            ? Colors.green.shade700
+                            : Colors.orange.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+                Text(
+                  'Subtotal: ${formatCurrency(item.subtotal)}',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ],
             ),
           ],
         ),

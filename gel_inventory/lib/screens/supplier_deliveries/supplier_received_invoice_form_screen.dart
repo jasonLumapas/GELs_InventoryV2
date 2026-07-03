@@ -908,6 +908,7 @@ class _SupplierReceivedInvoiceFormScreenState
                       : ListView.builder(
                           itemCount: _lineItems.length,
                           itemBuilder: (ctx, i) => _LineItemTile(
+                            key: ValueKey(_lineItems[i].product.id),
                             item: _lineItems[i],
                             enabled: _status != 'cancelled',
                             onRemove: () {
@@ -1023,6 +1024,7 @@ class _LineItemTile extends StatefulWidget {
   final VoidCallback onChanged;
 
   const _LineItemTile({
+    super.key,
     required this.item,
     required this.enabled,
     required this.onRemove,

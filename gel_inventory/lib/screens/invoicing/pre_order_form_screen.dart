@@ -390,8 +390,8 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
   }
 
   Future<void> _saveAsInvoice() async {
-    // Ask for payment type before finalising.
-    // paymentType is mutated directly by onChanged — no StatefulBuilder needed.
+    // invoiceType and paymentType are mutated directly by onChanged — no StatefulBuilder needed.
+    String invoiceType = 'delivery';
     String paymentType = 'cash';
     final confirmed = await showDialog<bool>(
       context: context,
@@ -406,6 +406,20 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
               'from inventory. This cannot be undone.',
             ),
             const SizedBox(height: 16),
+            const Text('Invoice type:',
+                style: TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            DropdownButtonFormField<String>(
+              initialValue: invoiceType,
+              decoration: const InputDecoration(
+                  border: OutlineInputBorder(), isDense: true),
+              items: const [
+                DropdownMenuItem(value: 'delivery', child: Text('Delivery')),
+                DropdownMenuItem(value: 'walk_in',  child: Text('Walk-in')),
+              ],
+              onChanged: (v) { if (v != null) invoiceType = v; },
+            ),
+            const SizedBox(height: 12),
             const Text('Payment type:',
                 style: TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: 6),
@@ -437,17 +451,20 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
     setState(() => _saving = true);
     try {
       final repo = ref.read(invoiceRepositoryProvider);
-      final invoiceNumber = await repo.generateInvoiceNumber(_invoiceDate);
+      // Use today+1 (the standard delivery date) so the invoice appears
+      // in the day filter, matching invoices created from invoice_create_screen.
+      final invoiceDate = DateTime.now().add(const Duration(days: 1));
+      final invoiceNumber = await repo.generateInvoiceNumber(invoiceDate);
 
       final invoice = Invoice(
         id: _id,
         clientId: _selectedClient!.id,
-        invoiceDate: _invoiceDate,
+        invoiceDate: invoiceDate,
         totalAmount: _grandTotal,
         status: 'printed',
         createdAt: _createdAt,
         invoiceNumber: invoiceNumber,
-        invoiceType: 'regular',
+        invoiceType: invoiceType,
         paymentType: paymentType,
       );
       final items = _lineItems
@@ -471,7 +488,7 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Invoice $invoiceNumber created.')),
       );
-      context.go('/invoices');
+      context.go('/pre-orders');
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

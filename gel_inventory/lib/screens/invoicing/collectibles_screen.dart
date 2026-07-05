@@ -354,8 +354,10 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
                     ButtonSegment(value: _DateFilter.year,  label: Text('Year')),
                   ],
                   selected: {_dateFilter},
-                  onSelectionChanged: (s) =>
-                      setState(() => _dateFilter = s.first),
+                  onSelectionChanged: (s) => setState(() {
+                    _dateFilter = s.first;
+                    _anchor = DateTime.now();
+                  }),
                   style: const ButtonStyle(
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     visualDensity: VisualDensity.compact,

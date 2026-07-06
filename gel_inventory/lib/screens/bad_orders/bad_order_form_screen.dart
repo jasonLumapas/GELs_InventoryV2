@@ -17,6 +17,7 @@ import '../../repositories/client_repository.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_repository.dart';
 import '../../repositories/product_repository.dart';
+import '../../repositories/supplier_repository.dart';
 import '../../widgets/common/app_scaffold.dart';
 import '../../widgets/common/search_picker.dart';
 
@@ -40,10 +41,12 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
   List<Client> _clients = [];
   List<Product> _products = [];
   Client? _selectedClient;
-  String _type = 'bad_order'; // 'bad_order' | 'return'
+  String _type = 'bad_order'; // 'bad_order' | 'return' | 'stock_release'
   DateTime _selectedDate = DateTime.now();
   final List<_BoItem> _items = [];
   Map<String, int> _inventoryQty = {};
+  Map<String, String> _suppliersById = {};
+  String? _reason; // stock_release only; stored in notes column
   bool _loading = true;
   bool _saving = false;
   Set<String> _orderedProductIds = {};
@@ -67,14 +70,17 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
   }
 
   Future<void> _load() async {
-    final clientsFuture  = ref.read(clientRepositoryProvider).getAll();
-    final productsFuture = ref.read(productRepositoryProvider).getAll();
-    final invFuture      = ref.read(inventoryRepositoryProvider).getAll();
+    final clientsFuture    = ref.read(clientRepositoryProvider).getAll();
+    final productsFuture   = ref.read(productRepositoryProvider).getAll();
+    final invFuture        = ref.read(inventoryRepositoryProvider).getAll();
+    final suppliersFuture  = ref.read(supplierRepositoryProvider).getAll();
     _clients  = await clientsFuture;
     _products = await productsFuture;
-    final invItems = await invFuture;
+    final invItems  = await invFuture;
+    final suppliers = await suppliersFuture;
     _allowNoClient = await AppSettingsService.getAllowBadOrderNoClient();
-    _inventoryQty = {for (final i in invItems) i.productId: i.quantityPieces};
+    _inventoryQty  = {for (final i in invItems) i.productId: i.quantityPieces};
+    _suppliersById = {for (final s in suppliers) s.id: s.name};
 
     if (widget.draftId != null) {
       await _loadDraft(widget.draftId!);
@@ -102,7 +108,11 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
     _selectedClient = draft.noClient
         ? null
         : _clients.where((c) => c.id == draft.clientId).firstOrNull;
-    _notesCtrl.text = draft.notes ?? '';
+    if (draft.type == 'stock_release') {
+      _reason = draft.notes;
+    } else {
+      _notesCtrl.text = draft.notes ?? '';
+    }
 
     final productsById = {for (final p in _products) p.id: p};
     for (final di in draft.items) {
@@ -127,15 +137,17 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
   }
 
   bool get _hasDraftContent =>
-      (_selectedClient != null || _noClient) && _items.isNotEmpty;
+      (_selectedClient != null || _noClient || _type == 'stock_release') && _items.isNotEmpty;
 
   BadOrderDraft _buildDraftPayload() => BadOrderDraft(
         id: _draftId,
         type: _type,
-        clientId: _noClient ? null : _selectedClient?.id,
-        noClient: _noClient,
+        clientId: (_noClient || (_type == 'stock_release' && _selectedClient == null)) ? null : _selectedClient?.id,
+        noClient: _noClient || (_type == 'stock_release' && _selectedClient == null),
         date: _selectedDate,
-        notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+        notes: _type == 'stock_release'
+            ? _reason
+            : (_notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim()),
         items: _items
             .map((i) => BadOrderDraftItem(
                   productId: i.productId,
@@ -171,9 +183,10 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
 
   bool get _canSave {
     if (_saving) return false;
-    if (_selectedClient == null && !_noClient) return false;
+    if (_selectedClient == null && !_noClient && _type != 'stock_release') return false;
+    if (_type == 'stock_release' && (_reason == null || _reason!.isEmpty)) return false;
     if (_items.isEmpty) return false;
-    if (_type == 'bad_order') {
+    if (_type == 'bad_order' || _type == 'stock_release') {
       for (int i = 0; i < _items.length; i++) {
         final item = _items[i];
         if (item.quantityInPieces <= 0) return false;
@@ -260,13 +273,14 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
   }
 
   Future<void> _pickProduct() async {
-    if (_selectedClient == null && !_noClient) {
+    if (_selectedClient == null && !_noClient && _type != 'stock_release') {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Select a client first.')));
       return;
     }
     final already = _items.map((i) => i.productId).toSet();
-    final available = _noClient
+    final showAll = _noClient || _type == 'stock_release';
+    final available = showAll
         ? _products.where((p) => !already.contains(p.id)).toList()
         : _products
             .where((p) =>
@@ -274,12 +288,27 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
             .toList();
     if (available.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(_noClient
+          content: Text(showAll
               ? 'No products available to add.'
               : 'No previously ordered products found for this client.')));
       return;
     }
-    final isBadOrder = _type == 'bad_order';
+    final isBadOrder = _type == 'bad_order' || _type == 'stock_release';
+
+    List<SearchFilter<Product>>? supplierFilters;
+    if (_type == 'stock_release') {
+      final ids = available.map((p) => p.supplierId).toSet();
+      final list = ids
+          .where(_suppliersById.containsKey)
+          .map((id) => SearchFilter<Product>(
+                label: _suppliersById[id]!,
+                test: (p) => p.supplierId == id,
+              ))
+          .toList()
+        ..sort((a, b) => a.label.compareTo(b.label));
+      if (list.isNotEmpty) supplierFilters = list;
+    }
+
     // Multi-pick mode: the dialog stays open after each selection so the
     // user can add several products in one go, closing only via "Done" or
     // dismissal.
@@ -289,6 +318,7 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
       items: available,
       labelOf: (p) => p.name,
       searchableOf: (p) => '${p.name} ${p.productCode ?? ''}',
+      filters: supplierFilters,
       leadingOf: isBadOrder
           ? (p) => Icon(
                 _effectiveAvailable(p.id) > 0
@@ -342,7 +372,7 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
     setState(() => _saving = true);
     _autoSaveTimer?.cancel();
     final now = DateTime.now();
-    final clientId = _noClient
+    final clientId = (_noClient || (_type == 'stock_release' && _selectedClient == null))
         ? (await ref.read(clientRepositoryProvider).getOrCreateNoClientPlaceholder()).id
         : _selectedClient!.id;
     final order = BadOrder(
@@ -350,7 +380,9 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
       clientId: clientId,
       date: _selectedDate,
       type: _type,
-      notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+      notes: _type == 'stock_release'
+          ? _reason
+          : (_notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim()),
       createdAt: now,
     );
     final items = _items
@@ -438,10 +470,18 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                               value: 'return',
                               icon: Icon(Icons.undo, size: 16),
                               label: Text('Return')),
+                          ButtonSegment(
+                              value: 'stock_release',
+                              icon: Icon(Icons.output, size: 16),
+                              label: Text('Stock Release')),
                         ],
                         selected: {_type},
                         onSelectionChanged: (s) {
-                          setState(() => _type = s.first);
+                          setState(() {
+                            _type = s.first;
+                            _items.clear();
+                            if (s.first != 'stock_release') _reason = null;
+                          });
                           _scheduleAutoSave();
                         },
                       ),
@@ -458,6 +498,18 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                             style: TextStyle(fontSize: 12),
                           ),
                         )
+                      else if (_type == 'stock_release')
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade50,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'Stock releases will deduct the quantity from inventory (stock out).',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        )
                       else
                         Container(
                           padding: const EdgeInsets.all(8),
@@ -470,6 +522,38 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                             style: TextStyle(fontSize: 12),
                           ),
                         ),
+                      if (_type == 'stock_release') ...[
+                        const SizedBox(height: 8),
+                        InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'Reason *',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: _reason,
+                              isDense: true,
+                              isExpanded: true,
+                              hint: const Text('Select reason…'),
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'Missed delivery',
+                                  child: Text('Missed delivery'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'Give-aways',
+                                  child: Text('Give-aways'),
+                                ),
+                              ],
+                              onChanged: (v) {
+                                setState(() => _reason = v);
+                                _scheduleAutoSave();
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       // Date
                       InkWell(
@@ -488,29 +572,36 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                       const SizedBox(height: 8),
                       // Client
                       InkWell(
-                        onTap: _noClient ? null : _pickClient,
+                        onTap: (_noClient && _type != 'stock_release')
+                            ? null
+                            : _pickClient,
                         borderRadius: BorderRadius.circular(4),
                         child: InputDecorator(
                           decoration: InputDecoration(
-                            labelText: 'Client',
+                            labelText: _type == 'stock_release'
+                                ? 'Client (optional)'
+                                : 'Client',
                             border: const OutlineInputBorder(),
-                            suffixIcon:
-                                _noClient ? null : const Icon(Icons.search),
-                            enabled: !_noClient,
+                            suffixIcon: (_noClient && _type != 'stock_release')
+                                ? null
+                                : const Icon(Icons.search),
+                            enabled:
+                                !_noClient || _type == 'stock_release',
                           ),
                           child: Text(
-                            _noClient
+                            (_noClient && _type != 'stock_release')
                                 ? 'No Client Specified'
                                 : _selectedClient?.name ?? 'Tap to search…',
                             style: TextStyle(
-                              color: _noClient || _selectedClient == null
+                              color: ((_noClient && _type != 'stock_release') ||
+                                      _selectedClient == null)
                                   ? Theme.of(context).hintColor
                                   : null,
                             ),
                           ),
                         ),
                       ),
-                      if (_allowNoClient)
+                      if (_allowNoClient && _type != 'stock_release')
                         CheckboxListTile(
                           contentPadding: EdgeInsets.zero,
                           controlAffinity: ListTileControlAffinity.leading,
@@ -520,13 +611,14 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                           onChanged: (v) => _toggleNoClient(v ?? false),
                         ),
                       const SizedBox(height: 8),
-                      // Notes
-                      TextField(
-                        controller: _notesCtrl,
-                        decoration:
-                            const InputDecoration(labelText: 'Notes (optional)'),
-                        onChanged: (_) => _scheduleAutoSave(),
-                      ),
+                      // Notes (not shown for stock_release — reason is used instead)
+                      if (_type != 'stock_release')
+                        TextField(
+                          controller: _notesCtrl,
+                          decoration:
+                              const InputDecoration(labelText: 'Notes (optional)'),
+                          onChanged: (_) => _scheduleAutoSave(),
+                        ),
                     ],
                   ),
                 ),
@@ -560,7 +652,7 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                   child: _items.isEmpty
                       ? Center(
                           child: Text(
-                            _noClient
+                            (_noClient || _type == 'stock_release')
                                 ? 'Add at least one product.'
                                 : _selectedClient == null
                                     ? 'Select a client, then add at least one product.'
@@ -581,7 +673,7 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                             availablePieces: _effectiveAvailable(
                                 _items[i].productId,
                                 excludeIndex: i),
-                            isBadOrder: _type == 'bad_order',
+                            isBadOrder: _type == 'bad_order' || _type == 'stock_release',
                             onRemove: () {
                               setState(() => _items.removeAt(i));
                               _scheduleAutoSave();

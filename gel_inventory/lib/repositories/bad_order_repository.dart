@@ -76,6 +76,34 @@ class BadOrderRepository extends BaseRepository {
         .toList();
   }
 
+  /// Returns all items grouped by bad-order id — used for product-name search.
+  Future<Map<String, List<BadOrderItem>>> getAllItemsGrouped() async {
+    if (isOnline) {
+      final data = await Supabase.instance.client
+          .from('bad_order_items')
+          .select();
+      final items =
+          (data as List).map((j) => BadOrderItem.fromJson(j)).toList();
+      final map = <String, List<BadOrderItem>>{};
+      for (final item in items) {
+        (map[item.badOrderId] ??= []).add(item);
+      }
+      return map;
+    }
+    final rows = await db.select(db.badOrderItems).get();
+    final map = <String, List<BadOrderItem>>{};
+    for (final r in rows) {
+      (map[r.badOrderId] ??= []).add(BadOrderItem(
+        id: r.id,
+        badOrderId: r.badOrderId,
+        productId: r.productId,
+        unitType: r.unitType,
+        quantity: r.quantity,
+      ));
+    }
+    return map;
+  }
+
   /// Saves the bad order and its items.
   /// Returns: if type == 'return', restores inventory; 'bad_order' does not.
   Future<void> save({

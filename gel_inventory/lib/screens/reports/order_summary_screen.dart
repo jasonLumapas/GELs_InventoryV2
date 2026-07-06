@@ -101,7 +101,7 @@ class _OrderSummaryScreenState extends ConsumerState<OrderSummaryScreen> {
 
     final badOrders = await ref.read(badOrderRepositoryProvider).getAll();
     for (final o in badOrders) {
-      if (o.type != 'bad_order') continue;
+      if (o.type != 'bad_order' && o.type != 'stock_release') continue;
       if (o.date.isBefore(start) || !o.date.isBefore(end)) continue;
       final items = await ref.read(badOrderRepositoryProvider).getItems(o.id);
       for (final item in items) {

@@ -442,7 +442,7 @@ class _SupplierProductImportTabState
                         height: 16,
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.upload),
+                    : const Icon(Icons.download),
                 label: const Text('Import'),
                 onPressed: _importing ? null : _import,
               ),

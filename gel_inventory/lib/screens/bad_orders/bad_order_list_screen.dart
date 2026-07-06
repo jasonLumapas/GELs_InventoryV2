@@ -14,15 +14,111 @@ import '../../utils/currency_format.dart';
 import '../../widgets/common/app_scaffold.dart';
 import '../../widgets/common/confirm_dialog.dart';
 
-class BadOrderListScreen extends ConsumerWidget {
+class BadOrderListScreen extends ConsumerStatefulWidget {
   const BadOrderListScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<BadOrderListScreen> createState() =>
+      _BadOrderListScreenState();
+}
+
+class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen> {
+  final _searchCtrl = TextEditingController();
+  String? _filterType; // null = all
+  DateTime? _filterFrom;
+  DateTime? _filterTo;
+  Map<String, List<String>> _productNamesByOrderId = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _searchCtrl.addListener(() => setState(() {}));
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _loadProductNames());
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadProductNames() async {
+    final grouped =
+        await ref.read(badOrderRepositoryProvider).getAllItemsGrouped();
+    final products = await ref.read(productRepositoryProvider).getAll();
+    final nameMap = {for (final p in products) p.id: p.name};
+    if (!mounted) return;
+    setState(() {
+      _productNamesByOrderId = {
+        for (final e in grouped.entries)
+          e.key: e.value.map((i) => nameMap[i.productId] ?? '').toList(),
+      };
+    });
+  }
+
+  List<BadOrder> _applyFilters(
+      List<BadOrder> orders, Map<String, Client> clientsMap) {
+    final q = _searchCtrl.text.toLowerCase().trim();
+    return orders.where((o) {
+      if (_filterType != null && o.type != _filterType) return false;
+      if (_filterFrom != null) {
+        final from = DateTime(
+            _filterFrom!.year, _filterFrom!.month, _filterFrom!.day);
+        if (o.date.isBefore(from)) return false;
+      }
+      if (_filterTo != null) {
+        final to = DateTime(
+            _filterTo!.year, _filterTo!.month, _filterTo!.day + 1);
+        if (!o.date.isBefore(to)) return false;
+      }
+      if (q.isNotEmpty) {
+        final clientName =
+            (clientsMap[o.clientId]?.name ?? '').toLowerCase();
+        final productNames = (_productNamesByOrderId[o.id] ?? [])
+            .map((n) => n.toLowerCase());
+        if (!clientName.contains(q) &&
+            !productNames.any((n) => n.contains(q))) {
+          return false;
+        }
+      }
+      return true;
+    }).toList();
+  }
+
+  Future<void> _pickDateRange() async {
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      initialDateRange: _filterFrom != null && _filterTo != null
+          ? DateTimeRange(start: _filterFrom!, end: _filterTo!)
+          : null,
+    );
+    if (picked != null) {
+      setState(() {
+        _filterFrom = picked.start;
+        _filterTo = picked.end;
+      });
+    }
+  }
+
+  bool get _hasFilters =>
+      _filterType != null ||
+      _filterFrom != null ||
+      _searchCtrl.text.isNotEmpty;
+
+  @override
+  Widget build(BuildContext context) {
     final listAsync    = ref.watch(badOrdersListProvider);
     final clientsAsync = ref.watch(clientsListProvider);
     final draftsAsync  = ref.watch(badOrderDraftsProvider);
     final dateFmt      = DateFormat('MMM dd, yyyy');
+    final shortFmt     = DateFormat('MMM d');
+
+    final clientsMap = <String, Client>{
+      for (final c in clientsAsync.valueOrNull ?? []) c.id: c
+    };
 
     return AppScaffold(
       title: 'Bad Orders & Returns',
@@ -36,15 +132,104 @@ class BadOrderListScreen extends ConsumerWidget {
       ],
       body: Column(
         children: [
+          // ── Search bar ─────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: TextField(
+              controller: _searchCtrl,
+              decoration: InputDecoration(
+                hintText: 'Search by client or product…',
+                prefixIcon: const Icon(Icons.search),
+                isDense: true,
+                border: const OutlineInputBorder(),
+                suffixIcon: _searchCtrl.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () => _searchCtrl.clear(),
+                      )
+                    : null,
+              ),
+            ),
+          ),
+
+          // ── Filter row ────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            child: Row(
+              children: [
+                // Date range chip
+                ActionChip(
+                  avatar: Icon(
+                    Icons.calendar_today,
+                    size: 14,
+                    color: _filterFrom != null
+                        ? Theme.of(context).colorScheme.onPrimary
+                        : null,
+                  ),
+                  label: Text(
+                    _filterFrom == null
+                        ? 'All dates'
+                        : _filterTo == null ||
+                                _filterFrom!
+                                    .isAtSameMomentAs(_filterTo!)
+                            ? shortFmt.format(_filterFrom!)
+                            : '${shortFmt.format(_filterFrom!)} – ${shortFmt.format(_filterTo!)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _filterFrom != null
+                          ? Theme.of(context).colorScheme.onPrimary
+                          : null,
+                    ),
+                  ),
+                  backgroundColor: _filterFrom != null
+                      ? Theme.of(context).colorScheme.primary
+                      : null,
+                  onPressed: _filterFrom == null
+                      ? _pickDateRange
+                      : () => setState(() {
+                            _filterFrom = null;
+                            _filterTo = null;
+                          }),
+                ),
+                const SizedBox(width: 6),
+                // Type filter chips
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final (typeValue, typeLabel) in [
+                          (null as String?, 'All'),
+                          ('bad_order', 'Bad Order'),
+                          ('return', 'Return'),
+                          ('stock_release', 'Stock Release'),
+                        ])
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: ChoiceChip(
+                              label: Text(typeLabel,
+                                  style: const TextStyle(fontSize: 12)),
+                              selected: _filterType == typeValue,
+                              onSelected: (_) => setState(
+                                  () => _filterType = typeValue),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const Divider(height: 1),
+
           // ── Draft bad orders / returns banner ──────────────────────────
           draftsAsync.when(
             loading: () => const SizedBox.shrink(),
             error: (_, _) => const SizedBox.shrink(),
             data: (drafts) {
               if (drafts.isEmpty) return const SizedBox.shrink();
-              final clientsMap = {
-                for (final c in clientsAsync.valueOrNull ?? []) c.id: c
-              };
               return Container(
                 width: double.infinity,
                 color: Colors.amber.shade100,
@@ -63,11 +248,13 @@ class BadOrderListScreen extends ConsumerWidget {
                       ),
                     ),
                     ...drafts.map((d) {
-                      final client = d.noClient
-                          ? null
-                          : clientsMap[d.clientId];
-                      final typeLabel =
-                          d.type == 'return' ? 'Return' : 'Bad Order';
+                      final client =
+                          d.noClient ? null : clientsMap[d.clientId];
+                      final typeLabel = d.type == 'return'
+                          ? 'Return'
+                          : d.type == 'stock_release'
+                              ? 'Stock Release'
+                              : 'Bad Order';
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 2),
                         child: Row(
@@ -117,31 +304,47 @@ class BadOrderListScreen extends ConsumerWidget {
               );
             },
           ),
+
+          // ── Orders list ───────────────────────────────────────────────
           Expanded(
             child: listAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
+              loading: () =>
+                  const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(child: Text('Error: $e')),
               data: (orders) {
-                final clientsMap = {
-                  for (final c in clientsAsync.valueOrNull ?? []) c.id: c
-                };
-                if (orders.isEmpty) {
-                  return const Center(
-                      child: Text('No bad orders or returns yet.'));
+                final filtered = _applyFilters(orders, clientsMap);
+                if (filtered.isEmpty) {
+                  return Center(
+                    child: Text(
+                      _hasFilters
+                          ? 'No results match your search or filters.'
+                          : 'No bad orders or returns yet.',
+                      style: const TextStyle(color: Colors.grey),
+                      textAlign: TextAlign.center,
+                    ),
+                  );
                 }
                 return ListView.separated(
-                  itemCount: orders.length,
+                  itemCount: filtered.length,
                   separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (ctx, i) {
-                    final o = orders[i];
+                    final o = filtered[i];
                     final client = clientsMap[o.clientId];
                     return ListTile(
                       leading: Icon(
-                        o.isReturn ? Icons.undo : Icons.remove_shopping_cart,
-                        color: o.isReturn ? Colors.green : Colors.orange,
+                        o.isReturn
+                            ? Icons.undo
+                            : o.isStockRelease
+                                ? Icons.output
+                                : Icons.remove_shopping_cart,
+                        color: o.isReturn
+                            ? Colors.green
+                            : o.isStockRelease
+                                ? Colors.red
+                                : Colors.orange,
                       ),
-                      title:
-                          Text('${o.typeLabel} — ${client?.name ?? o.clientId}'),
+                      title: Text(
+                          '${o.typeLabel} — ${client?.name ?? o.clientId}'),
                       subtitle: Text(
                           '${dateFmt.format(o.date)}${o.notes != null ? ' • ${o.notes}' : ''}'),
                       onTap: () => _showDetail(context, ref, o, client),
@@ -432,9 +635,14 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
                 Icon(
                   widget.order.isReturn
                       ? Icons.undo
-                      : Icons.remove_shopping_cart,
-                  color:
-                      widget.order.isReturn ? Colors.green : Colors.orange,
+                      : widget.order.isStockRelease
+                          ? Icons.output
+                          : Icons.remove_shopping_cart,
+                  color: widget.order.isReturn
+                      ? Colors.green
+                      : widget.order.isStockRelease
+                          ? Colors.red
+                          : Colors.orange,
                 ),
                 const SizedBox(width: 8),
                 Text(
@@ -457,7 +665,10 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
                 _metaRow('Date', dateFmt.format(widget.order.date)),
                 if (widget.order.notes != null &&
                     widget.order.notes!.isNotEmpty)
-                  _metaRow('Notes', widget.order.notes!),
+                  _metaRow(
+                    widget.order.isStockRelease ? 'Reason' : 'Notes',
+                    widget.order.notes!,
+                  ),
               ],
             ),
           ),

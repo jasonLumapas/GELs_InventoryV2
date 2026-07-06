@@ -2,7 +2,7 @@ class BadOrder {
   final String id;
   final String clientId;
   final DateTime date;
-  final String type; // 'bad_order' | 'return'
+  final String type; // 'bad_order' | 'return' | 'stock_release'
   final String? notes;
   final DateTime createdAt;
 
@@ -34,5 +34,10 @@ class BadOrder {
       };
 
   bool get isReturn => type == 'return';
-  String get typeLabel => isReturn ? 'Return' : 'Bad Order';
+  bool get isStockRelease => type == 'stock_release';
+  String get typeLabel {
+    if (isReturn) return 'Return';
+    if (isStockRelease) return 'Stock Release';
+    return 'Bad Order';
+  }
 }

@@ -32,6 +32,7 @@ import 'screens/purchase_orders/purchase_order_form_screen.dart';
 import 'screens/invoicing/pre_order_list_screen.dart';
 import 'screens/invoicing/pre_order_form_screen.dart';
 import 'screens/invoicing/pre_order_import_screen.dart';
+import 'screens/van_selling/stocks_for_sale_loading_screen.dart';
 
 final _router = GoRouter(
   initialLocation: '/',
@@ -117,6 +118,11 @@ final _router = GoRouter(
     GoRoute(
         path: '/van-selling',
         builder: (ctx, s) => const VanSellingScreen()),
+
+    // Stocks for Sale Loading
+    GoRoute(
+        path: '/stocks-loading',
+        builder: (ctx, s) => const StocksForSaleLoadingScreen()),
 
     // Collectibles
     GoRoute(

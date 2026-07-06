@@ -416,7 +416,7 @@ class _PreOrderListScreenState
                     child: CircularProgressIndicator(strokeWidth: 2)),
               )
             : IconButton(
-                icon: const Icon(Icons.file_upload_outlined),
+                icon: const Icon(Icons.file_download),
                 tooltip: 'Import confirmed order file',
                 onPressed: _importConfirmedJson,
               ),
@@ -434,7 +434,7 @@ class _PreOrderListScreenState
                     child: CircularProgressIndicator(strokeWidth: 2)),
               )
             : IconButton(
-                icon: const Icon(Icons.file_download),
+                icon: const Icon(Icons.file_upload_outlined),
                 tooltip: 'Export for main system (JSON)',
                 onPressed: _exportJson,
               ),

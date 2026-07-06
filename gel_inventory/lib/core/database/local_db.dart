@@ -401,6 +401,32 @@ class PurchaseOrderItems extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Header record for a stocks-for-sale loading import (local-only, no sync).
+class StocksLoadings extends Table {
+  TextColumn get id => text()();
+  /// The date the loading is intended for (display / layout date).
+  DateTimeColumn get loadingDate => dateTime()();
+  DateTimeColumn get importedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Line items for a stocks-for-sale loading import.
+class StocksLoadingItems extends Table {
+  TextColumn get id => text()();
+  TextColumn get stocksLoadingId =>
+      text().references(StocksLoadings, #id)();
+  TextColumn get productCode => text().nullable()();
+  TextColumn get productName => text()();
+  TextColumn get supplierName => text()();
+  IntColumn get quantityPieces => integer()();
+  IntColumn get piecesPerBox => integer().withDefault(const Constant(1))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// Header record for a saved pre-order review (local-only, no sync).
 class PreOrderReviews extends Table {
   TextColumn get id => text()();
@@ -472,6 +498,8 @@ class SyncQueue extends Table {
   PurchaseOrderItems,
   PreOrderReviews,
   PreOrderReviewItems,
+  StocksLoadings,
+  StocksLoadingItems,
   SyncQueue,
 ])
 class LocalDatabase extends _$LocalDatabase {
@@ -650,6 +678,8 @@ class LocalDatabase extends _$LocalDatabase {
           if (from < 36) {
             await _addColumnIfMissing(
                 m.database, 'invoices', 'swap_amount', 'REAL');
+            await m.createTable(stocksLoadings);
+            await m.createTable(stocksLoadingItems);
           }
           if (from < 37) {
             await _addColumnIfMissing(

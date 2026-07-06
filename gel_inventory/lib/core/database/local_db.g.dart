@@ -12383,6 +12383,774 @@ class PreOrderReviewItemsCompanion extends UpdateCompanion<PreOrderReviewItem> {
   }
 }
 
+class $StocksLoadingsTable extends StocksLoadings
+    with TableInfo<$StocksLoadingsTable, StocksLoading> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $StocksLoadingsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _loadingDateMeta = const VerificationMeta(
+    'loadingDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> loadingDate = GeneratedColumn<DateTime>(
+    'loading_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _importedAtMeta = const VerificationMeta(
+    'importedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> importedAt = GeneratedColumn<DateTime>(
+    'imported_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, loadingDate, importedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'stocks_loadings';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<StocksLoading> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('loading_date')) {
+      context.handle(
+        _loadingDateMeta,
+        loadingDate.isAcceptableOrUnknown(
+          data['loading_date']!,
+          _loadingDateMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_loadingDateMeta);
+    }
+    if (data.containsKey('imported_at')) {
+      context.handle(
+        _importedAtMeta,
+        importedAt.isAcceptableOrUnknown(data['imported_at']!, _importedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  StocksLoading map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return StocksLoading(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      loadingDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}loading_date'],
+      )!,
+      importedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}imported_at'],
+      )!,
+    );
+  }
+
+  @override
+  $StocksLoadingsTable createAlias(String alias) {
+    return $StocksLoadingsTable(attachedDatabase, alias);
+  }
+}
+
+class StocksLoading extends DataClass implements Insertable<StocksLoading> {
+  final String id;
+
+  /// The date the loading is intended for (display / layout date).
+  final DateTime loadingDate;
+  final DateTime importedAt;
+  const StocksLoading({
+    required this.id,
+    required this.loadingDate,
+    required this.importedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['loading_date'] = Variable<DateTime>(loadingDate);
+    map['imported_at'] = Variable<DateTime>(importedAt);
+    return map;
+  }
+
+  StocksLoadingsCompanion toCompanion(bool nullToAbsent) {
+    return StocksLoadingsCompanion(
+      id: Value(id),
+      loadingDate: Value(loadingDate),
+      importedAt: Value(importedAt),
+    );
+  }
+
+  factory StocksLoading.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return StocksLoading(
+      id: serializer.fromJson<String>(json['id']),
+      loadingDate: serializer.fromJson<DateTime>(json['loadingDate']),
+      importedAt: serializer.fromJson<DateTime>(json['importedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'loadingDate': serializer.toJson<DateTime>(loadingDate),
+      'importedAt': serializer.toJson<DateTime>(importedAt),
+    };
+  }
+
+  StocksLoading copyWith({
+    String? id,
+    DateTime? loadingDate,
+    DateTime? importedAt,
+  }) => StocksLoading(
+    id: id ?? this.id,
+    loadingDate: loadingDate ?? this.loadingDate,
+    importedAt: importedAt ?? this.importedAt,
+  );
+  StocksLoading copyWithCompanion(StocksLoadingsCompanion data) {
+    return StocksLoading(
+      id: data.id.present ? data.id.value : this.id,
+      loadingDate: data.loadingDate.present
+          ? data.loadingDate.value
+          : this.loadingDate,
+      importedAt: data.importedAt.present
+          ? data.importedAt.value
+          : this.importedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('StocksLoading(')
+          ..write('id: $id, ')
+          ..write('loadingDate: $loadingDate, ')
+          ..write('importedAt: $importedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, loadingDate, importedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is StocksLoading &&
+          other.id == this.id &&
+          other.loadingDate == this.loadingDate &&
+          other.importedAt == this.importedAt);
+}
+
+class StocksLoadingsCompanion extends UpdateCompanion<StocksLoading> {
+  final Value<String> id;
+  final Value<DateTime> loadingDate;
+  final Value<DateTime> importedAt;
+  final Value<int> rowid;
+  const StocksLoadingsCompanion({
+    this.id = const Value.absent(),
+    this.loadingDate = const Value.absent(),
+    this.importedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  StocksLoadingsCompanion.insert({
+    required String id,
+    required DateTime loadingDate,
+    this.importedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       loadingDate = Value(loadingDate);
+  static Insertable<StocksLoading> custom({
+    Expression<String>? id,
+    Expression<DateTime>? loadingDate,
+    Expression<DateTime>? importedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (loadingDate != null) 'loading_date': loadingDate,
+      if (importedAt != null) 'imported_at': importedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  StocksLoadingsCompanion copyWith({
+    Value<String>? id,
+    Value<DateTime>? loadingDate,
+    Value<DateTime>? importedAt,
+    Value<int>? rowid,
+  }) {
+    return StocksLoadingsCompanion(
+      id: id ?? this.id,
+      loadingDate: loadingDate ?? this.loadingDate,
+      importedAt: importedAt ?? this.importedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (loadingDate.present) {
+      map['loading_date'] = Variable<DateTime>(loadingDate.value);
+    }
+    if (importedAt.present) {
+      map['imported_at'] = Variable<DateTime>(importedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('StocksLoadingsCompanion(')
+          ..write('id: $id, ')
+          ..write('loadingDate: $loadingDate, ')
+          ..write('importedAt: $importedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $StocksLoadingItemsTable extends StocksLoadingItems
+    with TableInfo<$StocksLoadingItemsTable, StocksLoadingItem> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $StocksLoadingItemsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _stocksLoadingIdMeta = const VerificationMeta(
+    'stocksLoadingId',
+  );
+  @override
+  late final GeneratedColumn<String> stocksLoadingId = GeneratedColumn<String>(
+    'stocks_loading_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES stocks_loadings (id)',
+    ),
+  );
+  static const VerificationMeta _productCodeMeta = const VerificationMeta(
+    'productCode',
+  );
+  @override
+  late final GeneratedColumn<String> productCode = GeneratedColumn<String>(
+    'product_code',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _productNameMeta = const VerificationMeta(
+    'productName',
+  );
+  @override
+  late final GeneratedColumn<String> productName = GeneratedColumn<String>(
+    'product_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _supplierNameMeta = const VerificationMeta(
+    'supplierName',
+  );
+  @override
+  late final GeneratedColumn<String> supplierName = GeneratedColumn<String>(
+    'supplier_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _quantityPiecesMeta = const VerificationMeta(
+    'quantityPieces',
+  );
+  @override
+  late final GeneratedColumn<int> quantityPieces = GeneratedColumn<int>(
+    'quantity_pieces',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _piecesPerBoxMeta = const VerificationMeta(
+    'piecesPerBox',
+  );
+  @override
+  late final GeneratedColumn<int> piecesPerBox = GeneratedColumn<int>(
+    'pieces_per_box',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    stocksLoadingId,
+    productCode,
+    productName,
+    supplierName,
+    quantityPieces,
+    piecesPerBox,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'stocks_loading_items';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<StocksLoadingItem> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('stocks_loading_id')) {
+      context.handle(
+        _stocksLoadingIdMeta,
+        stocksLoadingId.isAcceptableOrUnknown(
+          data['stocks_loading_id']!,
+          _stocksLoadingIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_stocksLoadingIdMeta);
+    }
+    if (data.containsKey('product_code')) {
+      context.handle(
+        _productCodeMeta,
+        productCode.isAcceptableOrUnknown(
+          data['product_code']!,
+          _productCodeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('product_name')) {
+      context.handle(
+        _productNameMeta,
+        productName.isAcceptableOrUnknown(
+          data['product_name']!,
+          _productNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_productNameMeta);
+    }
+    if (data.containsKey('supplier_name')) {
+      context.handle(
+        _supplierNameMeta,
+        supplierName.isAcceptableOrUnknown(
+          data['supplier_name']!,
+          _supplierNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_supplierNameMeta);
+    }
+    if (data.containsKey('quantity_pieces')) {
+      context.handle(
+        _quantityPiecesMeta,
+        quantityPieces.isAcceptableOrUnknown(
+          data['quantity_pieces']!,
+          _quantityPiecesMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_quantityPiecesMeta);
+    }
+    if (data.containsKey('pieces_per_box')) {
+      context.handle(
+        _piecesPerBoxMeta,
+        piecesPerBox.isAcceptableOrUnknown(
+          data['pieces_per_box']!,
+          _piecesPerBoxMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  StocksLoadingItem map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return StocksLoadingItem(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      stocksLoadingId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}stocks_loading_id'],
+      )!,
+      productCode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}product_code'],
+      ),
+      productName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}product_name'],
+      )!,
+      supplierName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}supplier_name'],
+      )!,
+      quantityPieces: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}quantity_pieces'],
+      )!,
+      piecesPerBox: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}pieces_per_box'],
+      )!,
+    );
+  }
+
+  @override
+  $StocksLoadingItemsTable createAlias(String alias) {
+    return $StocksLoadingItemsTable(attachedDatabase, alias);
+  }
+}
+
+class StocksLoadingItem extends DataClass
+    implements Insertable<StocksLoadingItem> {
+  final String id;
+  final String stocksLoadingId;
+  final String? productCode;
+  final String productName;
+  final String supplierName;
+  final int quantityPieces;
+  final int piecesPerBox;
+  const StocksLoadingItem({
+    required this.id,
+    required this.stocksLoadingId,
+    this.productCode,
+    required this.productName,
+    required this.supplierName,
+    required this.quantityPieces,
+    required this.piecesPerBox,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['stocks_loading_id'] = Variable<String>(stocksLoadingId);
+    if (!nullToAbsent || productCode != null) {
+      map['product_code'] = Variable<String>(productCode);
+    }
+    map['product_name'] = Variable<String>(productName);
+    map['supplier_name'] = Variable<String>(supplierName);
+    map['quantity_pieces'] = Variable<int>(quantityPieces);
+    map['pieces_per_box'] = Variable<int>(piecesPerBox);
+    return map;
+  }
+
+  StocksLoadingItemsCompanion toCompanion(bool nullToAbsent) {
+    return StocksLoadingItemsCompanion(
+      id: Value(id),
+      stocksLoadingId: Value(stocksLoadingId),
+      productCode: productCode == null && nullToAbsent
+          ? const Value.absent()
+          : Value(productCode),
+      productName: Value(productName),
+      supplierName: Value(supplierName),
+      quantityPieces: Value(quantityPieces),
+      piecesPerBox: Value(piecesPerBox),
+    );
+  }
+
+  factory StocksLoadingItem.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return StocksLoadingItem(
+      id: serializer.fromJson<String>(json['id']),
+      stocksLoadingId: serializer.fromJson<String>(json['stocksLoadingId']),
+      productCode: serializer.fromJson<String?>(json['productCode']),
+      productName: serializer.fromJson<String>(json['productName']),
+      supplierName: serializer.fromJson<String>(json['supplierName']),
+      quantityPieces: serializer.fromJson<int>(json['quantityPieces']),
+      piecesPerBox: serializer.fromJson<int>(json['piecesPerBox']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'stocksLoadingId': serializer.toJson<String>(stocksLoadingId),
+      'productCode': serializer.toJson<String?>(productCode),
+      'productName': serializer.toJson<String>(productName),
+      'supplierName': serializer.toJson<String>(supplierName),
+      'quantityPieces': serializer.toJson<int>(quantityPieces),
+      'piecesPerBox': serializer.toJson<int>(piecesPerBox),
+    };
+  }
+
+  StocksLoadingItem copyWith({
+    String? id,
+    String? stocksLoadingId,
+    Value<String?> productCode = const Value.absent(),
+    String? productName,
+    String? supplierName,
+    int? quantityPieces,
+    int? piecesPerBox,
+  }) => StocksLoadingItem(
+    id: id ?? this.id,
+    stocksLoadingId: stocksLoadingId ?? this.stocksLoadingId,
+    productCode: productCode.present ? productCode.value : this.productCode,
+    productName: productName ?? this.productName,
+    supplierName: supplierName ?? this.supplierName,
+    quantityPieces: quantityPieces ?? this.quantityPieces,
+    piecesPerBox: piecesPerBox ?? this.piecesPerBox,
+  );
+  StocksLoadingItem copyWithCompanion(StocksLoadingItemsCompanion data) {
+    return StocksLoadingItem(
+      id: data.id.present ? data.id.value : this.id,
+      stocksLoadingId: data.stocksLoadingId.present
+          ? data.stocksLoadingId.value
+          : this.stocksLoadingId,
+      productCode: data.productCode.present
+          ? data.productCode.value
+          : this.productCode,
+      productName: data.productName.present
+          ? data.productName.value
+          : this.productName,
+      supplierName: data.supplierName.present
+          ? data.supplierName.value
+          : this.supplierName,
+      quantityPieces: data.quantityPieces.present
+          ? data.quantityPieces.value
+          : this.quantityPieces,
+      piecesPerBox: data.piecesPerBox.present
+          ? data.piecesPerBox.value
+          : this.piecesPerBox,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('StocksLoadingItem(')
+          ..write('id: $id, ')
+          ..write('stocksLoadingId: $stocksLoadingId, ')
+          ..write('productCode: $productCode, ')
+          ..write('productName: $productName, ')
+          ..write('supplierName: $supplierName, ')
+          ..write('quantityPieces: $quantityPieces, ')
+          ..write('piecesPerBox: $piecesPerBox')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    stocksLoadingId,
+    productCode,
+    productName,
+    supplierName,
+    quantityPieces,
+    piecesPerBox,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is StocksLoadingItem &&
+          other.id == this.id &&
+          other.stocksLoadingId == this.stocksLoadingId &&
+          other.productCode == this.productCode &&
+          other.productName == this.productName &&
+          other.supplierName == this.supplierName &&
+          other.quantityPieces == this.quantityPieces &&
+          other.piecesPerBox == this.piecesPerBox);
+}
+
+class StocksLoadingItemsCompanion extends UpdateCompanion<StocksLoadingItem> {
+  final Value<String> id;
+  final Value<String> stocksLoadingId;
+  final Value<String?> productCode;
+  final Value<String> productName;
+  final Value<String> supplierName;
+  final Value<int> quantityPieces;
+  final Value<int> piecesPerBox;
+  final Value<int> rowid;
+  const StocksLoadingItemsCompanion({
+    this.id = const Value.absent(),
+    this.stocksLoadingId = const Value.absent(),
+    this.productCode = const Value.absent(),
+    this.productName = const Value.absent(),
+    this.supplierName = const Value.absent(),
+    this.quantityPieces = const Value.absent(),
+    this.piecesPerBox = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  StocksLoadingItemsCompanion.insert({
+    required String id,
+    required String stocksLoadingId,
+    this.productCode = const Value.absent(),
+    required String productName,
+    required String supplierName,
+    required int quantityPieces,
+    this.piecesPerBox = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       stocksLoadingId = Value(stocksLoadingId),
+       productName = Value(productName),
+       supplierName = Value(supplierName),
+       quantityPieces = Value(quantityPieces);
+  static Insertable<StocksLoadingItem> custom({
+    Expression<String>? id,
+    Expression<String>? stocksLoadingId,
+    Expression<String>? productCode,
+    Expression<String>? productName,
+    Expression<String>? supplierName,
+    Expression<int>? quantityPieces,
+    Expression<int>? piecesPerBox,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (stocksLoadingId != null) 'stocks_loading_id': stocksLoadingId,
+      if (productCode != null) 'product_code': productCode,
+      if (productName != null) 'product_name': productName,
+      if (supplierName != null) 'supplier_name': supplierName,
+      if (quantityPieces != null) 'quantity_pieces': quantityPieces,
+      if (piecesPerBox != null) 'pieces_per_box': piecesPerBox,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  StocksLoadingItemsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? stocksLoadingId,
+    Value<String?>? productCode,
+    Value<String>? productName,
+    Value<String>? supplierName,
+    Value<int>? quantityPieces,
+    Value<int>? piecesPerBox,
+    Value<int>? rowid,
+  }) {
+    return StocksLoadingItemsCompanion(
+      id: id ?? this.id,
+      stocksLoadingId: stocksLoadingId ?? this.stocksLoadingId,
+      productCode: productCode ?? this.productCode,
+      productName: productName ?? this.productName,
+      supplierName: supplierName ?? this.supplierName,
+      quantityPieces: quantityPieces ?? this.quantityPieces,
+      piecesPerBox: piecesPerBox ?? this.piecesPerBox,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (stocksLoadingId.present) {
+      map['stocks_loading_id'] = Variable<String>(stocksLoadingId.value);
+    }
+    if (productCode.present) {
+      map['product_code'] = Variable<String>(productCode.value);
+    }
+    if (productName.present) {
+      map['product_name'] = Variable<String>(productName.value);
+    }
+    if (supplierName.present) {
+      map['supplier_name'] = Variable<String>(supplierName.value);
+    }
+    if (quantityPieces.present) {
+      map['quantity_pieces'] = Variable<int>(quantityPieces.value);
+    }
+    if (piecesPerBox.present) {
+      map['pieces_per_box'] = Variable<int>(piecesPerBox.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('StocksLoadingItemsCompanion(')
+          ..write('id: $id, ')
+          ..write('stocksLoadingId: $stocksLoadingId, ')
+          ..write('productCode: $productCode, ')
+          ..write('productName: $productName, ')
+          ..write('supplierName: $supplierName, ')
+          ..write('quantityPieces: $quantityPieces, ')
+          ..write('piecesPerBox: $piecesPerBox, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $SyncQueueTable extends SyncQueue
     with TableInfo<$SyncQueueTable, SyncQueueData> {
   @override
@@ -12835,6 +13603,9 @@ abstract class _$LocalDatabase extends GeneratedDatabase {
   );
   late final $PreOrderReviewItemsTable preOrderReviewItems =
       $PreOrderReviewItemsTable(this);
+  late final $StocksLoadingsTable stocksLoadings = $StocksLoadingsTable(this);
+  late final $StocksLoadingItemsTable stocksLoadingItems =
+      $StocksLoadingItemsTable(this);
   late final $SyncQueueTable syncQueue = $SyncQueueTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -12865,6 +13636,8 @@ abstract class _$LocalDatabase extends GeneratedDatabase {
     purchaseOrderItems,
     preOrderReviews,
     preOrderReviewItems,
+    stocksLoadings,
+    stocksLoadingItems,
     syncQueue,
   ];
 }
@@ -24214,6 +24987,680 @@ typedef $$PreOrderReviewItemsTableProcessedTableManager =
       PreOrderReviewItem,
       PrefetchHooks Function({bool reviewId})
     >;
+typedef $$StocksLoadingsTableCreateCompanionBuilder =
+    StocksLoadingsCompanion Function({
+      required String id,
+      required DateTime loadingDate,
+      Value<DateTime> importedAt,
+      Value<int> rowid,
+    });
+typedef $$StocksLoadingsTableUpdateCompanionBuilder =
+    StocksLoadingsCompanion Function({
+      Value<String> id,
+      Value<DateTime> loadingDate,
+      Value<DateTime> importedAt,
+      Value<int> rowid,
+    });
+
+final class $$StocksLoadingsTableReferences
+    extends
+        BaseReferences<_$LocalDatabase, $StocksLoadingsTable, StocksLoading> {
+  $$StocksLoadingsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static MultiTypedResultKey<$StocksLoadingItemsTable, List<StocksLoadingItem>>
+  _stocksLoadingItemsRefsTable(_$LocalDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.stocksLoadingItems,
+        aliasName: $_aliasNameGenerator(
+          db.stocksLoadings.id,
+          db.stocksLoadingItems.stocksLoadingId,
+        ),
+      );
+
+  $$StocksLoadingItemsTableProcessedTableManager get stocksLoadingItemsRefs {
+    final manager =
+        $$StocksLoadingItemsTableTableManager(
+          $_db,
+          $_db.stocksLoadingItems,
+        ).filter(
+          (f) => f.stocksLoadingId.id.sqlEquals($_itemColumn<String>('id')!),
+        );
+
+    final cache = $_typedResult.readTableOrNull(
+      _stocksLoadingItemsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$StocksLoadingsTableFilterComposer
+    extends Composer<_$LocalDatabase, $StocksLoadingsTable> {
+  $$StocksLoadingsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get loadingDate => $composableBuilder(
+    column: $table.loadingDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get importedAt => $composableBuilder(
+    column: $table.importedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> stocksLoadingItemsRefs(
+    Expression<bool> Function($$StocksLoadingItemsTableFilterComposer f) f,
+  ) {
+    final $$StocksLoadingItemsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.stocksLoadingItems,
+      getReferencedColumn: (t) => t.stocksLoadingId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$StocksLoadingItemsTableFilterComposer(
+            $db: $db,
+            $table: $db.stocksLoadingItems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$StocksLoadingsTableOrderingComposer
+    extends Composer<_$LocalDatabase, $StocksLoadingsTable> {
+  $$StocksLoadingsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get loadingDate => $composableBuilder(
+    column: $table.loadingDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get importedAt => $composableBuilder(
+    column: $table.importedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$StocksLoadingsTableAnnotationComposer
+    extends Composer<_$LocalDatabase, $StocksLoadingsTable> {
+  $$StocksLoadingsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get loadingDate => $composableBuilder(
+    column: $table.loadingDate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get importedAt => $composableBuilder(
+    column: $table.importedAt,
+    builder: (column) => column,
+  );
+
+  Expression<T> stocksLoadingItemsRefs<T extends Object>(
+    Expression<T> Function($$StocksLoadingItemsTableAnnotationComposer a) f,
+  ) {
+    final $$StocksLoadingItemsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.stocksLoadingItems,
+          getReferencedColumn: (t) => t.stocksLoadingId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$StocksLoadingItemsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.stocksLoadingItems,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+}
+
+class $$StocksLoadingsTableTableManager
+    extends
+        RootTableManager<
+          _$LocalDatabase,
+          $StocksLoadingsTable,
+          StocksLoading,
+          $$StocksLoadingsTableFilterComposer,
+          $$StocksLoadingsTableOrderingComposer,
+          $$StocksLoadingsTableAnnotationComposer,
+          $$StocksLoadingsTableCreateCompanionBuilder,
+          $$StocksLoadingsTableUpdateCompanionBuilder,
+          (StocksLoading, $$StocksLoadingsTableReferences),
+          StocksLoading,
+          PrefetchHooks Function({bool stocksLoadingItemsRefs})
+        > {
+  $$StocksLoadingsTableTableManager(
+    _$LocalDatabase db,
+    $StocksLoadingsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$StocksLoadingsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$StocksLoadingsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$StocksLoadingsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<DateTime> loadingDate = const Value.absent(),
+                Value<DateTime> importedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => StocksLoadingsCompanion(
+                id: id,
+                loadingDate: loadingDate,
+                importedAt: importedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required DateTime loadingDate,
+                Value<DateTime> importedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => StocksLoadingsCompanion.insert(
+                id: id,
+                loadingDate: loadingDate,
+                importedAt: importedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$StocksLoadingsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({stocksLoadingItemsRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [
+                if (stocksLoadingItemsRefs) db.stocksLoadingItems,
+              ],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (stocksLoadingItemsRefs)
+                    await $_getPrefetchedData<
+                      StocksLoading,
+                      $StocksLoadingsTable,
+                      StocksLoadingItem
+                    >(
+                      currentTable: table,
+                      referencedTable: $$StocksLoadingsTableReferences
+                          ._stocksLoadingItemsRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$StocksLoadingsTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).stocksLoadingItemsRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where(
+                            (e) => e.stocksLoadingId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$StocksLoadingsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LocalDatabase,
+      $StocksLoadingsTable,
+      StocksLoading,
+      $$StocksLoadingsTableFilterComposer,
+      $$StocksLoadingsTableOrderingComposer,
+      $$StocksLoadingsTableAnnotationComposer,
+      $$StocksLoadingsTableCreateCompanionBuilder,
+      $$StocksLoadingsTableUpdateCompanionBuilder,
+      (StocksLoading, $$StocksLoadingsTableReferences),
+      StocksLoading,
+      PrefetchHooks Function({bool stocksLoadingItemsRefs})
+    >;
+typedef $$StocksLoadingItemsTableCreateCompanionBuilder =
+    StocksLoadingItemsCompanion Function({
+      required String id,
+      required String stocksLoadingId,
+      Value<String?> productCode,
+      required String productName,
+      required String supplierName,
+      required int quantityPieces,
+      Value<int> piecesPerBox,
+      Value<int> rowid,
+    });
+typedef $$StocksLoadingItemsTableUpdateCompanionBuilder =
+    StocksLoadingItemsCompanion Function({
+      Value<String> id,
+      Value<String> stocksLoadingId,
+      Value<String?> productCode,
+      Value<String> productName,
+      Value<String> supplierName,
+      Value<int> quantityPieces,
+      Value<int> piecesPerBox,
+      Value<int> rowid,
+    });
+
+final class $$StocksLoadingItemsTableReferences
+    extends
+        BaseReferences<
+          _$LocalDatabase,
+          $StocksLoadingItemsTable,
+          StocksLoadingItem
+        > {
+  $$StocksLoadingItemsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $StocksLoadingsTable _stocksLoadingIdTable(_$LocalDatabase db) =>
+      db.stocksLoadings.createAlias(
+        $_aliasNameGenerator(
+          db.stocksLoadingItems.stocksLoadingId,
+          db.stocksLoadings.id,
+        ),
+      );
+
+  $$StocksLoadingsTableProcessedTableManager get stocksLoadingId {
+    final $_column = $_itemColumn<String>('stocks_loading_id')!;
+
+    final manager = $$StocksLoadingsTableTableManager(
+      $_db,
+      $_db.stocksLoadings,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_stocksLoadingIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$StocksLoadingItemsTableFilterComposer
+    extends Composer<_$LocalDatabase, $StocksLoadingItemsTable> {
+  $$StocksLoadingItemsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get productCode => $composableBuilder(
+    column: $table.productCode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get productName => $composableBuilder(
+    column: $table.productName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get supplierName => $composableBuilder(
+    column: $table.supplierName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get quantityPieces => $composableBuilder(
+    column: $table.quantityPieces,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get piecesPerBox => $composableBuilder(
+    column: $table.piecesPerBox,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$StocksLoadingsTableFilterComposer get stocksLoadingId {
+    final $$StocksLoadingsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.stocksLoadingId,
+      referencedTable: $db.stocksLoadings,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$StocksLoadingsTableFilterComposer(
+            $db: $db,
+            $table: $db.stocksLoadings,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$StocksLoadingItemsTableOrderingComposer
+    extends Composer<_$LocalDatabase, $StocksLoadingItemsTable> {
+  $$StocksLoadingItemsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get productCode => $composableBuilder(
+    column: $table.productCode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get productName => $composableBuilder(
+    column: $table.productName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get supplierName => $composableBuilder(
+    column: $table.supplierName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get quantityPieces => $composableBuilder(
+    column: $table.quantityPieces,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get piecesPerBox => $composableBuilder(
+    column: $table.piecesPerBox,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$StocksLoadingsTableOrderingComposer get stocksLoadingId {
+    final $$StocksLoadingsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.stocksLoadingId,
+      referencedTable: $db.stocksLoadings,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$StocksLoadingsTableOrderingComposer(
+            $db: $db,
+            $table: $db.stocksLoadings,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$StocksLoadingItemsTableAnnotationComposer
+    extends Composer<_$LocalDatabase, $StocksLoadingItemsTable> {
+  $$StocksLoadingItemsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get productCode => $composableBuilder(
+    column: $table.productCode,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get productName => $composableBuilder(
+    column: $table.productName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get supplierName => $composableBuilder(
+    column: $table.supplierName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get quantityPieces => $composableBuilder(
+    column: $table.quantityPieces,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get piecesPerBox => $composableBuilder(
+    column: $table.piecesPerBox,
+    builder: (column) => column,
+  );
+
+  $$StocksLoadingsTableAnnotationComposer get stocksLoadingId {
+    final $$StocksLoadingsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.stocksLoadingId,
+      referencedTable: $db.stocksLoadings,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$StocksLoadingsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.stocksLoadings,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$StocksLoadingItemsTableTableManager
+    extends
+        RootTableManager<
+          _$LocalDatabase,
+          $StocksLoadingItemsTable,
+          StocksLoadingItem,
+          $$StocksLoadingItemsTableFilterComposer,
+          $$StocksLoadingItemsTableOrderingComposer,
+          $$StocksLoadingItemsTableAnnotationComposer,
+          $$StocksLoadingItemsTableCreateCompanionBuilder,
+          $$StocksLoadingItemsTableUpdateCompanionBuilder,
+          (StocksLoadingItem, $$StocksLoadingItemsTableReferences),
+          StocksLoadingItem,
+          PrefetchHooks Function({bool stocksLoadingId})
+        > {
+  $$StocksLoadingItemsTableTableManager(
+    _$LocalDatabase db,
+    $StocksLoadingItemsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$StocksLoadingItemsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$StocksLoadingItemsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$StocksLoadingItemsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> stocksLoadingId = const Value.absent(),
+                Value<String?> productCode = const Value.absent(),
+                Value<String> productName = const Value.absent(),
+                Value<String> supplierName = const Value.absent(),
+                Value<int> quantityPieces = const Value.absent(),
+                Value<int> piecesPerBox = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => StocksLoadingItemsCompanion(
+                id: id,
+                stocksLoadingId: stocksLoadingId,
+                productCode: productCode,
+                productName: productName,
+                supplierName: supplierName,
+                quantityPieces: quantityPieces,
+                piecesPerBox: piecesPerBox,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String stocksLoadingId,
+                Value<String?> productCode = const Value.absent(),
+                required String productName,
+                required String supplierName,
+                required int quantityPieces,
+                Value<int> piecesPerBox = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => StocksLoadingItemsCompanion.insert(
+                id: id,
+                stocksLoadingId: stocksLoadingId,
+                productCode: productCode,
+                productName: productName,
+                supplierName: supplierName,
+                quantityPieces: quantityPieces,
+                piecesPerBox: piecesPerBox,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$StocksLoadingItemsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({stocksLoadingId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (stocksLoadingId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.stocksLoadingId,
+                                referencedTable:
+                                    $$StocksLoadingItemsTableReferences
+                                        ._stocksLoadingIdTable(db),
+                                referencedColumn:
+                                    $$StocksLoadingItemsTableReferences
+                                        ._stocksLoadingIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$StocksLoadingItemsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LocalDatabase,
+      $StocksLoadingItemsTable,
+      StocksLoadingItem,
+      $$StocksLoadingItemsTableFilterComposer,
+      $$StocksLoadingItemsTableOrderingComposer,
+      $$StocksLoadingItemsTableAnnotationComposer,
+      $$StocksLoadingItemsTableCreateCompanionBuilder,
+      $$StocksLoadingItemsTableUpdateCompanionBuilder,
+      (StocksLoadingItem, $$StocksLoadingItemsTableReferences),
+      StocksLoadingItem,
+      PrefetchHooks Function({bool stocksLoadingId})
+    >;
 typedef $$SyncQueueTableCreateCompanionBuilder =
     SyncQueueCompanion Function({
       required String id,
@@ -24494,6 +25941,10 @@ class $LocalDatabaseManager {
       $$PreOrderReviewsTableTableManager(_db, _db.preOrderReviews);
   $$PreOrderReviewItemsTableTableManager get preOrderReviewItems =>
       $$PreOrderReviewItemsTableTableManager(_db, _db.preOrderReviewItems);
+  $$StocksLoadingsTableTableManager get stocksLoadings =>
+      $$StocksLoadingsTableTableManager(_db, _db.stocksLoadings);
+  $$StocksLoadingItemsTableTableManager get stocksLoadingItems =>
+      $$StocksLoadingItemsTableTableManager(_db, _db.stocksLoadingItems);
   $$SyncQueueTableTableManager get syncQueue =>
       $$SyncQueueTableTableManager(_db, _db.syncQueue);
 }

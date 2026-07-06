@@ -5,6 +5,7 @@ import '../../models/product.dart';
 import '../../repositories/bad_order_repository.dart';
 import '../../repositories/invoice_repository.dart';
 import '../../repositories/product_repository.dart';
+import '../../repositories/stocks_loading_repository.dart';
 import '../../repositories/supplier_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../utils/pdf_generator.dart';
@@ -127,6 +128,52 @@ class _OrderSummaryScreenState extends ConsumerState<OrderSummaryScreen> {
             supplierName: suppliersById[product.supplierId] ?? 'Unknown',
             piecesPerBox: product.piecesPerBox,
             totalPieces: pieces,
+            totalAmount: amount,
+          );
+        }
+      }
+    }
+
+    // ── Stocks for Sale Loading items ────────────────────────────────────────
+    final loadingRepo = ref.read(stocksLoadingRepositoryProvider);
+    final loadingHeaders = await loadingRepo.getByDate(_selectedDate);
+    for (final header in loadingHeaders) {
+      final record = await loadingRepo.getRecord(header);
+      for (final item in record.items) {
+        // Match to a local product by code then by name.
+        Product? matched;
+        if (item.productCode != null && item.productCode!.isNotEmpty) {
+          matched = products
+              .where((p) => p.productCode == item.productCode)
+              .firstOrNull;
+        }
+        matched ??= products
+            .where((p) =>
+                p.name.toLowerCase() == item.productName.toLowerCase())
+            .firstOrNull;
+
+        // Use local product id as key when matched, else fall back to name.
+        final rowKey = matched?.id ?? 'sl_${item.productName}';
+        final ppb = matched?.piecesPerBox ?? item.piecesPerBox;
+
+        double amount = 0;
+        if (matched != null) {
+          final price = await ref
+              .read(productRepositoryProvider)
+              .getCurrentPrice(matched.id);
+          amount = item.quantityPieces * (price?.sellingPrice ?? 0.0);
+        }
+
+        if (rowMap.containsKey(rowKey)) {
+          rowMap[rowKey]!.totalPieces += item.quantityPieces;
+          rowMap[rowKey]!.totalAmount += amount;
+        } else {
+          rowMap[rowKey] = _Row(
+            productId: rowKey,
+            productName: matched?.name ?? item.productName,
+            supplierName: item.supplierName,
+            piecesPerBox: ppb,
+            totalPieces: item.quantityPieces,
             totalAmount: amount,
           );
         }

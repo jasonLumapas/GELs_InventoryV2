@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -670,11 +671,10 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
     );
   }
 
-  // ── Export Loading tab to CSV ──────────────────────────────────────────
+  // ── Export Loading tab to JSON ──────────────────────────────────────────
 
   Future<void> _exportOutItems() async {
     final productsById = {for (final p in _products) p.id: p};
-    final areasById    = {for (final a in _areas) a.id: a.name};
     final rows = (_outAreaFilter == null
             ? _outItems
             : _outItems.where((t) => t.areaId == _outAreaFilter).toList())
@@ -692,34 +692,27 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
       return;
     }
 
-    final buf = StringBuffer();
-    buf.writeln('Date,Product Code,Product Name,Supplier,Area,Boxes,Pieces,Total Pieces');
-    final dateFmt = DateFormat('yyyy-MM-dd');
-    for (final tx in rows) {
-      final p   = productsById[tx.productId];
-      final ppb = p?.piecesPerBox ?? 1;
-      String csv(String? v) {
-        final s = (v ?? '').replaceAll('"', '""');
-        return s.contains(',') || s.contains('"') || s.contains('\n')
-            ? '"$s"'
-            : s;
-      }
-      buf.writeln([
-        dateFmt.format(tx.date),
-        csv(p?.productCode),
-        csv(p?.name ?? tx.productId),
-        csv(_supplierNames[tx.productId]),
-        csv(areasById[tx.areaId]),
-        '${tx.quantityPieces ~/ ppb}',
-        '${tx.quantityPieces % ppb}',
-        '${tx.quantityPieces}',
-      ].join(','));
-    }
+    final dateStr = DateFormat('yyyy-MM-dd').format(_outDate);
+    final payload = {
+      'exportedAt': DateTime.now().toIso8601String(),
+      'loadingDate': dateStr,
+      'items': rows.map((tx) {
+        final p   = productsById[tx.productId];
+        final ppb = p?.piecesPerBox ?? 1;
+        return {
+          'productId':     tx.productId,
+          'productCode':   p?.productCode,
+          'productName':   p?.name ?? tx.productId,
+          'supplierName':  _supplierNames[tx.productId] ?? '',
+          'quantityPieces': tx.quantityPieces,
+          'piecesPerBox':  ppb,
+        };
+      }).toList(),
+    };
 
     final home = (await getApplicationDocumentsDirectory()).parent.path;
-    final dateStr = DateFormat('yyyy-MM-dd').format(_outDate);
-    final file = File('$home\\Desktop\\off_site_loading_$dateStr.csv');
-    await file.writeAsString(buf.toString());
+    final file = File('$home\\Desktop\\stocks_for_sale_$dateStr.json');
+    await file.writeAsString(const JsonEncoder.withIndent('  ').convert(payload));
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

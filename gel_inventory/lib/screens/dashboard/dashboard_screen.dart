@@ -100,6 +100,11 @@ class DashboardScreen extends ConsumerWidget {
               route: '/van-selling',
             ),
           _NavCard(
+            icon: Icons.inventory,
+            label: 'Stocks for Sale Loading',
+            route: '/stocks-loading',
+          ),
+          _NavCard(
             icon: Icons.star_rate,
             label: 'Incentives',
             route: '/incentives',

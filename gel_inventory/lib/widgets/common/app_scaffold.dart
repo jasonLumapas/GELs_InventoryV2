@@ -101,6 +101,7 @@ class _AppDrawer extends ConsumerWidget {
               '/client-purchases'),
           if (showOffSiteLoading)
             _tile(context, Icons.local_shipping, 'Off-site Loading', '/van-selling'),
+          _tile(context, Icons.inventory, 'Stocks for Sale Loading', '/stocks-loading'),
           _tile(context, Icons.star_rate, 'Incentives', '/incentives'),
           if (showImportCsv)
             _tile(context, Icons.star_rate, 'Import CSV', '/import-csv'),

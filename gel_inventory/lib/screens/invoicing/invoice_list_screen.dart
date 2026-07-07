@@ -78,6 +78,7 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
   DateTime _anchor = _lastAnchor;
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
+  bool _exactMatch = false;
   Product? _productFilter;
 
   @override
@@ -397,51 +398,68 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
           // ── Search bar ────────────────────────────────────────────────
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchCtrl,
-                    decoration: InputDecoration(
-                      hintText: 'Search by store, notes or date…',
-                      prefixIcon: const Icon(Icons.search, size: 20),
-                      isDense: true,
-                      border: const OutlineInputBorder(),
-                      suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear, size: 18),
-                              onPressed: () => setState(() {
-                                _searchCtrl.clear();
-                                _searchQuery = '';
-                              }),
-                            )
-                          : null,
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _searchCtrl,
+                        decoration: InputDecoration(
+                          hintText: 'Search by store, address, notes or date…',
+                          prefixIcon: const Icon(Icons.search, size: 20),
+                          isDense: true,
+                          border: const OutlineInputBorder(),
+                          suffixIcon: _searchQuery.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear, size: 18),
+                                  onPressed: () => setState(() {
+                                    _searchCtrl.clear();
+                                    _searchQuery = '';
+                                    _exactMatch = false;
+                                  }),
+                                )
+                              : null,
+                        ),
+                        onChanged: (v) => setState(() => _searchQuery = v.trim()),
+                      ),
                     ),
-                    onChanged: (v) => setState(() => _searchQuery = v.trim()),
-                  ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      icon: Icon(
+                        _productFilter == null
+                            ? Icons.filter_alt_outlined
+                            : Icons.filter_alt,
+                        size: 18,
+                      ),
+                      label: Text(
+                        _productFilter?.name ?? 'Product',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      style: OutlinedButton.styleFrom(
+                          visualDensity: VisualDensity.compact),
+                      onPressed: _pickProductFilter,
+                    ),
+                    if (_productFilter != null)
+                      IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        tooltip: 'Clear product filter',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => setState(() => _productFilter = null),
+                      ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  icon: Icon(
-                    _productFilter == null
-                        ? Icons.filter_alt_outlined
-                        : Icons.filter_alt,
-                    size: 18,
-                  ),
-                  label: Text(
-                    _productFilter?.name ?? 'Product',
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  style: OutlinedButton.styleFrom(
-                      visualDensity: VisualDensity.compact),
-                  onPressed: _pickProductFilter,
-                ),
-                if (_productFilter != null)
-                  IconButton(
-                    icon: const Icon(Icons.clear, size: 18),
-                    tooltip: 'Clear product filter',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () => setState(() => _productFilter = null),
+                if (_searchQuery.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: FilterChip(
+                      label: const Text('Exact match'),
+                      selected: _exactMatch,
+                      onSelected: (v) => setState(() => _exactMatch = v),
+                      visualDensity: VisualDensity.compact,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
                   ),
               ],
             ),
@@ -459,18 +477,26 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                   for (final c in clientsAsync.valueOrNull ?? []) c.id: c
                 };
 
-                // Client-side filter by store name, notes, or date.
+                // Client-side filter by store name, address, notes, or date.
                 final searchFiltered = _searchQuery.isEmpty
                     ? allInvoices
                     : () {
                         final q = _searchQuery.toLowerCase();
+                        final exactRe = _exactMatch
+                            ? RegExp(r'\b' + RegExp.escape(q) + r'\b')
+                            : null;
+                        bool hit(String field) => exactRe != null
+                            ? exactRe.hasMatch(field)
+                            : field.contains(q);
                         return allInvoices.where((inv) {
                           final clientName = (clientsMap[inv.clientId]?.name ?? '').toLowerCase();
+                          final address = (clientsMap[inv.clientId]?.address ?? '').toLowerCase();
                           final notes = (inv.notes ?? '').toLowerCase();
                           final dateStr = dateFmt.format(inv.invoiceDate).toLowerCase();
-                          return clientName.contains(q) ||
-                              notes.contains(q) ||
-                              dateStr.contains(q);
+                          return hit(clientName) ||
+                              hit(address) ||
+                              hit(notes) ||
+                              hit(dateStr);
                         }).toList();
                       }();
 

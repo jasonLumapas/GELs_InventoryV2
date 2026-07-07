@@ -15,6 +15,7 @@ class ClientListScreen extends ConsumerStatefulWidget {
 class _ClientListScreenState extends ConsumerState<ClientListScreen> {
   final _searchCtrl = TextEditingController();
   String _query = '';
+  bool _exactMatch = false;
 
   @override
   void dispose() {
@@ -41,36 +42,63 @@ class _ClientListScreenState extends ConsumerState<ClientListScreen> {
         data: (clients) {
           final filtered = _query.isEmpty
               ? clients
-              : clients.where((c) {
+              : () {
                   final q = _query.toLowerCase();
-                  return c.name.toLowerCase().contains(q) ||
-                      (c.contact?.toLowerCase().contains(q) ?? false) ||
-                      (c.address?.toLowerCase().contains(q) ?? false);
-                }).toList();
+                  final exactRe = _exactMatch
+                      ? RegExp(r'\b' + RegExp.escape(q) + r'\b')
+                      : null;
+                  bool hit(String? field) {
+                    if (field == null) return false;
+                    final f = field.toLowerCase();
+                    return exactRe != null ? exactRe.hasMatch(f) : f.contains(q);
+                  }
+                  return clients.where((c) =>
+                      hit(c.name) || hit(c.contact) || hit(c.address)).toList();
+                }();
 
           return Column(
             children: [
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: TextField(
-                  controller: _searchCtrl,
-                  decoration: InputDecoration(
-                    hintText: 'Search clients / stores…',
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _query.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear),
-                            onPressed: () {
-                              _searchCtrl.clear();
-                              setState(() => _query = '');
-                            },
-                          )
-                        : null,
-                    border: const OutlineInputBorder(),
-                    isDense: true,
-                  ),
-                  onChanged: (v) => setState(() => _query = v.trim()),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: _searchCtrl,
+                      decoration: InputDecoration(
+                        hintText: 'Search clients / stores…',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: _query.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  _searchCtrl.clear();
+                                  setState(() {
+                                    _query = '';
+                                    _exactMatch = false;
+                                  });
+                                },
+                              )
+                            : null,
+                        border: const OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      onChanged: (v) => setState(() => _query = v.trim()),
+                    ),
+                    if (_query.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: FilterChip(
+                          label: const Text('Exact match'),
+                          selected: _exactMatch,
+                          onSelected: (v) => setState(() => _exactMatch = v),
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                  ],
                 ),
               ),
               if (filtered.isEmpty)

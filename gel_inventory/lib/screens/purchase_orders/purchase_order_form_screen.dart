@@ -24,19 +24,40 @@ import '../../widgets/common/search_picker.dart';
 
 class _LineItem {
   final Product product;
-  final double price;
+  final double systemPrice;
+  bool isFree;
+  final TextEditingController supplierPriceCtrl;
   final TextEditingController casesCtrl;
+  final double Function() discountMultiplier;
 
   _LineItem({
     required this.product,
-    required this.price,
+    required this.systemPrice,
+    required this.discountMultiplier,
+    this.isFree = false,
+    double? supplierPrice,
     double cases = 0,
-  }) : casesCtrl = TextEditingController(
+  })  : supplierPriceCtrl = TextEditingController(
+          text: (supplierPrice ?? systemPrice).toStringAsFixed(2),
+        ),
+        casesCtrl = TextEditingController(
           text: cases > 0 ? formatNumber(cases) : '',
         );
 
   double get cases => double.tryParse(casesCtrl.text) ?? 0;
-  double get amount => cases * price;
+
+  /// Supplier price (box) as typed, before discounts/VAT are applied.
+  double get rawPrice =>
+      double.tryParse(supplierPriceCtrl.text) ?? systemPrice;
+
+  /// Supplier price (box) after cascading discounts and optional VAT — this
+  /// is the value actually used for the amount computation.
+  double get price => rawPrice * discountMultiplier();
+
+  double get amount => isFree ? 0 : cases * price;
+
+  bool get pricesDiffer =>
+      (price * 100).round() != (systemPrice * 100).round();
 }
 
 // ── Screen ────────────────────────────────────────────────────────────────────
@@ -64,6 +85,9 @@ class _PurchaseOrderFormScreenState
   final _referenceCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   final List<_LineItem> _lineItems = [];
+  final List<double> _discountPercents = [];
+  bool _vatEnabled = false;
+  final _productPickerState = SearchPickerState();
 
   List<Supplier> _suppliers = [];
   List<Product> _products = [];
@@ -107,6 +131,7 @@ class _PurchaseOrderFormScreenState
     _notesCtrl.dispose();
     for (final item in _lineItems) {
       item.casesCtrl.dispose();
+      item.supplierPriceCtrl.dispose();
     }
     super.dispose();
   }
@@ -128,6 +153,8 @@ class _PurchaseOrderFormScreenState
         _selectedSupplier =
             suppliers.where((s) => s.id == order.supplierId).firstOrNull;
         if (widget.draftId != null) _draftPersisted = true;
+        _discountPercents.addAll(order.discountPercents);
+        _vatEnabled = order.vatEnabled;
 
         final items = await repo.getItems(order.id);
         final productsById = {for (final p in products) p.id: p};
@@ -139,9 +166,12 @@ class _PurchaseOrderFormScreenState
               .getCurrentPrice(product.id);
           _lineItems.add(_LineItem(
             product: product,
-            price: currentPrice != null
+            systemPrice: currentPrice != null
                 ? currentPrice.withdrawalPrice * product.piecesPerBox
-                : it.price,
+                : it.systemPrice,
+            discountMultiplier: () => _discountMultiplier,
+            isFree: it.isFree,
+            supplierPrice: it.rawPrice ?? it.price,
             cases: it.cases,
           ));
         }
@@ -260,18 +290,33 @@ class _PurchaseOrderFormScreenState
   }
 
   Future<void> _pickProduct() async {
-    final filtered = _selectedSupplier == null
-        ? List<Product>.from(_products)
-        : _products
-            .where((p) => p.supplierId == _selectedSupplier!.id)
-            .toList();
-    filtered.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final sorted = List<Product>.from(_products)
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
+    final suppliersById = {for (final s in _suppliers) s.id: s.name};
+    final supplierFilters = sorted
+        .map((p) => p.supplierId)
+        .toSet()
+        .where(suppliersById.containsKey)
+        .map((id) => SearchFilter<Product>(
+              label: suppliersById[id]!,
+              test: (p) => p.supplierId == id,
+            ))
+        .toList()
+      ..sort((a, b) => a.label.compareTo(b.label));
+
+    // Default the filter to the currently selected supplier (if any), but
+    // still let the user switch to another supplier or "All Suppliers".
+    _productPickerState.filterLabel = _selectedSupplier?.name;
+
     await showSearchPicker<Product>(
       context: context,
       title: 'Select Product',
-      items: filtered,
+      items: sorted,
       labelOf: (p) => p.name,
       searchableOf: (p) => '${p.name} ${p.productCode ?? ''}',
+      filters: supplierFilters,
+      state: _productPickerState,
       onAdd: (existing) => _promptAddProduct(existing),
       onSelected: (p) => _addProduct(p),
     );
@@ -409,7 +454,8 @@ class _PurchaseOrderFormScreenState
     setState(() {
       _lineItems.add(_LineItem(
         product: product,
-        price: (price?.withdrawalPrice ?? 0) * product.piecesPerBox,
+        systemPrice: (price?.withdrawalPrice ?? 0) * product.piecesPerBox,
+        discountMultiplier: () => _discountMultiplier,
       ));
     });
     _scheduleAutoSave();
@@ -417,6 +463,69 @@ class _PurchaseOrderFormScreenState
 
   double get _grandTotal =>
       _lineItems.fold(0.0, (sum, item) => sum + item.amount);
+
+  /// Combined multiplier applying every discount in sequence (cascading,
+  /// each discount taken off the previous net value), then VAT if enabled.
+  double get _discountMultiplier {
+    double m = 1.0;
+    for (final d in _discountPercents) {
+      m *= (1 - d / 100);
+    }
+    if (_vatEnabled) m *= 1.12;
+    return m;
+  }
+
+  Future<void> _promptAddDiscount() async {
+    final ctrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final value = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add Discount'),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: ctrl,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Discount %',
+              isDense: true,
+              suffixText: '%',
+            ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))
+            ],
+            validator: (v) {
+              final n = double.tryParse(v ?? '');
+              if (n == null || n <= 0 || n > 100) {
+                return 'Enter a value between 0 and 100';
+              }
+              return null;
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              if (!formKey.currentState!.validate()) return;
+              Navigator.pop(ctx, double.parse(ctrl.text));
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+
+    if (value != null) {
+      setState(() => _discountPercents.add(value));
+      _scheduleAutoSave();
+    }
+  }
 
   bool get _canSave =>
       !_saving &&
@@ -437,15 +546,20 @@ class _PurchaseOrderFormScreenState
       status: _status,
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
       createdAt: _createdAt,
+      discountPercents: List<double>.from(_discountPercents),
+      vatEnabled: _vatEnabled,
     );
     final items = _lineItems
         .map((li) => PurchaseOrderItem(
               id: const Uuid().v4(),
               purchaseOrderId: _orderId,
               productId: li.product.id,
+              systemPrice: li.systemPrice,
               price: li.price,
               cases: li.cases,
               amount: li.amount,
+              isFree: li.isFree,
+              rawPrice: li.rawPrice,
             ))
         .toList();
     return (order: order, items: items);
@@ -466,15 +580,20 @@ class _PurchaseOrderFormScreenState
       status: 'draft',
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
       createdAt: _createdAt,
+      discountPercents: List<double>.from(_discountPercents),
+      vatEnabled: _vatEnabled,
     );
     final items = _lineItems
         .map((li) => PurchaseOrderItem(
               id: const Uuid().v4(),
               purchaseOrderId: _orderId,
               productId: li.product.id,
+              systemPrice: li.systemPrice,
               price: li.price,
               cases: li.cases,
               amount: li.amount,
+              isFree: li.isFree,
+              rawPrice: li.rawPrice,
             ))
         .toList();
     return (order: order, items: items);
@@ -607,80 +726,88 @@ class _PurchaseOrderFormScreenState
                     ),
                   ),
 
-                // Date selector
+                // Date + Supplier selectors
                 Padding(
                   padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                  child: InkWell(
-                    onTap: _status == 'cancelled' ? null : _pickDate,
-                    borderRadius: BorderRadius.circular(4),
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Order Date',
-                        border: OutlineInputBorder(),
-                        suffixIcon: Icon(Icons.calendar_today, size: 18),
-                      ),
-                      child: Text(
-                        DateFormat('MMM dd, yyyy').format(_orderDate),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-
-                // Supplier selector
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: InkWell(
-                    onTap: _status == 'cancelled' ? null : _pickSupplier,
-                    borderRadius: BorderRadius.circular(4),
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Supplier',
-                        border: OutlineInputBorder(),
-                        suffixIcon: Icon(Icons.search),
-                      ),
-                      child: Text(
-                        _selectedSupplier?.name ?? 'Tap to search…',
-                        style: TextStyle(
-                          color: _selectedSupplier == null
-                              ? Theme.of(context).hintColor
-                              : null,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: _status == 'cancelled' ? null : _pickDate,
+                          borderRadius: BorderRadius.circular(4),
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'Order Date',
+                              border: OutlineInputBorder(),
+                              suffixIcon: Icon(Icons.calendar_today, size: 18),
+                            ),
+                            child: Text(
+                              DateFormat('MMM dd, yyyy').format(_orderDate),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: InkWell(
+                          onTap:
+                              _status == 'cancelled' ? null : _pickSupplier,
+                          borderRadius: BorderRadius.circular(4),
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'Supplier',
+                              border: OutlineInputBorder(),
+                              suffixIcon: Icon(Icons.search),
+                            ),
+                            child: Text(
+                              _selectedSupplier?.name ?? 'Tap to search…',
+                              style: TextStyle(
+                                color: _selectedSupplier == null
+                                    ? Theme.of(context).hintColor
+                                    : null,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 8),
 
-                // Reference number
+                // Reference number + Notes
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: TextField(
-                    controller: _referenceCtrl,
-                    enabled: _status != 'cancelled',
-                    decoration: const InputDecoration(
-                      labelText: 'Reference Number',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    onChanged: (_) => _scheduleAutoSave(),
-                  ),
-                ),
-                const SizedBox(height: 8),
-
-                // Notes
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: TextField(
-                    controller: _notesCtrl,
-                    enabled: _status != 'cancelled',
-                    decoration: const InputDecoration(
-                      labelText: 'Notes',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    maxLines: 2,
-                    onChanged: (_) => _scheduleAutoSave(),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _referenceCtrl,
+                          enabled: _status != 'cancelled',
+                          decoration: const InputDecoration(
+                            labelText: 'Reference Number',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          onChanged: (_) => _scheduleAutoSave(),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _notesCtrl,
+                          enabled: _status != 'cancelled',
+                          decoration: const InputDecoration(
+                            labelText: 'Notes',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          onChanged: (_) => _scheduleAutoSave(),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -703,56 +830,55 @@ class _PurchaseOrderFormScreenState
                   ),
                 ),
 
-                // Table header
-                if (_lineItems.isNotEmpty)
-                  Container(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 6),
-                    child: const Row(
-                      children: [
-                        Expanded(
-                          flex: 3,
-                          child: Text('Product Description',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                // Discount / VAT controls
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                  child: Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.percent, size: 16),
+                        label: const Text('Add Discount %'),
+                        onPressed:
+                            _status == 'cancelled' ? null : _promptAddDiscount,
+                      ),
+                      for (int i = 0; i < _discountPercents.length; i++)
+                        Chip(
+                          label: Text(
+                              '${formatNumber(_discountPercents[i])}% off'),
+                          onDeleted: _status == 'cancelled'
+                              ? null
+                              : () {
+                                  setState(
+                                      () => _discountPercents.removeAt(i));
+                                  _scheduleAutoSave();
+                                },
                         ),
-                        SizedBox(
-                          width: 140,
-                          child: Text('Packaging',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
-                        ),
-                        SizedBox(
-                          width: 110,
-                          child: Text('Price (Box)',
-                              textAlign: TextAlign.right,
-                              style: TextStyle(fontWeight: FontWeight.bold)),
-                        ),
-                        SizedBox(
-                          width: 100,
-                          child: Text('# of Case',
-                              textAlign: TextAlign.right,
-                              style: TextStyle(fontWeight: FontWeight.bold)),
-                        ),
-                        SizedBox(
-                          width: 100,
-                          child: Text('Amount',
-                              textAlign: TextAlign.right,
-                              style: TextStyle(fontWeight: FontWeight.bold)),
-                        ),
-                        SizedBox(width: 40),
-                      ],
-                    ),
+                      FilterChip(
+                        label: const Text('Add VAT (12%)'),
+                        selected: _vatEnabled,
+                        onSelected: _status == 'cancelled'
+                            ? null
+                            : (v) {
+                                setState(() => _vatEnabled = v);
+                                _scheduleAutoSave();
+                              },
+                      ),
+                    ],
                   ),
+                ),
 
                 // Line items
                 Expanded(
                   child: _lineItems.isEmpty
                       ? const Center(
                           child: Text('Tap "Add Product" to add items'))
-                      : ListView.separated(
+                      : ListView.builder(
                           itemCount: _lineItems.length,
-                          separatorBuilder: (_, _) => const Divider(height: 1),
-                          itemBuilder: (ctx, i) => _LineItemRow(
+                          itemBuilder: (ctx, i) => _LineItemTile(
+                            key: ValueKey(_lineItems[i].product.id),
                             item: _lineItems[i],
                             enabled: _status != 'cancelled',
                             onRemove: () {
@@ -847,15 +973,16 @@ class _PurchaseOrderFormScreenState
   }
 }
 
-// ── Line item row ─────────────────────────────────────────────────────────────
+// ── Line item tile ────────────────────────────────────────────────────────────
 
-class _LineItemRow extends StatelessWidget {
+class _LineItemTile extends StatelessWidget {
   final _LineItem item;
   final bool enabled;
   final VoidCallback onRemove;
   final VoidCallback onChanged;
 
-  const _LineItemRow({
+  const _LineItemTile({
+    super.key,
     required this.item,
     required this.enabled,
     required this.onRemove,
@@ -864,56 +991,121 @@ class _LineItemRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            flex: 3,
-            child: Text(item.product.name),
-          ),
-          SizedBox(
-            width: 140,
-            child: Text(packagingLabel(item.product)),
-          ),
-          SizedBox(
-            width: 110,
-            child: Text(formatCurrency(item.price), textAlign: TextAlign.right),
-          ),
-          SizedBox(
-            width: 100,
-            child: TextField(
-              controller: item.casesCtrl,
-              enabled: enabled,
-              textAlign: TextAlign.right,
-              decoration: const InputDecoration(isDense: true),
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))
-              ],
-              onChanged: (_) => onChanged(),
-            ),
-          ),
-          SizedBox(
-            width: 100,
-            child: Text(
-              formatCurrency(item.amount),
-              textAlign: TextAlign.right,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-          SizedBox(
-            width: 40,
-            child: enabled
-                ? IconButton(
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      color: item.pricesDiffer ? Colors.orange.shade50 : null,
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(item.product.name,
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                ),
+                Text(
+                  packagingLabel(item.product),
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                if (enabled)
+                  IconButton(
                     icon: const Icon(Icons.close, color: Colors.red),
                     onPressed: onRemove,
-                  )
-                : null,
-          ),
-        ],
+                  ),
+              ],
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'System Price (Box): ${formatCurrency(item.systemPrice)}',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ),
+                SizedBox(
+                  width: 160,
+                  child: TextField(
+                    controller: item.supplierPriceCtrl,
+                    enabled: enabled,
+                    decoration: const InputDecoration(
+                        labelText: 'Supplier Price (Box)', isDense: true),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(
+                          RegExp(r'^\d*\.?\d{0,2}'))
+                    ],
+                    onChanged: (_) => onChanged(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 170,
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Net Value (Box)',
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                    ),
+                    child: Text(
+                      formatCurrency(item.price),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 90,
+                  child: TextField(
+                    controller: item.casesCtrl,
+                    enabled: enabled,
+                    decoration: const InputDecoration(
+                        labelText: '# of Case', isDense: true),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(
+                          RegExp(r'^\d*\.?\d{0,2}'))
+                    ],
+                    onChanged: (_) => onChanged(),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Expanded(
+                  child: item.isFree
+                      ? const Text(
+                          'FREE — not included in totals',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green),
+                        )
+                      : Text(
+                          'Amount: ${formatCurrency(item.amount)}',
+                          style: const TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                ),
+                const Text('Free', style: TextStyle(fontSize: 12)),
+                Switch(
+                  value: item.isFree,
+                  onChanged: enabled
+                      ? (v) {
+                          item.isFree = v;
+                          onChanged();
+                        }
+                      : null,
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

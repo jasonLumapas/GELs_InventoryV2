@@ -93,6 +93,9 @@ class PurchaseOrderRepository extends BaseRepository {
         status: r.status,
         notes: r.notes,
         createdAt: r.createdAt,
+        discountPercents:
+            PurchaseOrder.decodeDiscountPercents(r.discountPercents),
+        vatEnabled: r.vatEnabled,
       );
 
   Future<List<PurchaseOrderItem>> getItems(String purchaseOrderId) async {
@@ -113,9 +116,12 @@ class PurchaseOrderRepository extends BaseRepository {
               id: r.id,
               purchaseOrderId: r.purchaseOrderId,
               productId: r.productId,
+              systemPrice: r.systemPrice,
               price: r.price,
               cases: r.cases,
               amount: r.amount,
+              isFree: r.isFree,
+              rawPrice: r.rawPrice,
             ))
         .toList();
   }
@@ -347,6 +353,9 @@ class PurchaseOrderRepository extends BaseRepository {
             status: drift.Value(order.status),
             notes: drift.Value(order.notes),
             createdAt: drift.Value(order.createdAt),
+            discountPercents: drift.Value(
+                PurchaseOrder.encodeDiscountPercents(order.discountPercents)),
+            vatEnabled: drift.Value(order.vatEnabled),
           ),
         );
   }
@@ -357,9 +366,12 @@ class PurchaseOrderRepository extends BaseRepository {
             id: drift.Value(item.id),
             purchaseOrderId: drift.Value(item.purchaseOrderId),
             productId: drift.Value(item.productId),
+            systemPrice: drift.Value(item.systemPrice),
             price: drift.Value(item.price),
             cases: drift.Value(item.cases),
             amount: drift.Value(item.amount),
+            isFree: drift.Value(item.isFree),
+            rawPrice: drift.Value(item.rawPrice),
           ),
         );
   }

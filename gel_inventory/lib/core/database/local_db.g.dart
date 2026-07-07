@@ -9440,6 +9440,32 @@ class $PurchaseOrdersTable extends PurchaseOrders
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _discountPercentsMeta = const VerificationMeta(
+    'discountPercents',
+  );
+  @override
+  late final GeneratedColumn<String> discountPercents = GeneratedColumn<String>(
+    'discount_percents',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _vatEnabledMeta = const VerificationMeta(
+    'vatEnabled',
+  );
+  @override
+  late final GeneratedColumn<bool> vatEnabled = GeneratedColumn<bool>(
+    'vat_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("vat_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -9450,6 +9476,8 @@ class $PurchaseOrdersTable extends PurchaseOrders
     status,
     notes,
     createdAt,
+    discountPercents,
+    vatEnabled,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -9518,6 +9546,21 @@ class $PurchaseOrdersTable extends PurchaseOrders
         createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
       );
     }
+    if (data.containsKey('discount_percents')) {
+      context.handle(
+        _discountPercentsMeta,
+        discountPercents.isAcceptableOrUnknown(
+          data['discount_percents']!,
+          _discountPercentsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('vat_enabled')) {
+      context.handle(
+        _vatEnabledMeta,
+        vatEnabled.isAcceptableOrUnknown(data['vat_enabled']!, _vatEnabledMeta),
+      );
+    }
     return context;
   }
 
@@ -9559,6 +9602,14 @@ class $PurchaseOrdersTable extends PurchaseOrders
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      discountPercents: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}discount_percents'],
+      ),
+      vatEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}vat_enabled'],
+      )!,
     );
   }
 
@@ -9577,6 +9628,8 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
   final String status;
   final String? notes;
   final DateTime createdAt;
+  final String? discountPercents;
+  final bool vatEnabled;
   const PurchaseOrder({
     required this.id,
     required this.supplierId,
@@ -9586,6 +9639,8 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
     required this.status,
     this.notes,
     required this.createdAt,
+    this.discountPercents,
+    required this.vatEnabled,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -9602,6 +9657,10 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
       map['notes'] = Variable<String>(notes);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || discountPercents != null) {
+      map['discount_percents'] = Variable<String>(discountPercents);
+    }
+    map['vat_enabled'] = Variable<bool>(vatEnabled);
     return map;
   }
 
@@ -9619,6 +9678,10 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
           ? const Value.absent()
           : Value(notes),
       createdAt: Value(createdAt),
+      discountPercents: discountPercents == null && nullToAbsent
+          ? const Value.absent()
+          : Value(discountPercents),
+      vatEnabled: Value(vatEnabled),
     );
   }
 
@@ -9636,6 +9699,8 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
       status: serializer.fromJson<String>(json['status']),
       notes: serializer.fromJson<String?>(json['notes']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      discountPercents: serializer.fromJson<String?>(json['discountPercents']),
+      vatEnabled: serializer.fromJson<bool>(json['vatEnabled']),
     );
   }
   @override
@@ -9650,6 +9715,8 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
       'status': serializer.toJson<String>(status),
       'notes': serializer.toJson<String?>(notes),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'discountPercents': serializer.toJson<String?>(discountPercents),
+      'vatEnabled': serializer.toJson<bool>(vatEnabled),
     };
   }
 
@@ -9662,6 +9729,8 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
     String? status,
     Value<String?> notes = const Value.absent(),
     DateTime? createdAt,
+    Value<String?> discountPercents = const Value.absent(),
+    bool? vatEnabled,
   }) => PurchaseOrder(
     id: id ?? this.id,
     supplierId: supplierId ?? this.supplierId,
@@ -9673,6 +9742,10 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
     status: status ?? this.status,
     notes: notes.present ? notes.value : this.notes,
     createdAt: createdAt ?? this.createdAt,
+    discountPercents: discountPercents.present
+        ? discountPercents.value
+        : this.discountPercents,
+    vatEnabled: vatEnabled ?? this.vatEnabled,
   );
   PurchaseOrder copyWithCompanion(PurchaseOrdersCompanion data) {
     return PurchaseOrder(
@@ -9690,6 +9763,12 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
       status: data.status.present ? data.status.value : this.status,
       notes: data.notes.present ? data.notes.value : this.notes,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      discountPercents: data.discountPercents.present
+          ? data.discountPercents.value
+          : this.discountPercents,
+      vatEnabled: data.vatEnabled.present
+          ? data.vatEnabled.value
+          : this.vatEnabled,
     );
   }
 
@@ -9703,7 +9782,9 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
           ..write('totalAmount: $totalAmount, ')
           ..write('status: $status, ')
           ..write('notes: $notes, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('discountPercents: $discountPercents, ')
+          ..write('vatEnabled: $vatEnabled')
           ..write(')'))
         .toString();
   }
@@ -9718,6 +9799,8 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
     status,
     notes,
     createdAt,
+    discountPercents,
+    vatEnabled,
   );
   @override
   bool operator ==(Object other) =>
@@ -9730,7 +9813,9 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
           other.totalAmount == this.totalAmount &&
           other.status == this.status &&
           other.notes == this.notes &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.discountPercents == this.discountPercents &&
+          other.vatEnabled == this.vatEnabled);
 }
 
 class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
@@ -9742,6 +9827,8 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
   final Value<String> status;
   final Value<String?> notes;
   final Value<DateTime> createdAt;
+  final Value<String?> discountPercents;
+  final Value<bool> vatEnabled;
   final Value<int> rowid;
   const PurchaseOrdersCompanion({
     this.id = const Value.absent(),
@@ -9752,6 +9839,8 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
     this.status = const Value.absent(),
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.discountPercents = const Value.absent(),
+    this.vatEnabled = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   PurchaseOrdersCompanion.insert({
@@ -9763,6 +9852,8 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
     this.status = const Value.absent(),
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.discountPercents = const Value.absent(),
+    this.vatEnabled = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        supplierId = Value(supplierId);
@@ -9775,6 +9866,8 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
     Expression<String>? status,
     Expression<String>? notes,
     Expression<DateTime>? createdAt,
+    Expression<String>? discountPercents,
+    Expression<bool>? vatEnabled,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -9786,6 +9879,8 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
       if (status != null) 'status': status,
       if (notes != null) 'notes': notes,
       if (createdAt != null) 'created_at': createdAt,
+      if (discountPercents != null) 'discount_percents': discountPercents,
+      if (vatEnabled != null) 'vat_enabled': vatEnabled,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -9799,6 +9894,8 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
     Value<String>? status,
     Value<String?>? notes,
     Value<DateTime>? createdAt,
+    Value<String?>? discountPercents,
+    Value<bool>? vatEnabled,
     Value<int>? rowid,
   }) {
     return PurchaseOrdersCompanion(
@@ -9810,6 +9907,8 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
       status: status ?? this.status,
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
+      discountPercents: discountPercents ?? this.discountPercents,
+      vatEnabled: vatEnabled ?? this.vatEnabled,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -9841,6 +9940,12 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (discountPercents.present) {
+      map['discount_percents'] = Variable<String>(discountPercents.value);
+    }
+    if (vatEnabled.present) {
+      map['vat_enabled'] = Variable<bool>(vatEnabled.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -9858,6 +9963,8 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
           ..write('status: $status, ')
           ..write('notes: $notes, ')
           ..write('createdAt: $createdAt, ')
+          ..write('discountPercents: $discountPercents, ')
+          ..write('vatEnabled: $vatEnabled, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -9907,6 +10014,18 @@ class $PurchaseOrderItemsTable extends PurchaseOrderItems
       'REFERENCES products (id)',
     ),
   );
+  static const VerificationMeta _systemPriceMeta = const VerificationMeta(
+    'systemPrice',
+  );
+  @override
+  late final GeneratedColumn<double> systemPrice = GeneratedColumn<double>(
+    'system_price',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0.0),
+  );
   static const VerificationMeta _priceMeta = const VerificationMeta('price');
   @override
   late final GeneratedColumn<double> price = GeneratedColumn<double>(
@@ -9934,14 +10053,41 @@ class $PurchaseOrderItemsTable extends PurchaseOrderItems
     type: DriftSqlType.double,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _isFreeMeta = const VerificationMeta('isFree');
+  @override
+  late final GeneratedColumn<bool> isFree = GeneratedColumn<bool>(
+    'is_free',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_free" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _rawPriceMeta = const VerificationMeta(
+    'rawPrice',
+  );
+  @override
+  late final GeneratedColumn<double> rawPrice = GeneratedColumn<double>(
+    'raw_price',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
     purchaseOrderId,
     productId,
+    systemPrice,
     price,
     cases,
     amount,
+    isFree,
+    rawPrice,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -9979,6 +10125,15 @@ class $PurchaseOrderItemsTable extends PurchaseOrderItems
     } else if (isInserting) {
       context.missing(_productIdMeta);
     }
+    if (data.containsKey('system_price')) {
+      context.handle(
+        _systemPriceMeta,
+        systemPrice.isAcceptableOrUnknown(
+          data['system_price']!,
+          _systemPriceMeta,
+        ),
+      );
+    }
     if (data.containsKey('price')) {
       context.handle(
         _priceMeta,
@@ -10003,6 +10158,18 @@ class $PurchaseOrderItemsTable extends PurchaseOrderItems
     } else if (isInserting) {
       context.missing(_amountMeta);
     }
+    if (data.containsKey('is_free')) {
+      context.handle(
+        _isFreeMeta,
+        isFree.isAcceptableOrUnknown(data['is_free']!, _isFreeMeta),
+      );
+    }
+    if (data.containsKey('raw_price')) {
+      context.handle(
+        _rawPriceMeta,
+        rawPrice.isAcceptableOrUnknown(data['raw_price']!, _rawPriceMeta),
+      );
+    }
     return context;
   }
 
@@ -10024,6 +10191,10 @@ class $PurchaseOrderItemsTable extends PurchaseOrderItems
         DriftSqlType.string,
         data['${effectivePrefix}product_id'],
       )!,
+      systemPrice: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}system_price'],
+      )!,
       price: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
         data['${effectivePrefix}price'],
@@ -10036,6 +10207,14 @@ class $PurchaseOrderItemsTable extends PurchaseOrderItems
         DriftSqlType.double,
         data['${effectivePrefix}amount'],
       )!,
+      isFree: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_free'],
+      )!,
+      rawPrice: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}raw_price'],
+      ),
     );
   }
 
@@ -10050,16 +10229,22 @@ class PurchaseOrderItem extends DataClass
   final String id;
   final String purchaseOrderId;
   final String productId;
+  final double systemPrice;
   final double price;
   final double cases;
   final double amount;
+  final bool isFree;
+  final double? rawPrice;
   const PurchaseOrderItem({
     required this.id,
     required this.purchaseOrderId,
     required this.productId,
+    required this.systemPrice,
     required this.price,
     required this.cases,
     required this.amount,
+    required this.isFree,
+    this.rawPrice,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -10067,9 +10252,14 @@ class PurchaseOrderItem extends DataClass
     map['id'] = Variable<String>(id);
     map['purchase_order_id'] = Variable<String>(purchaseOrderId);
     map['product_id'] = Variable<String>(productId);
+    map['system_price'] = Variable<double>(systemPrice);
     map['price'] = Variable<double>(price);
     map['cases'] = Variable<double>(cases);
     map['amount'] = Variable<double>(amount);
+    map['is_free'] = Variable<bool>(isFree);
+    if (!nullToAbsent || rawPrice != null) {
+      map['raw_price'] = Variable<double>(rawPrice);
+    }
     return map;
   }
 
@@ -10078,9 +10268,14 @@ class PurchaseOrderItem extends DataClass
       id: Value(id),
       purchaseOrderId: Value(purchaseOrderId),
       productId: Value(productId),
+      systemPrice: Value(systemPrice),
       price: Value(price),
       cases: Value(cases),
       amount: Value(amount),
+      isFree: Value(isFree),
+      rawPrice: rawPrice == null && nullToAbsent
+          ? const Value.absent()
+          : Value(rawPrice),
     );
   }
 
@@ -10093,9 +10288,12 @@ class PurchaseOrderItem extends DataClass
       id: serializer.fromJson<String>(json['id']),
       purchaseOrderId: serializer.fromJson<String>(json['purchaseOrderId']),
       productId: serializer.fromJson<String>(json['productId']),
+      systemPrice: serializer.fromJson<double>(json['systemPrice']),
       price: serializer.fromJson<double>(json['price']),
       cases: serializer.fromJson<double>(json['cases']),
       amount: serializer.fromJson<double>(json['amount']),
+      isFree: serializer.fromJson<bool>(json['isFree']),
+      rawPrice: serializer.fromJson<double?>(json['rawPrice']),
     );
   }
   @override
@@ -10105,9 +10303,12 @@ class PurchaseOrderItem extends DataClass
       'id': serializer.toJson<String>(id),
       'purchaseOrderId': serializer.toJson<String>(purchaseOrderId),
       'productId': serializer.toJson<String>(productId),
+      'systemPrice': serializer.toJson<double>(systemPrice),
       'price': serializer.toJson<double>(price),
       'cases': serializer.toJson<double>(cases),
       'amount': serializer.toJson<double>(amount),
+      'isFree': serializer.toJson<bool>(isFree),
+      'rawPrice': serializer.toJson<double?>(rawPrice),
     };
   }
 
@@ -10115,16 +10316,22 @@ class PurchaseOrderItem extends DataClass
     String? id,
     String? purchaseOrderId,
     String? productId,
+    double? systemPrice,
     double? price,
     double? cases,
     double? amount,
+    bool? isFree,
+    Value<double?> rawPrice = const Value.absent(),
   }) => PurchaseOrderItem(
     id: id ?? this.id,
     purchaseOrderId: purchaseOrderId ?? this.purchaseOrderId,
     productId: productId ?? this.productId,
+    systemPrice: systemPrice ?? this.systemPrice,
     price: price ?? this.price,
     cases: cases ?? this.cases,
     amount: amount ?? this.amount,
+    isFree: isFree ?? this.isFree,
+    rawPrice: rawPrice.present ? rawPrice.value : this.rawPrice,
   );
   PurchaseOrderItem copyWithCompanion(PurchaseOrderItemsCompanion data) {
     return PurchaseOrderItem(
@@ -10133,9 +10340,14 @@ class PurchaseOrderItem extends DataClass
           ? data.purchaseOrderId.value
           : this.purchaseOrderId,
       productId: data.productId.present ? data.productId.value : this.productId,
+      systemPrice: data.systemPrice.present
+          ? data.systemPrice.value
+          : this.systemPrice,
       price: data.price.present ? data.price.value : this.price,
       cases: data.cases.present ? data.cases.value : this.cases,
       amount: data.amount.present ? data.amount.value : this.amount,
+      isFree: data.isFree.present ? data.isFree.value : this.isFree,
+      rawPrice: data.rawPrice.present ? data.rawPrice.value : this.rawPrice,
     );
   }
 
@@ -10145,16 +10357,28 @@ class PurchaseOrderItem extends DataClass
           ..write('id: $id, ')
           ..write('purchaseOrderId: $purchaseOrderId, ')
           ..write('productId: $productId, ')
+          ..write('systemPrice: $systemPrice, ')
           ..write('price: $price, ')
           ..write('cases: $cases, ')
-          ..write('amount: $amount')
+          ..write('amount: $amount, ')
+          ..write('isFree: $isFree, ')
+          ..write('rawPrice: $rawPrice')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, purchaseOrderId, productId, price, cases, amount);
+  int get hashCode => Object.hash(
+    id,
+    purchaseOrderId,
+    productId,
+    systemPrice,
+    price,
+    cases,
+    amount,
+    isFree,
+    rawPrice,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -10162,35 +10386,47 @@ class PurchaseOrderItem extends DataClass
           other.id == this.id &&
           other.purchaseOrderId == this.purchaseOrderId &&
           other.productId == this.productId &&
+          other.systemPrice == this.systemPrice &&
           other.price == this.price &&
           other.cases == this.cases &&
-          other.amount == this.amount);
+          other.amount == this.amount &&
+          other.isFree == this.isFree &&
+          other.rawPrice == this.rawPrice);
 }
 
 class PurchaseOrderItemsCompanion extends UpdateCompanion<PurchaseOrderItem> {
   final Value<String> id;
   final Value<String> purchaseOrderId;
   final Value<String> productId;
+  final Value<double> systemPrice;
   final Value<double> price;
   final Value<double> cases;
   final Value<double> amount;
+  final Value<bool> isFree;
+  final Value<double?> rawPrice;
   final Value<int> rowid;
   const PurchaseOrderItemsCompanion({
     this.id = const Value.absent(),
     this.purchaseOrderId = const Value.absent(),
     this.productId = const Value.absent(),
+    this.systemPrice = const Value.absent(),
     this.price = const Value.absent(),
     this.cases = const Value.absent(),
     this.amount = const Value.absent(),
+    this.isFree = const Value.absent(),
+    this.rawPrice = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   PurchaseOrderItemsCompanion.insert({
     required String id,
     required String purchaseOrderId,
     required String productId,
+    this.systemPrice = const Value.absent(),
     required double price,
     required double cases,
     required double amount,
+    this.isFree = const Value.absent(),
+    this.rawPrice = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        purchaseOrderId = Value(purchaseOrderId),
@@ -10202,18 +10438,24 @@ class PurchaseOrderItemsCompanion extends UpdateCompanion<PurchaseOrderItem> {
     Expression<String>? id,
     Expression<String>? purchaseOrderId,
     Expression<String>? productId,
+    Expression<double>? systemPrice,
     Expression<double>? price,
     Expression<double>? cases,
     Expression<double>? amount,
+    Expression<bool>? isFree,
+    Expression<double>? rawPrice,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (purchaseOrderId != null) 'purchase_order_id': purchaseOrderId,
       if (productId != null) 'product_id': productId,
+      if (systemPrice != null) 'system_price': systemPrice,
       if (price != null) 'price': price,
       if (cases != null) 'cases': cases,
       if (amount != null) 'amount': amount,
+      if (isFree != null) 'is_free': isFree,
+      if (rawPrice != null) 'raw_price': rawPrice,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -10222,18 +10464,24 @@ class PurchaseOrderItemsCompanion extends UpdateCompanion<PurchaseOrderItem> {
     Value<String>? id,
     Value<String>? purchaseOrderId,
     Value<String>? productId,
+    Value<double>? systemPrice,
     Value<double>? price,
     Value<double>? cases,
     Value<double>? amount,
+    Value<bool>? isFree,
+    Value<double?>? rawPrice,
     Value<int>? rowid,
   }) {
     return PurchaseOrderItemsCompanion(
       id: id ?? this.id,
       purchaseOrderId: purchaseOrderId ?? this.purchaseOrderId,
       productId: productId ?? this.productId,
+      systemPrice: systemPrice ?? this.systemPrice,
       price: price ?? this.price,
       cases: cases ?? this.cases,
       amount: amount ?? this.amount,
+      isFree: isFree ?? this.isFree,
+      rawPrice: rawPrice ?? this.rawPrice,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -10250,6 +10498,9 @@ class PurchaseOrderItemsCompanion extends UpdateCompanion<PurchaseOrderItem> {
     if (productId.present) {
       map['product_id'] = Variable<String>(productId.value);
     }
+    if (systemPrice.present) {
+      map['system_price'] = Variable<double>(systemPrice.value);
+    }
     if (price.present) {
       map['price'] = Variable<double>(price.value);
     }
@@ -10258,6 +10509,12 @@ class PurchaseOrderItemsCompanion extends UpdateCompanion<PurchaseOrderItem> {
     }
     if (amount.present) {
       map['amount'] = Variable<double>(amount.value);
+    }
+    if (isFree.present) {
+      map['is_free'] = Variable<bool>(isFree.value);
+    }
+    if (rawPrice.present) {
+      map['raw_price'] = Variable<double>(rawPrice.value);
     }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
@@ -10271,9 +10528,12 @@ class PurchaseOrderItemsCompanion extends UpdateCompanion<PurchaseOrderItem> {
           ..write('id: $id, ')
           ..write('purchaseOrderId: $purchaseOrderId, ')
           ..write('productId: $productId, ')
+          ..write('systemPrice: $systemPrice, ')
           ..write('price: $price, ')
           ..write('cases: $cases, ')
           ..write('amount: $amount, ')
+          ..write('isFree: $isFree, ')
+          ..write('rawPrice: $rawPrice, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -19673,6 +19933,8 @@ typedef $$PurchaseOrdersTableCreateCompanionBuilder =
       Value<String> status,
       Value<String?> notes,
       Value<DateTime> createdAt,
+      Value<String?> discountPercents,
+      Value<bool> vatEnabled,
       Value<int> rowid,
     });
 typedef $$PurchaseOrdersTableUpdateCompanionBuilder =
@@ -19685,6 +19947,8 @@ typedef $$PurchaseOrdersTableUpdateCompanionBuilder =
       Value<String> status,
       Value<String?> notes,
       Value<DateTime> createdAt,
+      Value<String?> discountPercents,
+      Value<bool> vatEnabled,
       Value<int> rowid,
     });
 
@@ -19788,6 +20052,16 @@ class $$PurchaseOrdersTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get discountPercents => $composableBuilder(
+    column: $table.discountPercents,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get vatEnabled => $composableBuilder(
+    column: $table.vatEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$SuppliersTableFilterComposer get supplierId {
     final $$SuppliersTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -19881,6 +20155,16 @@ class $$PurchaseOrdersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get discountPercents => $composableBuilder(
+    column: $table.discountPercents,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get vatEnabled => $composableBuilder(
+    column: $table.vatEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$SuppliersTableOrderingComposer get supplierId {
     final $$SuppliersTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -19938,6 +20222,16 @@ class $$PurchaseOrdersTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get discountPercents => $composableBuilder(
+    column: $table.discountPercents,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get vatEnabled => $composableBuilder(
+    column: $table.vatEnabled,
+    builder: (column) => column,
+  );
 
   $$SuppliersTableAnnotationComposer get supplierId {
     final $$SuppliersTableAnnotationComposer composer = $composerBuilder(
@@ -20027,6 +20321,8 @@ class $$PurchaseOrdersTableTableManager
                 Value<String> status = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<String?> discountPercents = const Value.absent(),
+                Value<bool> vatEnabled = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PurchaseOrdersCompanion(
                 id: id,
@@ -20037,6 +20333,8 @@ class $$PurchaseOrdersTableTableManager
                 status: status,
                 notes: notes,
                 createdAt: createdAt,
+                discountPercents: discountPercents,
+                vatEnabled: vatEnabled,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -20049,6 +20347,8 @@ class $$PurchaseOrdersTableTableManager
                 Value<String> status = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<String?> discountPercents = const Value.absent(),
+                Value<bool> vatEnabled = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PurchaseOrdersCompanion.insert(
                 id: id,
@@ -20059,6 +20359,8 @@ class $$PurchaseOrdersTableTableManager
                 status: status,
                 notes: notes,
                 createdAt: createdAt,
+                discountPercents: discountPercents,
+                vatEnabled: vatEnabled,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -20160,9 +20462,12 @@ typedef $$PurchaseOrderItemsTableCreateCompanionBuilder =
       required String id,
       required String purchaseOrderId,
       required String productId,
+      Value<double> systemPrice,
       required double price,
       required double cases,
       required double amount,
+      Value<bool> isFree,
+      Value<double?> rawPrice,
       Value<int> rowid,
     });
 typedef $$PurchaseOrderItemsTableUpdateCompanionBuilder =
@@ -20170,9 +20475,12 @@ typedef $$PurchaseOrderItemsTableUpdateCompanionBuilder =
       Value<String> id,
       Value<String> purchaseOrderId,
       Value<String> productId,
+      Value<double> systemPrice,
       Value<double> price,
       Value<double> cases,
       Value<double> amount,
+      Value<bool> isFree,
+      Value<double?> rawPrice,
       Value<int> rowid,
     });
 
@@ -20245,6 +20553,11 @@ class $$PurchaseOrderItemsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<double> get systemPrice => $composableBuilder(
+    column: $table.systemPrice,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<double> get price => $composableBuilder(
     column: $table.price,
     builder: (column) => ColumnFilters(column),
@@ -20257,6 +20570,16 @@ class $$PurchaseOrderItemsTableFilterComposer
 
   ColumnFilters<double> get amount => $composableBuilder(
     column: $table.amount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isFree => $composableBuilder(
+    column: $table.isFree,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get rawPrice => $composableBuilder(
+    column: $table.rawPrice,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -20321,6 +20644,11 @@ class $$PurchaseOrderItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<double> get systemPrice => $composableBuilder(
+    column: $table.systemPrice,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<double> get price => $composableBuilder(
     column: $table.price,
     builder: (column) => ColumnOrderings(column),
@@ -20333,6 +20661,16 @@ class $$PurchaseOrderItemsTableOrderingComposer
 
   ColumnOrderings<double> get amount => $composableBuilder(
     column: $table.amount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isFree => $composableBuilder(
+    column: $table.isFree,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get rawPrice => $composableBuilder(
+    column: $table.rawPrice,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -20395,6 +20733,11 @@ class $$PurchaseOrderItemsTableAnnotationComposer
   GeneratedColumn<String> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
+  GeneratedColumn<double> get systemPrice => $composableBuilder(
+    column: $table.systemPrice,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<double> get price =>
       $composableBuilder(column: $table.price, builder: (column) => column);
 
@@ -20403,6 +20746,12 @@ class $$PurchaseOrderItemsTableAnnotationComposer
 
   GeneratedColumn<double> get amount =>
       $composableBuilder(column: $table.amount, builder: (column) => column);
+
+  GeneratedColumn<bool> get isFree =>
+      $composableBuilder(column: $table.isFree, builder: (column) => column);
+
+  GeneratedColumn<double> get rawPrice =>
+      $composableBuilder(column: $table.rawPrice, builder: (column) => column);
 
   $$PurchaseOrdersTableAnnotationComposer get purchaseOrderId {
     final $$PurchaseOrdersTableAnnotationComposer composer = $composerBuilder(
@@ -20487,17 +20836,23 @@ class $$PurchaseOrderItemsTableTableManager
                 Value<String> id = const Value.absent(),
                 Value<String> purchaseOrderId = const Value.absent(),
                 Value<String> productId = const Value.absent(),
+                Value<double> systemPrice = const Value.absent(),
                 Value<double> price = const Value.absent(),
                 Value<double> cases = const Value.absent(),
                 Value<double> amount = const Value.absent(),
+                Value<bool> isFree = const Value.absent(),
+                Value<double?> rawPrice = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PurchaseOrderItemsCompanion(
                 id: id,
                 purchaseOrderId: purchaseOrderId,
                 productId: productId,
+                systemPrice: systemPrice,
                 price: price,
                 cases: cases,
                 amount: amount,
+                isFree: isFree,
+                rawPrice: rawPrice,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -20505,17 +20860,23 @@ class $$PurchaseOrderItemsTableTableManager
                 required String id,
                 required String purchaseOrderId,
                 required String productId,
+                Value<double> systemPrice = const Value.absent(),
                 required double price,
                 required double cases,
                 required double amount,
+                Value<bool> isFree = const Value.absent(),
+                Value<double?> rawPrice = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PurchaseOrderItemsCompanion.insert(
                 id: id,
                 purchaseOrderId: purchaseOrderId,
                 productId: productId,
+                systemPrice: systemPrice,
                 price: price,
                 cases: cases,
                 amount: amount,
+                isFree: isFree,
+                rawPrice: rawPrice,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

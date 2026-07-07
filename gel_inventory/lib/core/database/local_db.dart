@@ -339,6 +339,9 @@ class PurchaseOrders extends Table {
   TextColumn get notes => text().nullable()();
   DateTimeColumn get createdAt =>
       dateTime().withDefault(currentDateAndTime)();
+  // Comma-separated cascading discount percentages, e.g. "10,5".
+  TextColumn get discountPercents => text().nullable()();
+  BoolColumn get vatEnabled => boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -349,11 +352,16 @@ class PurchaseOrderItems extends Table {
   TextColumn get purchaseOrderId =>
       text().references(PurchaseOrders, #id)();
   TextColumn get productId => text().references(Products, #id)();
-  // Product's withdrawal price at the time the item was added.
+  // Product's withdrawal price (per box) at the time the item was added.
+  RealColumn get systemPrice => real().withDefault(const Constant(0.0))();
+  // Net price (per box) after discounts/VAT — used for amount.
   RealColumn get price => real()();
   // "# of case", editable.
   RealColumn get cases => real()();
   RealColumn get amount => real()();
+  BoolColumn get isFree => boolean().withDefault(const Constant(false))();
+  // Supplier price (per box) before the order's discounts/VAT.
+  RealColumn get rawPrice => real().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -403,7 +411,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 28;
+  int get schemaVersion => 30;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -530,6 +538,20 @@ class LocalDatabase extends _$LocalDatabase {
           if (from < 28) {
             await _addColumnIfMissing(
                 m.database, 'invoices', 'check_issued_date', 'INTEGER');
+          }
+          if (from < 29) {
+            await _addColumnIfMissing(m.database, 'purchase_orders',
+                'discount_percents', 'TEXT');
+            await _addColumnIfMissing(m.database, 'purchase_orders',
+                'vat_enabled', 'INTEGER NOT NULL DEFAULT 0');
+            await _addColumnIfMissing(
+                m.database, 'purchase_order_items', 'raw_price', 'REAL');
+          }
+          if (from < 30) {
+            await _addColumnIfMissing(m.database, 'purchase_order_items',
+                'system_price', 'REAL NOT NULL DEFAULT 0');
+            await _addColumnIfMissing(m.database, 'purchase_order_items',
+                'is_free', 'INTEGER NOT NULL DEFAULT 0');
           }
         },
       );

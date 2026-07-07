@@ -1636,16 +1636,22 @@ Future<void> printPurchaseOrder({
       );
 
   final grandTotal = items.fold(0.0, (s, i) => s + i.amount);
+  final totalCases = items.fold(0.0, (s, i) => s + i.cases);
 
   doc.addPage(pw.MultiPage(
     pageFormat: pageFormat,
     build: (ctx) => [
+      pw.Text("Gel's Consumer Goods Trading",
+          style: ts(bold: true, size: fsHead + 6)),
+      pw.Text('Purok Tambis, Poblacion, San Remigio, Cebu',
+          style: ts(size: fsHead)),
+      pw.Text('Contact number: 0945-856-0025 / 0936-944-5027',
+          style: ts(size: fsHead)),
+      pw.SizedBox(height: 38),
       pw.Text('Purchase Order', style: ts(bold: true, size: fsHead + 2)),
       pw.SizedBox(height: 4),
       pw.Text('Date: ${dateFmt.format(order.orderDate)}', style: ts(size: fsHead)),
       pw.Text('Supplier: ${supplier.name}', style: ts(size: fsHead)),
-      if (order.referenceNumber != null && order.referenceNumber!.isNotEmpty)
-        pw.Text('Reference #: ${order.referenceNumber}', style: ts(size: fsHead)),
       pw.SizedBox(height: 10),
 
       // Column header row
@@ -1663,23 +1669,37 @@ Future<void> printPurchaseOrder({
         pw.Padding(
           padding: const pw.EdgeInsets.symmetric(vertical: 1.5),
           child: pw.Row(children: [
-            col(productsById[items[i].productId]?.name ?? items[i].productId, prodW),
+            col(
+                (productsById[items[i].productId]?.name ?? items[i].productId) +
+                    (items[i].isFree ? ' (FREE)' : ''),
+                prodW),
             col(
               productsById[items[i].productId] != null
                   ? packagingLabel(productsById[items[i].productId]!)
                   : '',
               pkgW,
             ),
-            col(_n(items[i].price), colW, align: pw.TextAlign.right),
-            col(_n(items[i].cases), colW, align: pw.TextAlign.right),
-            col(_n(items[i].amount), colW, align: pw.TextAlign.right),
+            col(items[i].isFree ? '-' : _n(items[i].price), colW,
+                align: pw.TextAlign.right),
+            col(NumberFormat('#,##0').format(items[i].cases), colW,
+                align: pw.TextAlign.right),
+            col(items[i].isFree ? '-' : _n(items[i].amount), colW,
+                align: pw.TextAlign.right),
           ]),
         ),
         if (i < items.length - 1) pw.Divider(height: 1, thickness: 0.2),
       ],
 
       pw.Divider(height: 8, thickness: 0.5),
-      pw.SizedBox(height: 6),
+      pw.SizedBox(height: 2),
+      pw.Row(children: [
+        col('', prodW),
+        col('', pkgW),
+        col('', colW),
+        col(NumberFormat('#,##0').format(totalCases), colW,
+            align: pw.TextAlign.right),
+        col('', colW),
+      ]),
       pw.Align(
         alignment: pw.Alignment.centerRight,
         child: pw.Text('Grand Total: ${_n(grandTotal)}',

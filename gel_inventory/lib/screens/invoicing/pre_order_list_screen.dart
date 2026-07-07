@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import '../../models/invoice.dart';
+import '../../models/invoice_item.dart';
 import '../../models/product.dart';
 import '../../repositories/client_repository.dart';
 import '../../repositories/inventory_repository.dart';
@@ -24,10 +26,97 @@ class PreOrderListScreen extends ConsumerStatefulWidget {
       _PreOrderListScreenState();
 }
 
+enum _DraftSortOrder { newestFirst, oldestFirst, clientAZ }
+
 class _PreOrderListScreenState
     extends ConsumerState<PreOrderListScreen> {
   bool _exporting = false;
   bool _importingConfirmed = false;
+  String _productSearch = '';
+  final TextEditingController _searchCtrl = TextEditingController();
+  // draft id → set of lower-cased product names
+  Map<String, Set<String>> _draftProductNames = {};
+  // draft id → whether the draft can be fulfilled given available inventory
+  // (null = not yet computed)
+  Map<String, bool> _draftValidity = {};
+  bool _loadingProductNames = false;
+  _DraftSortOrder _sortOrder = _DraftSortOrder.oldestFirst;
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadProductNames(List<Invoice> drafts) async {
+    if (_loadingProductNames) return;
+    setState(() => _loadingProductNames = true);
+    try {
+      final invoiceRepo = ref.read(invoiceRepositoryProvider);
+      final inventoryRepo = ref.read(inventoryRepositoryProvider);
+      final products = await ref.read(productRepositoryProvider).getAll();
+      final productsById = {for (final p in products) p.id: p.name};
+
+      // Load all items in one pass so we can reuse them for validity.
+      final allItems = <String, List<InvoiceItem>>{};
+      for (final draft in drafts) {
+        allItems[draft.id] = await invoiceRepo.getItems(draft.id);
+      }
+
+      // Build search-filter map.
+      final nameMap = <String, Set<String>>{};
+      final productIdSet = <String>{};
+      for (final draft in drafts) {
+        final items = allItems[draft.id]!;
+        nameMap[draft.id] = {
+          for (final item in items)
+            if (productsById.containsKey(item.productId))
+              productsById[item.productId]!.toLowerCase()
+        };
+        for (final item in items) {
+          productIdSet.add(item.productId);
+        }
+      }
+
+      // Fetch current inventory for every product referenced in any draft.
+      final remaining = <String, int>{};
+      for (final productId in productIdSet) {
+        final inv = await inventoryRepo.getByProductId(productId);
+        remaining[productId] = inv?.quantityPieces ?? 0;
+      }
+
+      // Compute validity: process drafts oldest-first (highest priority).
+      // A draft is valid iff every item can be satisfied by the remaining stock
+      // after all earlier-priority valid drafts have consumed their share.
+      final sortedDrafts = [...drafts]
+        ..sort((a, b) {
+          final d = a.invoiceDate.compareTo(b.invoiceDate);
+          return d != 0 ? d : a.createdAt.compareTo(b.createdAt);
+        });
+      final validityMap = <String, bool>{};
+      for (final draft in sortedDrafts) {
+        final items = allItems[draft.id]!;
+        final valid = items.every(
+          (item) => (remaining[item.productId] ?? 0) >= item.quantity,
+        );
+        validityMap[draft.id] = valid;
+        if (valid) {
+          for (final item in items) {
+            remaining[item.productId] = (remaining[item.productId] ?? 0) - item.quantity;
+          }
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _draftProductNames = nameMap;
+          _draftValidity = validityMap;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _loadingProductNames = false);
+    }
+  }
 
   /// Scans Desktop for pre_order_confirmed_*.json and lets the user pick one.
   /// The confirmed_pieces for each matched item are added to local inventory
@@ -251,6 +340,14 @@ class _PreOrderListScreenState
         updatedCount++;
       }
       ref.invalidate(inventoryListProvider);
+      // Re-evaluate draft validity against the updated inventory.
+      final currentDrafts =
+          ref.read(preOrderDraftsProvider).valueOrNull ?? [];
+      setState(() {
+        _draftProductNames = {};
+        _draftValidity = {};
+      });
+      if (currentDrafts.isNotEmpty) _loadProductNames(currentDrafts);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -404,6 +501,17 @@ class _PreOrderListScreenState
     final clientsAsync = ref.watch(clientsListProvider);
     final dateFmt = DateFormat('MMM dd, yyyy');
 
+    ref.listen(preOrderDraftsProvider, (_, next) {
+      // Skip while reloading: whenData fires with stale data during reload,
+      // which would run validity against drafts that no longer exist.
+      if (next.isLoading) return;
+      next.whenData((drafts) {
+        if (!_loadingProductNames) {
+          _loadProductNames(drafts);
+        }
+      });
+    });
+
     return AppScaffold(
       title: 'Pre-Order Drafts',
       actions: [
@@ -438,6 +546,26 @@ class _PreOrderListScreenState
                 tooltip: 'Export for main system (JSON)',
                 onPressed: _exportJson,
               ),
+        PopupMenuButton<_DraftSortOrder>(
+          icon: const Icon(Icons.sort),
+          tooltip: 'Sort',
+          initialValue: _sortOrder,
+          onSelected: (v) => setState(() => _sortOrder = v),
+          itemBuilder: (_) => const [
+            PopupMenuItem(
+              value: _DraftSortOrder.newestFirst,
+              child: Text('Newest first'),
+            ),
+            PopupMenuItem(
+              value: _DraftSortOrder.oldestFirst,
+              child: Text('Oldest first'),
+            ),
+            PopupMenuItem(
+              value: _DraftSortOrder.clientAZ,
+              child: Text('Client A→Z'),
+            ),
+          ],
+        ),
         FilledButton.icon(
           icon: const Icon(Icons.add, size: 18),
           label: const Text('New'),
@@ -452,6 +580,17 @@ class _PreOrderListScreenState
             const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
         data: (drafts) {
+          if (drafts.isNotEmpty &&
+              _draftProductNames.isEmpty &&
+              !_loadingProductNames) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted &&
+                  _draftProductNames.isEmpty &&
+                  !_loadingProductNames) {
+                _loadProductNames(drafts);
+              }
+            });
+          }
           if (drafts.isEmpty) {
             return const Center(
               child: Text('No pre-order drafts yet.\nTap "New" to create one.',
@@ -461,21 +600,78 @@ class _PreOrderListScreenState
           final clientsById = {
             for (final c in clientsAsync.valueOrNull ?? []) c.id: c
           };
+          final q = _productSearch.toLowerCase();
+          final filtered = (q.isEmpty
+              ? List<Invoice>.from(drafts)
+              : drafts.where((d) {
+                  final names = _draftProductNames[d.id] ?? {};
+                  return names.any((n) => n.contains(q));
+                }).toList())
+            ..sort((a, b) {
+              switch (_sortOrder) {
+                case _DraftSortOrder.newestFirst:
+                  return b.invoiceDate.compareTo(a.invoiceDate);
+                case _DraftSortOrder.oldestFirst:
+                  return a.invoiceDate.compareTo(b.invoiceDate);
+                case _DraftSortOrder.clientAZ:
+                  final ca = clientsById[a.clientId]?.name ?? a.clientId;
+                  final cb = clientsById[b.clientId]?.name ?? b.clientId;
+                  return ca.toLowerCase().compareTo(cb.toLowerCase());
+              }
+            });
           return Column(
             children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+                child: TextField(
+                  controller: _searchCtrl,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: 'Search by product...',
+                    prefixIcon: const Icon(Icons.search, size: 18),
+                    suffixIcon: _productSearch.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 16),
+                            onPressed: () {
+                              _searchCtrl.clear();
+                              setState(() => _productSearch = '');
+                            },
+                          )
+                        : null,
+                    border: const OutlineInputBorder(),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 8),
+                  ),
+                  onChanged: (v) => setState(() => _productSearch = v.trim()),
+                ),
+              ),
               Expanded(
-                child: ListView.separated(
-                  itemCount: drafts.length,
+                child: filtered.isEmpty
+                    ? const Center(
+                        child: Text('No drafts contain that product.',
+                            style: TextStyle(color: Colors.grey)))
+                    : ListView.separated(
+                  itemCount: filtered.length,
                   separatorBuilder: (_, _) =>
                       const Divider(height: 1),
                   itemBuilder: (ctx, i) {
-                    final d = drafts[i];
+                    final d = filtered[i];
                     final client = clientsById[d.clientId];
+                    final validity = _draftValidity[d.id];
                     return ListTile(
-                      leading: const CircleAvatar(
-                        backgroundColor: Color(0xFFE8F5E9),
-                        child: Icon(Icons.receipt_long,
-                            color: Colors.green, size: 20),
+                      leading: CircleAvatar(
+                        backgroundColor: validity == false
+                            ? Colors.orange.shade100
+                            : const Color(0xFFE8F5E9),
+                        child: Icon(
+                          validity == false
+                              ? Icons.warning_amber
+                              : Icons.receipt_long,
+                          color: validity == false
+                              ? Colors.orange.shade700
+                              : Colors.green,
+                          size: 20,
+                        ),
                       ),
                       title: Text(
                         client?.name ?? d.clientId,

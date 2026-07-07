@@ -187,7 +187,71 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
       }
     }
 
+    await _computeEffectiveAvailability();
     if (mounted) setState(() => _loading = false);
+  }
+
+  /// Recomputes each line item's [_LineItem.availablePieces] to reflect what
+  /// remains after higher-priority (earlier-dated) valid drafts consume stock.
+  Future<void> _computeEffectiveAvailability() async {
+    if (_lineItems.isEmpty) return;
+
+    final invoiceRepo = ref.read(invoiceRepositoryProvider);
+    final inventoryRepo = ref.read(inventoryRepositoryProvider);
+
+    final allDrafts = await invoiceRepo.getPreOrderDrafts();
+
+    // Load items for every other draft.
+    final otherItems = <String, List<InvoiceItem>>{};
+    for (final d in allDrafts) {
+      if (d.id == _id) continue;
+      otherItems[d.id] = await invoiceRepo.getItems(d.id);
+    }
+
+    // Seed inventory for all products referenced across all drafts.
+    final allProductIds = {
+      ..._lineItems.map((li) => li.product.id),
+      for (final items in otherItems.values)
+        for (final item in items) item.productId,
+    };
+    final remaining = <String, int>{};
+    for (final productId in allProductIds) {
+      final inv = await inventoryRepo.getByProductId(productId);
+      remaining[productId] = inv?.quantityPieces ?? 0;
+    }
+
+    // Drafts that rank higher priority: earlier delivery date, or same date
+    // but created earlier (matching the list screen's stable sort order).
+    final higherPriority = allDrafts.where((d) {
+      if (d.id == _id) return false;
+      final dateCmp = d.invoiceDate.compareTo(_invoiceDate);
+      if (dateCmp < 0) return true;
+      if (dateCmp > 0) return false;
+      return d.createdAt.isBefore(_createdAt);
+    }).toList()
+      ..sort((a, b) {
+        final dateCmp = a.invoiceDate.compareTo(b.invoiceDate);
+        return dateCmp != 0 ? dateCmp : a.createdAt.compareTo(b.createdAt);
+      });
+
+    for (final draft in higherPriority) {
+      final items = otherItems[draft.id]!;
+      final valid = items.every(
+          (item) => (remaining[item.productId] ?? 0) >= item.quantity);
+      if (valid) {
+        for (final item in items) {
+          remaining[item.productId] =
+              (remaining[item.productId] ?? 0) - item.quantity;
+        }
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      for (final li in _lineItems) {
+        li.availablePieces = remaining[li.product.id] ?? 0;
+      }
+    });
   }
 
   Future<void> _pickDate() async {
@@ -200,6 +264,7 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
     if (picked != null) {
       setState(() => _invoiceDate = picked);
       _scheduleAutoSave();
+      _computeEffectiveAvailability();
     }
   }
 
@@ -482,6 +547,7 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
       await repo.finalizeDraft(invoice: invoice, items: items);
       ref.invalidate(preOrderDraftsProvider);
       ref.invalidate(invoicesListProvider);
+      ref.invalidate(filteredInvoicesProvider);
       ref.invalidate(inventoryListProvider);
 
       if (!mounted) return;

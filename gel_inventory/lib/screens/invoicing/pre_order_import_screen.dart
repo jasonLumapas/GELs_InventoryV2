@@ -94,6 +94,8 @@ class _PreOrderImportScreenState
   bool _isReadOnly = false;
   List<_ReviewRow> _rows = [];
   String _exportedAt = '';
+  String _searchQuery = '';
+  final TextEditingController _searchCtrl = TextEditingController();
 
   // ── Review history ──────────────────────────────────────────────────────────
   List<PreOrderReview> _savedReviews = [];
@@ -114,6 +116,7 @@ class _PreOrderImportScreenState
     for (final r in _rows) {
       r.dispose();
     }
+    _searchCtrl.dispose();
     super.dispose();
   }
 
@@ -157,12 +160,14 @@ class _PreOrderImportScreenState
   }
 
   Future<void> _loadReview(PreOrderReview review) async {
+    _searchCtrl.clear();
     setState(() {
       _loadingReview = true;
       _isReadOnly = true;
       _selectedFile = null;
       _currentSourceFile = review.sourceFile;
       _exportedAt = review.originalExportedAt;
+      _searchQuery = '';
       for (final r in _rows) { r.dispose(); }
       _rows = [];
     });
@@ -224,11 +229,13 @@ class _PreOrderImportScreenState
   // ── File load ───────────────────────────────────────────────────────────────
 
   Future<void> _loadFile(File file) async {
+    _searchCtrl.clear();
     setState(() {
       _loadingReview = true;
       _isReadOnly = false;
       _selectedFile = file;
       _currentSourceFile = file.uri.pathSegments.last;
+      _searchQuery = '';
       for (final r in _rows) { r.dispose(); }
       _rows = [];
     });
@@ -449,6 +456,12 @@ class _PreOrderImportScreenState
     return '—';
   }
 
+  // Recomputed on every build (cheap: just wraps existing controllers) so
+  // widgets that depend on adjusted quantities (Save/Print enabled state,
+  // footer summary) can react live to typing without the parent rebuilding.
+  Listenable get _rowsListenable => Listenable.merge(
+      _rows.expand((r) => [r.adjustedBoxCtrl, r.adjustedPcsCtrl]).toList());
+
   // ── Build ───────────────────────────────────────────────────────────────────
 
   @override
@@ -456,7 +469,7 @@ class _PreOrderImportScreenState
     final dateFmt = DateFormat('MMM dd, yyyy HH:mm');
 
     return AppScaffold(
-      title: 'Import Pre-Order File',
+      title: 'Verify Pre-Order File',
       actions: [
         if (_rows.isNotEmpty) ...[
           _saving
@@ -467,43 +480,43 @@ class _PreOrderImportScreenState
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2)),
                 )
-              : Builder(builder: (_) {
-                  final hasInsufficient =
-                      _rows.any((r) => r.productFound && !r.isSufficient);
-                  return IconButton(
-                    icon: const Icon(Icons.save),
-                    tooltip: _isReadOnly
-                        ? 'Already saved'
-                        : hasInsufficient
-                            ? 'Cannot save — insufficient stock'
-                            : 'Save & deduct inventory',
-                    onPressed: _isReadOnly || hasInsufficient
-                        ? null
-                        : _saveToInventory,
-                  );
-                }),
-          Builder(builder: (_) {
-            final hasInsufficient =
-                _rows.any((r) => r.productFound && !r.isSufficient);
-            return IconButton(
-              icon: const Icon(Icons.file_download),
-              tooltip: hasInsufficient
-                  ? 'Cannot export — insufficient stock'
-                  : 'Export confirmed file',
-              onPressed: hasInsufficient ? null : _exportConfirmed,
-            );
-          }),
-          Builder(builder: (_) {
-            final hasInsufficient =
-                _rows.any((r) => r.productFound && !r.isSufficient);
-            return IconButton(
-              icon: const Icon(Icons.print),
-              tooltip: hasInsufficient
-                  ? 'Cannot print — insufficient stock'
-                  : 'Print adjusted layout',
-              onPressed: hasInsufficient ? null : _printAdjusted,
-            );
-          }),
+              : AnimatedBuilder(
+                  animation: _rowsListenable,
+                  builder: (_, _) {
+                    final hasInsufficient =
+                        _rows.any((r) => r.productFound && !r.isSufficient);
+                    return IconButton(
+                      icon: const Icon(Icons.save),
+                      tooltip: _isReadOnly
+                          ? 'Already saved'
+                          : hasInsufficient
+                              ? 'Cannot save — insufficient stock'
+                              : 'Save & deduct inventory',
+                      onPressed: _isReadOnly || hasInsufficient
+                          ? null
+                          : _saveToInventory,
+                    );
+                  }),
+          IconButton(
+            icon: const Icon(Icons.file_upload),
+            tooltip: _isReadOnly
+                ? 'Export confirmed file'
+                : 'Save first before exporting',
+            onPressed: _isReadOnly ? _exportConfirmed : null,
+          ),
+          AnimatedBuilder(
+              animation: _rowsListenable,
+              builder: (_, _) {
+                final hasInsufficient =
+                    _rows.any((r) => r.productFound && !r.isSufficient);
+                return IconButton(
+                  icon: const Icon(Icons.print),
+                  tooltip: hasInsufficient
+                      ? 'Cannot print — insufficient stock'
+                      : 'Print adjusted layout',
+                  onPressed: hasInsufficient ? null : _printAdjusted,
+                );
+              }),
         ],
         IconButton(
           icon: const Icon(Icons.refresh),
@@ -662,6 +675,32 @@ class _PreOrderImportScreenState
                   ),
                   const Divider(height: 1),
 
+                  // Search bar
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                    child: TextField(
+                      controller: _searchCtrl,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        hintText: 'Search product...',
+                        prefixIcon: const Icon(Icons.search, size: 18),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear, size: 16),
+                                onPressed: () {
+                                  _searchCtrl.clear();
+                                  setState(() => _searchQuery = '');
+                                },
+                              )
+                            : null,
+                        border: const OutlineInputBorder(),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 8),
+                      ),
+                      onChanged: (v) => setState(() => _searchQuery = v.trim()),
+                    ),
+                  ),
+
                   // Column headers
                   Padding(
                     padding: const EdgeInsets.symmetric(
@@ -716,177 +755,207 @@ class _PreOrderImportScreenState
 
                   // Rows
                   Expanded(
-                    child: ListView.separated(
-                      itemCount: _rows.length,
+                    child: Builder(builder: (ctx) {
+                      final filtered = _searchQuery.isEmpty
+                          ? _rows
+                          : _rows
+                              .where((r) => r.productName
+                                  .toLowerCase()
+                                  .contains(_searchQuery.toLowerCase()))
+                              .toList();
+                      if (filtered.isEmpty) {
+                        return const Center(
+                          child: Text('No products match the search.',
+                              style: TextStyle(color: Colors.grey)),
+                        );
+                      }
+                      return ListView.separated(
+                      itemCount: filtered.length,
                       separatorBuilder: (_, _) =>
                           const Divider(height: 1),
                       itemBuilder: (ctx, i) {
-                        final row = _rows[i];
-                        final insufficient = !row.isSufficient;
-                        return Container(
-                          color: insufficient
-                              ? Colors.orange.shade50
-                              : null,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          child: Row(
-                            children: [
-                              // Status icon + product name
-                              Expanded(
-                                flex: 4,
-                                child: Row(
-                                  children: [
-                                    !row.productFound
-                                        ? const Icon(Icons.help_outline,
-                                            size: 16, color: Colors.grey)
-                                        : insufficient
-                                            ? Icon(Icons.warning,
-                                                size: 16,
-                                                color: Colors.orange.shade700)
-                                            : const Icon(Icons.check_circle,
-                                                size: 16,
-                                                color: Colors.green),
-                                    const SizedBox(width: 6),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(row.productName,
-                                              style: TextStyle(
-                                                  fontSize: 13,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: !row.productFound
-                                                      ? Colors.grey
-                                                      : null)),
-                                          Text(row.supplierName,
-                                              style: const TextStyle(
-                                                  fontSize: 11,
-                                                  color: Colors.grey)),
-                                        ],
+                        final row = filtered[i];
+                        // The Box/Pcs TextFields are built once (as `child`)
+                        // and never touched by this AnimatedBuilder — only
+                        // the status icon / colors that derive from the
+                        // typed value are rebuilt. This keeps typing from
+                        // ever rebuilding the TextField's own subtree, which
+                        // is what was dropping focus (a Flutter desktop
+                        // quirk when an ancestor rebuilds mid-keystroke).
+                        return AnimatedBuilder(
+                          key: ObjectKey(row),
+                          animation: Listenable.merge(
+                              [row.adjustedBoxCtrl, row.adjustedPcsCtrl]),
+                          builder: (ctx, child) {
+                            final insufficient = !row.isSufficient;
+                            return Container(
+                              color: insufficient
+                                  ? Colors.orange.shade50
+                                  : null,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
+                              child: Row(
+                                children: [
+                                  // Status icon + product name
+                                  Expanded(
+                                    flex: 4,
+                                    child: Row(
+                                      children: [
+                                        !row.productFound
+                                            ? const Icon(Icons.help_outline,
+                                                size: 16, color: Colors.grey)
+                                            : insufficient
+                                                ? Icon(Icons.warning,
+                                                    size: 16,
+                                                    color: Colors
+                                                        .orange.shade700)
+                                                : const Icon(
+                                                    Icons.check_circle,
+                                                    size: 16,
+                                                    color: Colors.green),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(row.productName,
+                                                  style: TextStyle(
+                                                      fontSize: 13,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: !row.productFound
+                                                          ? Colors.grey
+                                                          : null)),
+                                              Text(row.supplierName,
+                                                  style: const TextStyle(
+                                                      fontSize: 11,
+                                                      color: Colors.grey)),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  // Requested
+                                  Expanded(
+                                    flex: 3,
+                                    child: Text(
+                                      _fmtQty(row.reqBoxes, row.reqPcs),
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  ),
+                                  // Available
+                                  Expanded(
+                                    flex: 3,
+                                    child: Text(
+                                      row.productFound
+                                          ? _fmtQty(row.avlBoxes, row.avlPcs)
+                                          : 'Unknown',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: !row.productFound
+                                            ? Colors.grey
+                                            : insufficient
+                                                ? Colors.orange.shade700
+                                                : Colors.green.shade700,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
-                                  ],
-                                ),
+                                  ),
+                                  // Adjusted — Box and Pcs fields (static child)
+                                  child!,
+                                ],
                               ),
-                              // Requested
-                              Expanded(
-                                flex: 3,
-                                child: Text(
-                                  _fmtQty(row.reqBoxes, row.reqPcs),
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(fontSize: 12),
-                                ),
-                              ),
-                              // Available
-                              Expanded(
-                                flex: 3,
-                                child: Text(
-                                  row.productFound
-                                      ? _fmtQty(row.avlBoxes, row.avlPcs)
-                                      : 'Unknown',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: !row.productFound
-                                        ? Colors.grey
-                                        : insufficient
-                                            ? Colors.orange.shade700
-                                            : Colors.green.shade700,
-                                    fontWeight: FontWeight.w600,
+                            );
+                          },
+                          child: SizedBox(
+                            width: 160,
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: row.adjustedBoxCtrl,
+                                    readOnly: _isReadOnly,
+                                    keyboardType: TextInputType.number,
+                                    inputFormatters: [
+                                      FilteringTextInputFormatter.digitsOnly
+                                    ],
+                                    textAlign: TextAlign.start,
+                                    style: const TextStyle(fontSize: 13),
+                                    decoration: InputDecoration(
+                                      isDense: true,
+                                      hintText: '0',
+                                      suffixText: 'box',
+                                      border: const OutlineInputBorder(),
+                                      filled: _isReadOnly,
+                                      fillColor: Colors.grey.shade100,
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                              horizontal: 6, vertical: 6),
+                                    ),
                                   ),
                                 ),
-                              ),
-                              // Adjusted — Box and Pcs fields
-                              SizedBox(
-                                width: 160,
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: TextField(
-                                        controller: row.adjustedBoxCtrl,
-                                        readOnly: _isReadOnly,
-                                        keyboardType: TextInputType.number,
-                                        inputFormatters: [
-                                          FilteringTextInputFormatter.digitsOnly
-                                        ],
-                                        textAlign: TextAlign.center,
-                                        style:
-                                            const TextStyle(fontSize: 13),
-                                        decoration: InputDecoration(
-                                          isDense: true,
-                                          hintText: '0',
-                                          suffixText: 'box',
-                                          border: const OutlineInputBorder(),
-                                          filled: _isReadOnly,
-                                          fillColor: Colors.grey.shade100,
-                                          contentPadding:
-                                              const EdgeInsets.symmetric(
-                                                  horizontal: 6,
-                                                  vertical: 6),
-                                        ),
-                                        onChanged: (_) => setState(() {}),
-                                      ),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: TextField(
+                                    controller: row.adjustedPcsCtrl,
+                                    readOnly: _isReadOnly,
+                                    keyboardType: TextInputType.number,
+                                    inputFormatters: [
+                                      FilteringTextInputFormatter.digitsOnly
+                                    ],
+                                    textAlign: TextAlign.start,
+                                    style: const TextStyle(fontSize: 13),
+                                    decoration: InputDecoration(
+                                      isDense: true,
+                                      hintText: '0',
+                                      suffixText: 'pcs',
+                                      border: const OutlineInputBorder(),
+                                      filled: _isReadOnly,
+                                      fillColor: Colors.grey.shade100,
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                              horizontal: 6, vertical: 6),
                                     ),
-                                    const SizedBox(width: 4),
-                                    Expanded(
-                                      child: TextField(
-                                        controller: row.adjustedPcsCtrl,
-                                        readOnly: _isReadOnly,
-                                        keyboardType: TextInputType.number,
-                                        inputFormatters: [
-                                          FilteringTextInputFormatter.digitsOnly
-                                        ],
-                                        textAlign: TextAlign.center,
-                                        style:
-                                            const TextStyle(fontSize: 13),
-                                        decoration: InputDecoration(
-                                          isDense: true,
-                                          hintText: '0',
-                                          suffixText: 'pcs',
-                                          border: const OutlineInputBorder(),
-                                          filled: _isReadOnly,
-                                          fillColor: Colors.grey.shade100,
-                                          contentPadding:
-                                              const EdgeInsets.symmetric(
-                                                  horizontal: 6,
-                                                  vertical: 6),
-                                        ),
-                                        onChanged: (_) => setState(() {}),
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         );
                       },
-                    ),
-                  ),
+                    );
+                  }),
+                ),
 
                   // Footer summary
-                  Container(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .surfaceContainerHighest,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 10),
-                    child: Row(
-                      children: [
-                        Text(
-                          '${_rows.length} product(s)  •  '
-                          '${_rows.where((r) => !r.isSufficient).length} insufficient',
-                          style: const TextStyle(
-                              color: Colors.grey, fontSize: 13),
-                        ),
-                        const Spacer(),
-                        Text(
-                          'Total adjusted: ${formatNumber(_rows.fold<int>(0, (s, r) => s + r.adjustedPieces))} pcs',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 14),
-                        ),
-                      ],
+                  AnimatedBuilder(
+                    animation: _rowsListenable,
+                    builder: (ctx, _) => Container(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
+                      child: Row(
+                        children: [
+                          Text(
+                            '${_rows.length} product(s)  •  '
+                            '${_rows.where((r) => !r.isSufficient).length} insufficient',
+                            style: const TextStyle(
+                                color: Colors.grey, fontSize: 13),
+                          ),
+                          const Spacer(),
+                          Text(
+                            'Total adjusted: ${formatNumber(_rows.fold<int>(0, (s, r) => s + r.adjustedPieces))} pcs',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 14),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],

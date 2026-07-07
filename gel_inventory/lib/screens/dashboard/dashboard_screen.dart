@@ -65,7 +65,7 @@ class DashboardScreen extends ConsumerWidget {
           ),
           _NavCard(
             icon: Icons.file_open,
-            label: 'Import Pre-Order',
+            label: 'Verify Pre-Order',
             route: '/pre-order-import',
           ),
           _NavCard(

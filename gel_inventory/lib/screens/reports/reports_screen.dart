@@ -513,6 +513,7 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
   bool? _endingSortAscending; // null = unsorted (original product order)
   bool _showOnlyWithEnding = false;
   bool _showOnlyWithBulkClear = false;
+  bool _showOnlyZeroEnding = false;
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
 
@@ -578,6 +579,9 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
       products = products
           .where((p) => (data.stockOutBulkClear[p.id] ?? 0) > 0)
           .toList();
+    }
+    if (_showOnlyZeroEnding) {
+      products = products.where((p) => (data.ending[p.id] ?? 0) == 0).toList();
     }
 
     final showSelling =
@@ -790,6 +794,22 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
             ],
           ),
         ),
+        // ── Zero-ending-only toggle ────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+          child: Row(
+            children: [
+              Switch(
+                value: _showOnlyZeroEnding,
+                onChanged: (v) => setState(() => _showOnlyZeroEnding = v),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              const SizedBox(width: 6),
+              const Text('Show only rows with 0 ending inventory',
+                  style: TextStyle(fontSize: 13)),
+            ],
+          ),
+        ),
         const Divider(height: 1),
 
         // ── Table ─────────────────────────────────────────────────────
@@ -827,6 +847,11 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
               if (_showOnlyWithBulkClear) {
                 sortedProducts = sortedProducts
                     .where((p) => (data.stockOutBulkClear[p.id] ?? 0) > 0)
+                    .toList();
+              }
+              if (_showOnlyZeroEnding) {
+                sortedProducts = sortedProducts
+                    .where((p) => (data.ending[p.id] ?? 0) == 0)
                     .toList();
               }
               const colWidths = {

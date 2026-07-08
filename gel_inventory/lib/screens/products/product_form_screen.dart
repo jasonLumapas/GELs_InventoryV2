@@ -8,8 +8,10 @@ import '../../models/product.dart';
 import '../../models/product_price.dart';
 import '../../models/supplier.dart';
 import '../../models/product_discount.dart';
+import '../../models/product_supplier_price.dart';
 import '../../repositories/product_discount_repository.dart';
 import '../../repositories/product_repository.dart';
+import '../../repositories/product_supplier_price_repository.dart';
 import '../../repositories/supplier_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../widgets/common/app_scaffold.dart';
@@ -38,6 +40,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
   List<Supplier> _suppliers = [];
   String? _selectedSupplierId;
   ProductDiscount? _existingDiscount;
+  ProductSupplierPrice? _existingSupplierPrice;
+  final _supplierPriceBoxCtrl = TextEditingController();
+  final List<double> _supplierDiscountPercents = [];
+  bool _supplierVatEnabled = false;
   // Separate controllers per discount type so values don't bleed when toggling
   final _percentMinQtyCtrl = TextEditingController();
   final _percentValueCtrl  = TextEditingController();
@@ -61,7 +67,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: isNew ? 1 : 3, vsync: this);
+    _tabController = TabController(length: isNew ? 1 : 4, vsync: this);
     _loadData();
   }
 
@@ -84,6 +90,17 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
               _priceHistory.first.withdrawalPrice.toStringAsFixed(2);
           _sellingCtrl.text =
               _priceHistory.first.sellingPrice.toStringAsFixed(2);
+        }
+        _existingSupplierPrice = await ref
+            .read(productSupplierPriceRepositoryProvider)
+            .getForProduct(_existing!.id);
+        if (_existingSupplierPrice != null) {
+          _supplierPriceBoxCtrl.text =
+              _existingSupplierPrice!.priceBox.toStringAsFixed(2);
+          _supplierDiscountPercents
+            ..clear()
+            ..addAll(_existingSupplierPrice!.discountPercents);
+          _supplierVatEnabled = _existingSupplierPrice!.vatEnabled;
         }
         _existingDiscount = await ref
             .read(productDiscountRepositoryProvider)
@@ -131,6 +148,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
     _amountValueCtrl.dispose();
     _buyQtyCtrl.dispose();
     _freeQtyCtrl.dispose();
+    _supplierPriceBoxCtrl.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -228,6 +246,38 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
     }
   }
 
+  /// Saves only the supplier price for an existing product.
+  /// Called from the Supplier Pricing tab so the Details form doesn't need
+  /// to be mounted.
+  Future<void> _saveSupplierPricingOnly() async {
+    final existing = _existing;
+    if (existing == null) return;
+
+    final priceBox = double.tryParse(_supplierPriceBoxCtrl.text);
+    if (priceBox == null || priceBox <= 0) {
+      await ref
+          .read(productSupplierPriceRepositoryProvider)
+          .deleteForProduct(existing.id);
+      setState(() => _existingSupplierPrice = null);
+    } else {
+      final newPrice = ProductSupplierPrice(
+        id: _existingSupplierPrice?.id ?? const Uuid().v4(),
+        productId: existing.id,
+        priceBox: priceBox,
+        discountPercents: List<double>.from(_supplierDiscountPercents),
+        vatEnabled: _supplierVatEnabled,
+      );
+      await ref.read(productSupplierPriceRepositoryProvider).upsert(newPrice);
+      setState(() => _existingSupplierPrice = newPrice);
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Supplier price saved.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AppScaffold(
@@ -243,6 +293,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
                       Tab(text: 'Details'),
                       Tab(text: 'Price History'),
                       Tab(text: 'Discount'),
+                      Tab(text: 'Supplier Pricing'),
                     ],
                   ),
                 Expanded(
@@ -254,6 +305,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
                             _buildForm(),
                             _buildPriceHistory(),
                             _buildDiscount(),
+                            _buildSupplierPricing(),
                           ],
                         ),
                 ),
@@ -609,6 +661,174 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
               );
             },
           );
+  }
+
+  /// Combined multiplier applying every discount in sequence (cascading,
+  /// each discount taken off the previous net value), then VAT if enabled.
+  double get _supplierPriceMultiplier {
+    double m = 1.0;
+    for (final d in _supplierDiscountPercents) {
+      m *= (1 - d / 100);
+    }
+    if (_supplierVatEnabled) m *= 1.12;
+    return m;
+  }
+
+  Future<void> _promptAddSupplierDiscount() async {
+    final ctrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final value = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add Discount'),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: ctrl,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Discount %',
+              isDense: true,
+              suffixText: '%',
+            ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))
+            ],
+            validator: (v) {
+              final n = double.tryParse(v ?? '');
+              if (n == null || n <= 0 || n > 100) {
+                return 'Enter a value between 0 and 100';
+              }
+              return null;
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              if (!formKey.currentState!.validate()) return;
+              Navigator.pop(ctx, double.parse(ctrl.text));
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+
+    if (value != null) {
+      setState(() => _supplierDiscountPercents.add(value));
+    }
+  }
+
+  Widget _buildSupplierPricing() {
+    final ppb = int.tryParse(_piecesCtrl.text) ?? _existing?.piecesPerBox ?? 1;
+    final priceBox = double.tryParse(_supplierPriceBoxCtrl.text);
+    final pricePerPiece =
+        priceBox != null && ppb > 0 ? priceBox / ppb : null;
+    final netValueBox =
+        priceBox != null ? priceBox * _supplierPriceMultiplier : null;
+    final netValuePerPiece =
+        netValueBox != null && ppb > 0 ? netValueBox / ppb : null;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Supplier Price',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 4),
+          Text(
+            'Price per piece is computed automatically from price per box.',
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _supplierPriceBoxCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Price per Box',
+              prefixText: '₱ ',
+            ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))
+            ],
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 12),
+          InputDecorator(
+            decoration: const InputDecoration(
+              labelText: 'Price per Piece (computed)',
+            ),
+            child: Text(
+              pricePerPiece != null
+                  ? '₱ ${pricePerPiece.toStringAsFixed(2)}'
+                  : '—',
+            ),
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              OutlinedButton.icon(
+                icon: const Icon(Icons.percent, size: 16),
+                label: const Text('Add Discount %'),
+                onPressed: _promptAddSupplierDiscount,
+              ),
+              for (int i = 0; i < _supplierDiscountPercents.length; i++)
+                Chip(
+                  label:
+                      Text('${formatNumber(_supplierDiscountPercents[i])}% off'),
+                  onDeleted: () =>
+                      setState(() => _supplierDiscountPercents.removeAt(i)),
+                ),
+              FilterChip(
+                label: const Text('Add VAT (12%)'),
+                selected: _supplierVatEnabled,
+                onSelected: (v) => setState(() => _supplierVatEnabled = v),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          InputDecorator(
+            decoration: const InputDecoration(
+              labelText: 'Net Value (Box)',
+            ),
+            child: Text(
+              netValueBox != null ? '₱ ${netValueBox.toStringAsFixed(2)}' : '—',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+          const SizedBox(height: 12),
+          InputDecorator(
+            decoration: const InputDecoration(
+              labelText: 'Net Value (Piece)',
+            ),
+            child: Text(
+              netValuePerPiece != null
+                  ? '₱ ${netValuePerPiece.toStringAsFixed(2)}'
+                  : '—',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton(
+              onPressed: _saveSupplierPricingOnly,
+              child: const Text('Save Supplier Price'),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

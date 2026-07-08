@@ -2117,6 +2117,385 @@ class ProductDiscountsCompanion extends UpdateCompanion<ProductDiscount> {
   }
 }
 
+class $ProductSupplierPricesTable extends ProductSupplierPrices
+    with TableInfo<$ProductSupplierPricesTable, ProductSupplierPrice> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ProductSupplierPricesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _productIdMeta = const VerificationMeta(
+    'productId',
+  );
+  @override
+  late final GeneratedColumn<String> productId = GeneratedColumn<String>(
+    'product_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES products (id)',
+    ),
+  );
+  static const VerificationMeta _priceBoxMeta = const VerificationMeta(
+    'priceBox',
+  );
+  @override
+  late final GeneratedColumn<double> priceBox = GeneratedColumn<double>(
+    'price_box',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _discountPercentsMeta = const VerificationMeta(
+    'discountPercents',
+  );
+  @override
+  late final GeneratedColumn<String> discountPercents = GeneratedColumn<String>(
+    'discount_percents',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _vatEnabledMeta = const VerificationMeta(
+    'vatEnabled',
+  );
+  @override
+  late final GeneratedColumn<bool> vatEnabled = GeneratedColumn<bool>(
+    'vat_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("vat_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    productId,
+    priceBox,
+    discountPercents,
+    vatEnabled,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'product_supplier_prices';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ProductSupplierPrice> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('product_id')) {
+      context.handle(
+        _productIdMeta,
+        productId.isAcceptableOrUnknown(data['product_id']!, _productIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_productIdMeta);
+    }
+    if (data.containsKey('price_box')) {
+      context.handle(
+        _priceBoxMeta,
+        priceBox.isAcceptableOrUnknown(data['price_box']!, _priceBoxMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_priceBoxMeta);
+    }
+    if (data.containsKey('discount_percents')) {
+      context.handle(
+        _discountPercentsMeta,
+        discountPercents.isAcceptableOrUnknown(
+          data['discount_percents']!,
+          _discountPercentsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('vat_enabled')) {
+      context.handle(
+        _vatEnabledMeta,
+        vatEnabled.isAcceptableOrUnknown(data['vat_enabled']!, _vatEnabledMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ProductSupplierPrice map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ProductSupplierPrice(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      productId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}product_id'],
+      )!,
+      priceBox: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}price_box'],
+      )!,
+      discountPercents: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}discount_percents'],
+      ),
+      vatEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}vat_enabled'],
+      )!,
+    );
+  }
+
+  @override
+  $ProductSupplierPricesTable createAlias(String alias) {
+    return $ProductSupplierPricesTable(attachedDatabase, alias);
+  }
+}
+
+class ProductSupplierPrice extends DataClass
+    implements Insertable<ProductSupplierPrice> {
+  final String id;
+  final String productId;
+  final double priceBox;
+  final String? discountPercents;
+  final bool vatEnabled;
+  const ProductSupplierPrice({
+    required this.id,
+    required this.productId,
+    required this.priceBox,
+    this.discountPercents,
+    required this.vatEnabled,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['product_id'] = Variable<String>(productId);
+    map['price_box'] = Variable<double>(priceBox);
+    if (!nullToAbsent || discountPercents != null) {
+      map['discount_percents'] = Variable<String>(discountPercents);
+    }
+    map['vat_enabled'] = Variable<bool>(vatEnabled);
+    return map;
+  }
+
+  ProductSupplierPricesCompanion toCompanion(bool nullToAbsent) {
+    return ProductSupplierPricesCompanion(
+      id: Value(id),
+      productId: Value(productId),
+      priceBox: Value(priceBox),
+      discountPercents: discountPercents == null && nullToAbsent
+          ? const Value.absent()
+          : Value(discountPercents),
+      vatEnabled: Value(vatEnabled),
+    );
+  }
+
+  factory ProductSupplierPrice.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ProductSupplierPrice(
+      id: serializer.fromJson<String>(json['id']),
+      productId: serializer.fromJson<String>(json['productId']),
+      priceBox: serializer.fromJson<double>(json['priceBox']),
+      discountPercents: serializer.fromJson<String?>(json['discountPercents']),
+      vatEnabled: serializer.fromJson<bool>(json['vatEnabled']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'productId': serializer.toJson<String>(productId),
+      'priceBox': serializer.toJson<double>(priceBox),
+      'discountPercents': serializer.toJson<String?>(discountPercents),
+      'vatEnabled': serializer.toJson<bool>(vatEnabled),
+    };
+  }
+
+  ProductSupplierPrice copyWith({
+    String? id,
+    String? productId,
+    double? priceBox,
+    Value<String?> discountPercents = const Value.absent(),
+    bool? vatEnabled,
+  }) => ProductSupplierPrice(
+    id: id ?? this.id,
+    productId: productId ?? this.productId,
+    priceBox: priceBox ?? this.priceBox,
+    discountPercents: discountPercents.present
+        ? discountPercents.value
+        : this.discountPercents,
+    vatEnabled: vatEnabled ?? this.vatEnabled,
+  );
+  ProductSupplierPrice copyWithCompanion(ProductSupplierPricesCompanion data) {
+    return ProductSupplierPrice(
+      id: data.id.present ? data.id.value : this.id,
+      productId: data.productId.present ? data.productId.value : this.productId,
+      priceBox: data.priceBox.present ? data.priceBox.value : this.priceBox,
+      discountPercents: data.discountPercents.present
+          ? data.discountPercents.value
+          : this.discountPercents,
+      vatEnabled: data.vatEnabled.present
+          ? data.vatEnabled.value
+          : this.vatEnabled,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ProductSupplierPrice(')
+          ..write('id: $id, ')
+          ..write('productId: $productId, ')
+          ..write('priceBox: $priceBox, ')
+          ..write('discountPercents: $discountPercents, ')
+          ..write('vatEnabled: $vatEnabled')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, productId, priceBox, discountPercents, vatEnabled);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ProductSupplierPrice &&
+          other.id == this.id &&
+          other.productId == this.productId &&
+          other.priceBox == this.priceBox &&
+          other.discountPercents == this.discountPercents &&
+          other.vatEnabled == this.vatEnabled);
+}
+
+class ProductSupplierPricesCompanion
+    extends UpdateCompanion<ProductSupplierPrice> {
+  final Value<String> id;
+  final Value<String> productId;
+  final Value<double> priceBox;
+  final Value<String?> discountPercents;
+  final Value<bool> vatEnabled;
+  final Value<int> rowid;
+  const ProductSupplierPricesCompanion({
+    this.id = const Value.absent(),
+    this.productId = const Value.absent(),
+    this.priceBox = const Value.absent(),
+    this.discountPercents = const Value.absent(),
+    this.vatEnabled = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ProductSupplierPricesCompanion.insert({
+    required String id,
+    required String productId,
+    required double priceBox,
+    this.discountPercents = const Value.absent(),
+    this.vatEnabled = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       productId = Value(productId),
+       priceBox = Value(priceBox);
+  static Insertable<ProductSupplierPrice> custom({
+    Expression<String>? id,
+    Expression<String>? productId,
+    Expression<double>? priceBox,
+    Expression<String>? discountPercents,
+    Expression<bool>? vatEnabled,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (productId != null) 'product_id': productId,
+      if (priceBox != null) 'price_box': priceBox,
+      if (discountPercents != null) 'discount_percents': discountPercents,
+      if (vatEnabled != null) 'vat_enabled': vatEnabled,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ProductSupplierPricesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? productId,
+    Value<double>? priceBox,
+    Value<String?>? discountPercents,
+    Value<bool>? vatEnabled,
+    Value<int>? rowid,
+  }) {
+    return ProductSupplierPricesCompanion(
+      id: id ?? this.id,
+      productId: productId ?? this.productId,
+      priceBox: priceBox ?? this.priceBox,
+      discountPercents: discountPercents ?? this.discountPercents,
+      vatEnabled: vatEnabled ?? this.vatEnabled,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (productId.present) {
+      map['product_id'] = Variable<String>(productId.value);
+    }
+    if (priceBox.present) {
+      map['price_box'] = Variable<double>(priceBox.value);
+    }
+    if (discountPercents.present) {
+      map['discount_percents'] = Variable<String>(discountPercents.value);
+    }
+    if (vatEnabled.present) {
+      map['vat_enabled'] = Variable<bool>(vatEnabled.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ProductSupplierPricesCompanion(')
+          ..write('id: $id, ')
+          ..write('productId: $productId, ')
+          ..write('priceBox: $priceBox, ')
+          ..write('discountPercents: $discountPercents, ')
+          ..write('vatEnabled: $vatEnabled, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $InventoryTable extends Inventory
     with TableInfo<$InventoryTable, InventoryData> {
   @override
@@ -10963,6 +11342,8 @@ abstract class _$LocalDatabase extends GeneratedDatabase {
   late final $ProductDiscountsTable productDiscounts = $ProductDiscountsTable(
     this,
   );
+  late final $ProductSupplierPricesTable productSupplierPrices =
+      $ProductSupplierPricesTable(this);
   late final $InventoryTable inventory = $InventoryTable(this);
   late final $InvoicesTable invoices = $InvoicesTable(this);
   late final $InvoiceItemsTable invoiceItems = $InvoiceItemsTable(this);
@@ -10996,6 +11377,7 @@ abstract class _$LocalDatabase extends GeneratedDatabase {
     products,
     productPrices,
     productDiscounts,
+    productSupplierPrices,
     inventory,
     invoices,
     invoiceItems,
@@ -12039,6 +12421,34 @@ final class $$ProductsTableReferences
     );
   }
 
+  static MultiTypedResultKey<
+    $ProductSupplierPricesTable,
+    List<ProductSupplierPrice>
+  >
+  _productSupplierPricesRefsTable(_$LocalDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.productSupplierPrices,
+        aliasName: $_aliasNameGenerator(
+          db.products.id,
+          db.productSupplierPrices.productId,
+        ),
+      );
+
+  $$ProductSupplierPricesTableProcessedTableManager
+  get productSupplierPricesRefs {
+    final manager = $$ProductSupplierPricesTableTableManager(
+      $_db,
+      $_db.productSupplierPrices,
+    ).filter((f) => f.productId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _productSupplierPricesRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
   static MultiTypedResultKey<$InventoryTable, List<InventoryData>>
   _inventoryRefsTable(_$LocalDatabase db) => MultiTypedResultKey.fromTable(
     db.inventory,
@@ -12321,6 +12731,32 @@ class $$ProductsTableFilterComposer
                 $removeJoinBuilderFromRootComposer,
           ),
     );
+    return f(composer);
+  }
+
+  Expression<bool> productSupplierPricesRefs(
+    Expression<bool> Function($$ProductSupplierPricesTableFilterComposer f) f,
+  ) {
+    final $$ProductSupplierPricesTableFilterComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.productSupplierPrices,
+          getReferencedColumn: (t) => t.productId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ProductSupplierPricesTableFilterComposer(
+                $db: $db,
+                $table: $db.productSupplierPrices,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
     return f(composer);
   }
 
@@ -12696,6 +13132,32 @@ class $$ProductsTableAnnotationComposer
     return f(composer);
   }
 
+  Expression<T> productSupplierPricesRefs<T extends Object>(
+    Expression<T> Function($$ProductSupplierPricesTableAnnotationComposer a) f,
+  ) {
+    final $$ProductSupplierPricesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.productSupplierPrices,
+          getReferencedColumn: (t) => t.productId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ProductSupplierPricesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.productSupplierPrices,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+
   Expression<T> inventoryRefs<T extends Object>(
     Expression<T> Function($$InventoryTableAnnotationComposer a) f,
   ) {
@@ -12920,6 +13382,7 @@ class $$ProductsTableTableManager
             bool supplierId,
             bool productPricesRefs,
             bool productDiscountsRefs,
+            bool productSupplierPricesRefs,
             bool inventoryRefs,
             bool invoiceItemsRefs,
             bool deletedInvoiceItemsRefs,
@@ -12994,6 +13457,7 @@ class $$ProductsTableTableManager
                 supplierId = false,
                 productPricesRefs = false,
                 productDiscountsRefs = false,
+                productSupplierPricesRefs = false,
                 inventoryRefs = false,
                 invoiceItemsRefs = false,
                 deletedInvoiceItemsRefs = false,
@@ -13008,6 +13472,7 @@ class $$ProductsTableTableManager
                   explicitlyWatchedTables: [
                     if (productPricesRefs) db.productPrices,
                     if (productDiscountsRefs) db.productDiscounts,
+                    if (productSupplierPricesRefs) db.productSupplierPrices,
                     if (inventoryRefs) db.inventory,
                     if (invoiceItemsRefs) db.invoiceItems,
                     if (deletedInvoiceItemsRefs) db.deletedInvoiceItems,
@@ -13088,6 +13553,27 @@ class $$ProductsTableTableManager
                                 table,
                                 p0,
                               ).productDiscountsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.productId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (productSupplierPricesRefs)
+                        await $_getPrefetchedData<
+                          Product,
+                          $ProductsTable,
+                          ProductSupplierPrice
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ProductsTableReferences
+                              ._productSupplierPricesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ProductsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).productSupplierPricesRefs,
                           referencedItemsForCurrentItem:
                               (item, referencedItems) => referencedItems.where(
                                 (e) => e.productId == item.id,
@@ -13286,6 +13772,7 @@ typedef $$ProductsTableProcessedTableManager =
         bool supplierId,
         bool productPricesRefs,
         bool productDiscountsRefs,
+        bool productSupplierPricesRefs,
         bool inventoryRefs,
         bool invoiceItemsRefs,
         bool deletedInvoiceItemsRefs,
@@ -14005,6 +14492,354 @@ typedef $$ProductDiscountsTableProcessedTableManager =
       $$ProductDiscountsTableUpdateCompanionBuilder,
       (ProductDiscount, $$ProductDiscountsTableReferences),
       ProductDiscount,
+      PrefetchHooks Function({bool productId})
+    >;
+typedef $$ProductSupplierPricesTableCreateCompanionBuilder =
+    ProductSupplierPricesCompanion Function({
+      required String id,
+      required String productId,
+      required double priceBox,
+      Value<String?> discountPercents,
+      Value<bool> vatEnabled,
+      Value<int> rowid,
+    });
+typedef $$ProductSupplierPricesTableUpdateCompanionBuilder =
+    ProductSupplierPricesCompanion Function({
+      Value<String> id,
+      Value<String> productId,
+      Value<double> priceBox,
+      Value<String?> discountPercents,
+      Value<bool> vatEnabled,
+      Value<int> rowid,
+    });
+
+final class $$ProductSupplierPricesTableReferences
+    extends
+        BaseReferences<
+          _$LocalDatabase,
+          $ProductSupplierPricesTable,
+          ProductSupplierPrice
+        > {
+  $$ProductSupplierPricesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $ProductsTable _productIdTable(_$LocalDatabase db) =>
+      db.products.createAlias(
+        $_aliasNameGenerator(
+          db.productSupplierPrices.productId,
+          db.products.id,
+        ),
+      );
+
+  $$ProductsTableProcessedTableManager get productId {
+    final $_column = $_itemColumn<String>('product_id')!;
+
+    final manager = $$ProductsTableTableManager(
+      $_db,
+      $_db.products,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_productIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ProductSupplierPricesTableFilterComposer
+    extends Composer<_$LocalDatabase, $ProductSupplierPricesTable> {
+  $$ProductSupplierPricesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get priceBox => $composableBuilder(
+    column: $table.priceBox,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get discountPercents => $composableBuilder(
+    column: $table.discountPercents,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get vatEnabled => $composableBuilder(
+    column: $table.vatEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ProductsTableFilterComposer get productId {
+    final $$ProductsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.productId,
+      referencedTable: $db.products,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProductsTableFilterComposer(
+            $db: $db,
+            $table: $db.products,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ProductSupplierPricesTableOrderingComposer
+    extends Composer<_$LocalDatabase, $ProductSupplierPricesTable> {
+  $$ProductSupplierPricesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get priceBox => $composableBuilder(
+    column: $table.priceBox,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get discountPercents => $composableBuilder(
+    column: $table.discountPercents,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get vatEnabled => $composableBuilder(
+    column: $table.vatEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ProductsTableOrderingComposer get productId {
+    final $$ProductsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.productId,
+      referencedTable: $db.products,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProductsTableOrderingComposer(
+            $db: $db,
+            $table: $db.products,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ProductSupplierPricesTableAnnotationComposer
+    extends Composer<_$LocalDatabase, $ProductSupplierPricesTable> {
+  $$ProductSupplierPricesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<double> get priceBox =>
+      $composableBuilder(column: $table.priceBox, builder: (column) => column);
+
+  GeneratedColumn<String> get discountPercents => $composableBuilder(
+    column: $table.discountPercents,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get vatEnabled => $composableBuilder(
+    column: $table.vatEnabled,
+    builder: (column) => column,
+  );
+
+  $$ProductsTableAnnotationComposer get productId {
+    final $$ProductsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.productId,
+      referencedTable: $db.products,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProductsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.products,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ProductSupplierPricesTableTableManager
+    extends
+        RootTableManager<
+          _$LocalDatabase,
+          $ProductSupplierPricesTable,
+          ProductSupplierPrice,
+          $$ProductSupplierPricesTableFilterComposer,
+          $$ProductSupplierPricesTableOrderingComposer,
+          $$ProductSupplierPricesTableAnnotationComposer,
+          $$ProductSupplierPricesTableCreateCompanionBuilder,
+          $$ProductSupplierPricesTableUpdateCompanionBuilder,
+          (ProductSupplierPrice, $$ProductSupplierPricesTableReferences),
+          ProductSupplierPrice,
+          PrefetchHooks Function({bool productId})
+        > {
+  $$ProductSupplierPricesTableTableManager(
+    _$LocalDatabase db,
+    $ProductSupplierPricesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ProductSupplierPricesTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$ProductSupplierPricesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$ProductSupplierPricesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> productId = const Value.absent(),
+                Value<double> priceBox = const Value.absent(),
+                Value<String?> discountPercents = const Value.absent(),
+                Value<bool> vatEnabled = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ProductSupplierPricesCompanion(
+                id: id,
+                productId: productId,
+                priceBox: priceBox,
+                discountPercents: discountPercents,
+                vatEnabled: vatEnabled,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String productId,
+                required double priceBox,
+                Value<String?> discountPercents = const Value.absent(),
+                Value<bool> vatEnabled = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ProductSupplierPricesCompanion.insert(
+                id: id,
+                productId: productId,
+                priceBox: priceBox,
+                discountPercents: discountPercents,
+                vatEnabled: vatEnabled,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$ProductSupplierPricesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({productId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (productId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.productId,
+                                referencedTable:
+                                    $$ProductSupplierPricesTableReferences
+                                        ._productIdTable(db),
+                                referencedColumn:
+                                    $$ProductSupplierPricesTableReferences
+                                        ._productIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ProductSupplierPricesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LocalDatabase,
+      $ProductSupplierPricesTable,
+      ProductSupplierPrice,
+      $$ProductSupplierPricesTableFilterComposer,
+      $$ProductSupplierPricesTableOrderingComposer,
+      $$ProductSupplierPricesTableAnnotationComposer,
+      $$ProductSupplierPricesTableCreateCompanionBuilder,
+      $$ProductSupplierPricesTableUpdateCompanionBuilder,
+      (ProductSupplierPrice, $$ProductSupplierPricesTableReferences),
+      ProductSupplierPrice,
       PrefetchHooks Function({bool productId})
     >;
 typedef $$InventoryTableCreateCompanionBuilder =
@@ -21199,6 +22034,8 @@ class $LocalDatabaseManager {
       $$ProductPricesTableTableManager(_db, _db.productPrices);
   $$ProductDiscountsTableTableManager get productDiscounts =>
       $$ProductDiscountsTableTableManager(_db, _db.productDiscounts);
+  $$ProductSupplierPricesTableTableManager get productSupplierPrices =>
+      $$ProductSupplierPricesTableTableManager(_db, _db.productSupplierPrices);
   $$InventoryTableTableManager get inventory =>
       $$InventoryTableTableManager(_db, _db.inventory);
   $$InvoicesTableTableManager get invoices =>

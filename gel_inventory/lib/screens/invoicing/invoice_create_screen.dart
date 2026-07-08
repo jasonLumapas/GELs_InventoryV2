@@ -857,90 +857,99 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                   ),
                 ),
 
-                // Date selector
+                // Date + client selectors
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: InkWell(
-                    onTap: _pickDate,
-                    borderRadius: BorderRadius.circular(4),
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Invoice Date',
-                        border: OutlineInputBorder(),
-                        suffixIcon: Icon(Icons.calendar_today, size: 18),
-                      ),
-                      child: Text(
-                        DateFormat('MMM dd, yyyy').format(_invoiceDate),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-
-                // Client selector
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: InkWell(
-                    onTap: _pickClient,
-                    borderRadius: BorderRadius.circular(4),
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Client / Store',
-                        border: OutlineInputBorder(),
-                        suffixIcon: Icon(Icons.search),
-                      ),
-                      child: Text(
-                        _selectedClient?.name ?? 'Tap to search…',
-                        style: TextStyle(
-                          color: _selectedClient == null
-                              ? Theme.of(context).hintColor
-                              : (_isClientFlagged(_selectedClient!)
-                                  ? Colors.red
-                                  : null),
-                          fontWeight: _selectedClient != null &&
-                                  _isClientFlagged(_selectedClient!)
-                              ? FontWeight.bold
-                              : null,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: _pickDate,
+                          borderRadius: BorderRadius.circular(4),
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'Invoice Date',
+                              border: OutlineInputBorder(),
+                              suffixIcon: Icon(Icons.calendar_today, size: 18),
+                            ),
+                            child: Text(
+                              DateFormat('MMM dd, yyyy').format(_invoiceDate),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-
-                // Notes (internal only — not printed on the invoice)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: TextField(
-                    controller: _notesCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Notes (not included when printing)',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    maxLines: 2,
-                    onChanged: (_) => _scheduleAutoSave(),
-                  ),
-                ),
-                const SizedBox(height: 8),
-
-                // Actual amount on referenced receipt (optional, internal only)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: TextField(
-                    controller: _actualAmountCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Actual Amount (referenced receipt, optional)',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(
-                          RegExp(r'^\d*\.?\d{0,2}')),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: InkWell(
+                          onTap: _pickClient,
+                          borderRadius: BorderRadius.circular(4),
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'Client / Store',
+                              border: OutlineInputBorder(),
+                              suffixIcon: Icon(Icons.search),
+                            ),
+                            child: Text(
+                              _selectedClient?.name ?? 'Tap to search…',
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: _selectedClient == null
+                                    ? Theme.of(context).hintColor
+                                    : (_isClientFlagged(_selectedClient!)
+                                        ? Colors.red
+                                        : null),
+                                fontWeight: _selectedClient != null &&
+                                        _isClientFlagged(_selectedClient!)
+                                    ? FontWeight.bold
+                                    : null,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
-                    onChanged: (_) => _scheduleAutoSave(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Notes + actual amount
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _notesCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Notes (not included when printing)',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          maxLines: 1,
+                          onChanged: (_) => _scheduleAutoSave(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _actualAmountCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Actual Amount (referenced receipt, optional)',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          keyboardType:
+                              const TextInputType.numberWithOptions(decimal: true),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                                RegExp(r'^\d*\.?\d{0,2}')),
+                          ],
+                          onChanged: (_) => _scheduleAutoSave(),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 4),

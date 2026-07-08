@@ -78,6 +78,19 @@ class ProductDiscounts extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Supplier's price for a product (one row per product, matching the
+/// product's currently assigned supplier).
+class ProductSupplierPrices extends Table {
+  TextColumn get id => text()();
+  TextColumn get productId => text().references(Products, #id)();
+  RealColumn get priceBox => real()();
+  TextColumn get discountPercents => text().nullable()();
+  BoolColumn get vatEnabled => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 class Inventory extends Table {
   TextColumn get id => text()();
   TextColumn get productId => text().references(Products, #id)();
@@ -389,6 +402,7 @@ class SyncQueue extends Table {
   Products,
   ProductPrices,
   ProductDiscounts,
+  ProductSupplierPrices,
   Inventory,
   Invoices,
   InvoiceItems,
@@ -411,7 +425,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 30;
+  int get schemaVersion => 32;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -552,6 +566,15 @@ class LocalDatabase extends _$LocalDatabase {
                 'system_price', 'REAL NOT NULL DEFAULT 0');
             await _addColumnIfMissing(m.database, 'purchase_order_items',
                 'is_free', 'INTEGER NOT NULL DEFAULT 0');
+          }
+          if (from < 31) {
+            await m.createTable(productSupplierPrices);
+          }
+          if (from < 32) {
+            await _addColumnIfMissing(m.database, 'product_supplier_prices',
+                'discount_percents', 'TEXT');
+            await _addColumnIfMissing(m.database, 'product_supplier_prices',
+                'vat_enabled', 'INTEGER NOT NULL DEFAULT 0');
           }
         },
       );

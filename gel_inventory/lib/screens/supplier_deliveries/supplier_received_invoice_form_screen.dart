@@ -7,12 +7,14 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/product.dart';
+import '../../models/product_supplier_price.dart';
 import '../../models/supplier.dart';
 import '../../models/supplier_received_invoice.dart';
 import '../../models/supplier_received_invoice_item.dart';
 import '../../models/product_price.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/product_repository.dart';
+import '../../repositories/product_supplier_price_repository.dart';
 import '../../repositories/supplier_received_invoice_repository.dart';
 import '../../repositories/supplier_repository.dart';
 import '../../utils/currency_format.dart';
@@ -460,11 +462,17 @@ class _SupplierReceivedInvoiceFormScreenState
     final price = await ref
         .read(productRepositoryProvider)
         .getCurrentPrice(product.id);
+    final supplierPrice = await ref
+        .read(productSupplierPriceRepositoryProvider)
+        .getForProduct(product.id);
     setState(() {
       _lineItems.add(_LineItem(
         product: product,
         systemPrice: price?.withdrawalPrice ?? 0,
         discountMultiplier: () => _discountMultiplier,
+        supplierPrice: supplierPrice != null && product.piecesPerBox > 0
+            ? supplierPrice.priceBox / product.piecesPerBox
+            : null,
       ));
     });
     _scheduleAutoSave();
@@ -669,12 +677,30 @@ class _SupplierReceivedInvoiceFormScreenState
         supplier: _selectedSupplier!,
       );
     }
+    await _syncSupplierPrices();
     _finalized = true;
     ref.invalidate(supplierReceivedInvoicesListProvider);
     ref.invalidate(filteredSupplierReceivedInvoicesProvider);
     ref.invalidate(inventoryListProvider);
     ref.invalidate(draftSupplierReceivedInvoicesProvider);
     return payload;
+  }
+
+  /// Persists each line item's box price back into that product's
+  /// Supplier Pricing record, so the next delivery for the same product
+  /// prefills with the latest price.
+  Future<void> _syncSupplierPrices() async {
+    final priceRepo = ref.read(productSupplierPriceRepositoryProvider);
+    for (final li in _lineItems) {
+      final existing = await priceRepo.getForProduct(li.product.id);
+      await priceRepo.upsert(ProductSupplierPrice(
+        id: existing?.id ?? const Uuid().v4(),
+        productId: li.product.id,
+        priceBox: li.rawSupplierPriceBox,
+        discountPercents: existing?.discountPercents ?? const [],
+        vatEnabled: existing?.vatEnabled ?? false,
+      ));
+    }
   }
 
   Future<void> _save() async {
@@ -764,80 +790,87 @@ class _SupplierReceivedInvoiceFormScreenState
                     ),
                   ),
 
-                // Date selector
+                // Date selector + Supplier selector
                 Padding(
                   padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                  child: InkWell(
-                    onTap: _status == 'cancelled' ? null : _pickDate,
-                    borderRadius: BorderRadius.circular(4),
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Received Date',
-                        border: OutlineInputBorder(),
-                        suffixIcon: Icon(Icons.calendar_today, size: 18),
-                      ),
-                      child: Text(
-                        DateFormat('MMM dd, yyyy').format(_receivedDate),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-
-                // Supplier selector
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: InkWell(
-                    onTap: _status == 'cancelled' ? null : _pickSupplier,
-                    borderRadius: BorderRadius.circular(4),
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Supplier',
-                        border: OutlineInputBorder(),
-                        suffixIcon: Icon(Icons.search),
-                      ),
-                      child: Text(
-                        _selectedSupplier?.name ?? 'Tap to search…',
-                        style: TextStyle(
-                          color: _selectedSupplier == null
-                              ? Theme.of(context).hintColor
-                              : null,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: _status == 'cancelled' ? null : _pickDate,
+                          borderRadius: BorderRadius.circular(4),
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'Received Date',
+                              border: OutlineInputBorder(),
+                              suffixIcon: Icon(Icons.calendar_today, size: 18),
+                            ),
+                            child: Text(
+                              DateFormat('MMM dd, yyyy').format(_receivedDate),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: InkWell(
+                          onTap: _status == 'cancelled' ? null : _pickSupplier,
+                          borderRadius: BorderRadius.circular(4),
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'Supplier',
+                              border: OutlineInputBorder(),
+                              suffixIcon: Icon(Icons.search),
+                            ),
+                            child: Text(
+                              _selectedSupplier?.name ?? 'Tap to search…',
+                              style: TextStyle(
+                                color: _selectedSupplier == null
+                                    ? Theme.of(context).hintColor
+                                    : null,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 8),
 
-                // Reference number
+                // Reference number + Notes
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: TextField(
-                    controller: _referenceCtrl,
-                    enabled: _status != 'cancelled',
-                    decoration: const InputDecoration(
-                      labelText: 'Supplier Reference / DR Number',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    onChanged: (_) => _scheduleAutoSave(),
-                  ),
-                ),
-                const SizedBox(height: 8),
-
-                // Notes
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: TextField(
-                    controller: _notesCtrl,
-                    enabled: _status != 'cancelled',
-                    decoration: const InputDecoration(
-                      labelText: 'Notes',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    maxLines: 2,
-                    onChanged: (_) => _scheduleAutoSave(),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _referenceCtrl,
+                          enabled: _status != 'cancelled',
+                          decoration: const InputDecoration(
+                            labelText: 'Supplier Reference / DR Number',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          onChanged: (_) => _scheduleAutoSave(),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _notesCtrl,
+                          enabled: _status != 'cancelled',
+                          decoration: const InputDecoration(
+                            labelText: 'Notes',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          onChanged: (_) => _scheduleAutoSave(),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 4),

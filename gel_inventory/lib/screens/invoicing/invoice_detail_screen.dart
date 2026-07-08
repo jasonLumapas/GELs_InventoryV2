@@ -1157,36 +1157,40 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                     ),
                   const SizedBox(height: 8),
 
-                  // Notes (internal only — not printed on the invoice)
+                  // Notes + actual amount
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: TextField(
-                      controller: _notesCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Notes (not included when printing)',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      maxLines: 2,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Actual amount on referenced receipt (optional, internal only)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: TextField(
-                      controller: _actualAmountCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Actual Amount (referenced receipt, optional)',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                            RegExp(r'^\d*\.?\d{0,2}')),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _notesCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Notes (not included when printing)',
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                            maxLines: 1,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: _actualAmountCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Actual Amount (referenced receipt, optional)',
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                            keyboardType:
+                                const TextInputType.numberWithOptions(decimal: true),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(
+                                  RegExp(r'^\d*\.?\d{0,2}')),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),

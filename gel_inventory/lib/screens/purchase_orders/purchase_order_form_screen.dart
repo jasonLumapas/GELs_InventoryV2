@@ -10,8 +10,10 @@ import '../../models/product.dart';
 import '../../models/product_price.dart';
 import '../../models/purchase_order.dart';
 import '../../models/purchase_order_item.dart';
+import '../../models/product_supplier_price.dart';
 import '../../models/supplier.dart';
 import '../../repositories/product_repository.dart';
+import '../../repositories/product_supplier_price_repository.dart';
 import '../../repositories/purchase_order_repository.dart';
 import '../../repositories/supplier_repository.dart';
 import '../../utils/currency_format.dart';
@@ -451,11 +453,15 @@ class _PurchaseOrderFormScreenState
     final price = await ref
         .read(productRepositoryProvider)
         .getCurrentPrice(product.id);
+    final supplierPrice = await ref
+        .read(productSupplierPriceRepositoryProvider)
+        .getForProduct(product.id);
     setState(() {
       _lineItems.add(_LineItem(
         product: product,
         systemPrice: (price?.withdrawalPrice ?? 0) * product.piecesPerBox,
         discountMultiplier: () => _discountMultiplier,
+        supplierPrice: supplierPrice?.priceBox,
       ));
     });
     _scheduleAutoSave();
@@ -636,11 +642,29 @@ class _PurchaseOrderFormScreenState
     } else {
       await repo.editOrder(order: payload.order, newItems: payload.items);
     }
+    await _syncSupplierPrices();
     _finalized = true;
     ref.invalidate(purchaseOrdersListProvider);
     ref.invalidate(filteredPurchaseOrdersProvider);
     ref.invalidate(draftPurchaseOrdersProvider);
     return payload;
+  }
+
+  /// Persists each line item's box price back into that product's
+  /// Supplier Pricing record, so the next order for the same product
+  /// prefills with the latest price.
+  Future<void> _syncSupplierPrices() async {
+    final priceRepo = ref.read(productSupplierPriceRepositoryProvider);
+    for (final li in _lineItems) {
+      final existing = await priceRepo.getForProduct(li.product.id);
+      await priceRepo.upsert(ProductSupplierPrice(
+        id: existing?.id ?? const Uuid().v4(),
+        productId: li.product.id,
+        priceBox: li.rawPrice,
+        discountPercents: existing?.discountPercents ?? const [],
+        vatEnabled: existing?.vatEnabled ?? false,
+      ));
+    }
   }
 
   Future<void> _save() async {
@@ -1057,7 +1081,7 @@ class _LineItemTile extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 SizedBox(
-                  width: 90,
+                  width: 130,
                   child: TextField(
                     controller: item.casesCtrl,
                     enabled: enabled,

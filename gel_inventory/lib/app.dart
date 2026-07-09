@@ -95,6 +95,7 @@ final _router = GoRouter(
       builder: (_, state) => ClientPurchaseDetailScreen(
         clientId: state.pathParameters['clientId']!,
         supplierId: state.uri.queryParameters['supplierId']!,
+        productId: state.uri.queryParameters['productId'],
         fromDate: DateTime.parse(state.uri.queryParameters['from']!),
         toDate: DateTime.parse(state.uri.queryParameters['to']!),
       ),

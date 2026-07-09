@@ -132,6 +132,10 @@ class Invoices extends Table {
   TextColumn get notes => text().nullable()();
   // Optional: the actual amount shown on the referenced (physical) receipt.
   RealColumn get actualAmount => real().nullable()();
+  // Whether this invoice should be counted in the Layout (Order Summary)
+  // screen for its invoice date. Only relevant for delivery invoices.
+  BoolColumn get includeInLayout =>
+      boolean().withDefault(const Constant(true))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -425,7 +429,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 32;
+  int get schemaVersion => 33;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -575,6 +579,10 @@ class LocalDatabase extends _$LocalDatabase {
                 'discount_percents', 'TEXT');
             await _addColumnIfMissing(m.database, 'product_supplier_prices',
                 'vat_enabled', 'INTEGER NOT NULL DEFAULT 0');
+          }
+          if (from < 33) {
+            await _addColumnIfMissing(m.database, 'invoices',
+                'include_in_layout', 'INTEGER NOT NULL DEFAULT 1');
           }
         },
       );

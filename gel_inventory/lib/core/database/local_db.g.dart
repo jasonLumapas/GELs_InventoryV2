@@ -3027,6 +3027,21 @@ class $InvoicesTable extends Invoices with TableInfo<$InvoicesTable, Invoice> {
     type: DriftSqlType.double,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _includeInLayoutMeta = const VerificationMeta(
+    'includeInLayout',
+  );
+  @override
+  late final GeneratedColumn<bool> includeInLayout = GeneratedColumn<bool>(
+    'include_in_layout',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("include_in_layout" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -3047,6 +3062,7 @@ class $InvoicesTable extends Invoices with TableInfo<$InvoicesTable, Invoice> {
     checkDueDate,
     notes,
     actualAmount,
+    includeInLayout,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3208,6 +3224,15 @@ class $InvoicesTable extends Invoices with TableInfo<$InvoicesTable, Invoice> {
         ),
       );
     }
+    if (data.containsKey('include_in_layout')) {
+      context.handle(
+        _includeInLayoutMeta,
+        includeInLayout.isAcceptableOrUnknown(
+          data['include_in_layout']!,
+          _includeInLayoutMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -3289,6 +3314,10 @@ class $InvoicesTable extends Invoices with TableInfo<$InvoicesTable, Invoice> {
         DriftSqlType.double,
         data['${effectivePrefix}actual_amount'],
       ),
+      includeInLayout: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}include_in_layout'],
+      )!,
     );
   }
 
@@ -3317,6 +3346,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
   final DateTime? checkDueDate;
   final String? notes;
   final double? actualAmount;
+  final bool includeInLayout;
   const Invoice({
     required this.id,
     required this.clientId,
@@ -3336,6 +3366,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     this.checkDueDate,
     this.notes,
     this.actualAmount,
+    required this.includeInLayout,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3378,6 +3409,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     if (!nullToAbsent || actualAmount != null) {
       map['actual_amount'] = Variable<double>(actualAmount);
     }
+    map['include_in_layout'] = Variable<bool>(includeInLayout);
     return map;
   }
 
@@ -3421,6 +3453,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
       actualAmount: actualAmount == null && nullToAbsent
           ? const Value.absent()
           : Value(actualAmount),
+      includeInLayout: Value(includeInLayout),
     );
   }
 
@@ -3448,6 +3481,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
       checkDueDate: serializer.fromJson<DateTime?>(json['checkDueDate']),
       notes: serializer.fromJson<String?>(json['notes']),
       actualAmount: serializer.fromJson<double?>(json['actualAmount']),
+      includeInLayout: serializer.fromJson<bool>(json['includeInLayout']),
     );
   }
   @override
@@ -3472,6 +3506,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
       'checkDueDate': serializer.toJson<DateTime?>(checkDueDate),
       'notes': serializer.toJson<String?>(notes),
       'actualAmount': serializer.toJson<double?>(actualAmount),
+      'includeInLayout': serializer.toJson<bool>(includeInLayout),
     };
   }
 
@@ -3494,6 +3529,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     Value<DateTime?> checkDueDate = const Value.absent(),
     Value<String?> notes = const Value.absent(),
     Value<double?> actualAmount = const Value.absent(),
+    bool? includeInLayout,
   }) => Invoice(
     id: id ?? this.id,
     clientId: clientId ?? this.clientId,
@@ -3523,6 +3559,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     checkDueDate: checkDueDate.present ? checkDueDate.value : this.checkDueDate,
     notes: notes.present ? notes.value : this.notes,
     actualAmount: actualAmount.present ? actualAmount.value : this.actualAmount,
+    includeInLayout: includeInLayout ?? this.includeInLayout,
   );
   Invoice copyWithCompanion(InvoicesCompanion data) {
     return Invoice(
@@ -3570,6 +3607,9 @@ class Invoice extends DataClass implements Insertable<Invoice> {
       actualAmount: data.actualAmount.present
           ? data.actualAmount.value
           : this.actualAmount,
+      includeInLayout: data.includeInLayout.present
+          ? data.includeInLayout.value
+          : this.includeInLayout,
     );
   }
 
@@ -3593,7 +3633,8 @@ class Invoice extends DataClass implements Insertable<Invoice> {
           ..write('checkIssuedDate: $checkIssuedDate, ')
           ..write('checkDueDate: $checkDueDate, ')
           ..write('notes: $notes, ')
-          ..write('actualAmount: $actualAmount')
+          ..write('actualAmount: $actualAmount, ')
+          ..write('includeInLayout: $includeInLayout')
           ..write(')'))
         .toString();
   }
@@ -3618,6 +3659,7 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     checkDueDate,
     notes,
     actualAmount,
+    includeInLayout,
   );
   @override
   bool operator ==(Object other) =>
@@ -3640,7 +3682,8 @@ class Invoice extends DataClass implements Insertable<Invoice> {
           other.checkIssuedDate == this.checkIssuedDate &&
           other.checkDueDate == this.checkDueDate &&
           other.notes == this.notes &&
-          other.actualAmount == this.actualAmount);
+          other.actualAmount == this.actualAmount &&
+          other.includeInLayout == this.includeInLayout);
 }
 
 class InvoicesCompanion extends UpdateCompanion<Invoice> {
@@ -3662,6 +3705,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
   final Value<DateTime?> checkDueDate;
   final Value<String?> notes;
   final Value<double?> actualAmount;
+  final Value<bool> includeInLayout;
   final Value<int> rowid;
   const InvoicesCompanion({
     this.id = const Value.absent(),
@@ -3682,6 +3726,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     this.checkDueDate = const Value.absent(),
     this.notes = const Value.absent(),
     this.actualAmount = const Value.absent(),
+    this.includeInLayout = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   InvoicesCompanion.insert({
@@ -3703,6 +3748,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     this.checkDueDate = const Value.absent(),
     this.notes = const Value.absent(),
     this.actualAmount = const Value.absent(),
+    this.includeInLayout = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        clientId = Value(clientId);
@@ -3725,6 +3771,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     Expression<DateTime>? checkDueDate,
     Expression<String>? notes,
     Expression<double>? actualAmount,
+    Expression<bool>? includeInLayout,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -3746,6 +3793,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
       if (checkDueDate != null) 'check_due_date': checkDueDate,
       if (notes != null) 'notes': notes,
       if (actualAmount != null) 'actual_amount': actualAmount,
+      if (includeInLayout != null) 'include_in_layout': includeInLayout,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -3769,6 +3817,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     Value<DateTime?>? checkDueDate,
     Value<String?>? notes,
     Value<double?>? actualAmount,
+    Value<bool>? includeInLayout,
     Value<int>? rowid,
   }) {
     return InvoicesCompanion(
@@ -3790,6 +3839,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
       checkDueDate: checkDueDate ?? this.checkDueDate,
       notes: notes ?? this.notes,
       actualAmount: actualAmount ?? this.actualAmount,
+      includeInLayout: includeInLayout ?? this.includeInLayout,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -3851,6 +3901,9 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     if (actualAmount.present) {
       map['actual_amount'] = Variable<double>(actualAmount.value);
     }
+    if (includeInLayout.present) {
+      map['include_in_layout'] = Variable<bool>(includeInLayout.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -3878,6 +3931,7 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
           ..write('checkDueDate: $checkDueDate, ')
           ..write('notes: $notes, ')
           ..write('actualAmount: $actualAmount, ')
+          ..write('includeInLayout: $includeInLayout, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -15166,6 +15220,7 @@ typedef $$InvoicesTableCreateCompanionBuilder =
       Value<DateTime?> checkDueDate,
       Value<String?> notes,
       Value<double?> actualAmount,
+      Value<bool> includeInLayout,
       Value<int> rowid,
     });
 typedef $$InvoicesTableUpdateCompanionBuilder =
@@ -15188,6 +15243,7 @@ typedef $$InvoicesTableUpdateCompanionBuilder =
       Value<DateTime?> checkDueDate,
       Value<String?> notes,
       Value<double?> actualAmount,
+      Value<bool> includeInLayout,
       Value<int> rowid,
     });
 
@@ -15373,6 +15429,11 @@ class $$InvoicesTableFilterComposer
 
   ColumnFilters<double> get actualAmount => $composableBuilder(
     column: $table.actualAmount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get includeInLayout => $composableBuilder(
+    column: $table.includeInLayout,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -15569,6 +15630,11 @@ class $$InvoicesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get includeInLayout => $composableBuilder(
+    column: $table.includeInLayout,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$ClientsTableOrderingComposer get clientId {
     final $$ClientsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -15676,6 +15742,11 @@ class $$InvoicesTableAnnotationComposer
 
   GeneratedColumn<double> get actualAmount => $composableBuilder(
     column: $table.actualAmount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get includeInLayout => $composableBuilder(
+    column: $table.includeInLayout,
     builder: (column) => column,
   );
 
@@ -15830,6 +15901,7 @@ class $$InvoicesTableTableManager
                 Value<DateTime?> checkDueDate = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<double?> actualAmount = const Value.absent(),
+                Value<bool> includeInLayout = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => InvoicesCompanion(
                 id: id,
@@ -15850,6 +15922,7 @@ class $$InvoicesTableTableManager
                 checkDueDate: checkDueDate,
                 notes: notes,
                 actualAmount: actualAmount,
+                includeInLayout: includeInLayout,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -15872,6 +15945,7 @@ class $$InvoicesTableTableManager
                 Value<DateTime?> checkDueDate = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<double?> actualAmount = const Value.absent(),
+                Value<bool> includeInLayout = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => InvoicesCompanion.insert(
                 id: id,
@@ -15892,6 +15966,7 @@ class $$InvoicesTableTableManager
                 checkDueDate: checkDueDate,
                 notes: notes,
                 actualAmount: actualAmount,
+                includeInLayout: includeInLayout,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

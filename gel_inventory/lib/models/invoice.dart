@@ -17,6 +17,7 @@ class Invoice {
   final DateTime? checkDueDate;
   final String?   notes; // internal note — never shown on the printed invoice
   final double?   actualAmount; // optional actual amount on referenced receipt
+  final bool      includeInLayout; // whether this invoice counts in the Layout screen
 
   const Invoice({
     required this.id,
@@ -37,6 +38,7 @@ class Invoice {
     this.checkDueDate,
     this.notes,
     this.actualAmount,
+    this.includeInLayout = true,
   });
 
   factory Invoice.fromJson(Map<String, dynamic> j) => Invoice(
@@ -64,6 +66,7 @@ class Invoice {
             : DateTime.parse(j['check_due_date'] as String),
         notes: j['notes'] as String?,
         actualAmount: (j['actual_amount'] as num?)?.toDouble(),
+        includeInLayout: (j['include_in_layout'] as bool?) ?? true,
       );
 
   Map<String, dynamic> toJson() => {
@@ -85,6 +88,7 @@ class Invoice {
         'check_due_date':  checkDueDate?.toIso8601String(),
         'notes': notes,
         'actual_amount': actualAmount,
+        'include_in_layout': includeInLayout,
       };
 
   String get displayNumber => sequenceNumber != null
@@ -119,6 +123,7 @@ class Invoice {
     Object? checkDueDate   = _sentinel,
     Object? notes          = _sentinel,
     Object? actualAmount   = _sentinel,
+    bool? includeInLayout,
   }) =>
       Invoice(
         id: id,
@@ -155,6 +160,7 @@ class Invoice {
         actualAmount: actualAmount == _sentinel
             ? this.actualAmount
             : actualAmount as double?,
+        includeInLayout: includeInLayout ?? this.includeInLayout,
       );
 }
 

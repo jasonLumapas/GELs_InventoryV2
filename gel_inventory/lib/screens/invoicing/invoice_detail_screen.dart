@@ -127,6 +127,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   final Map<String, InventoryItem?> _inventoryCache = {};
   final Map<String, ProductDiscount?> _discountCache = {};
   DateTime _invoiceDate = DateTime.now();
+  bool _includeInLayout = true;
   String _paymentType = 'cash';
   final _partialAmountCtrl = TextEditingController();
   final _checkRefCtrl      = TextEditingController();
@@ -185,6 +186,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     _selectedClient =
         _clients.where((c) => c.id == _invoice!.clientId).firstOrNull;
     _invoiceDate = _invoice!.invoiceDate;
+    _includeInLayout = _invoice!.includeInLayout;
     _paymentType = _invoice!.paymentType;
     if (_invoice!.partialAmount != null) {
       _partialAmountCtrl.text =
@@ -271,6 +273,47 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   Future<void> _deletePayment(String id) async {
     await ref.read(invoicePaymentRepositoryProvider).delete(id);
     setState(() => _payments = _payments.where((p) => p.id != id).toList());
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  Future<void> _pickInvoiceDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _invoiceDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null) return;
+    final newDate = DateTime(
+      picked.year,
+      picked.month,
+      picked.day,
+      _invoiceDate.hour,
+      _invoiceDate.minute,
+      _invoiceDate.second,
+    );
+    if (!_isSameDay(newDate, _invoiceDate) &&
+        _invoice!.isDelivery &&
+        _includeInLayout) {
+      if (!mounted) return;
+      final result = await showYesNoCancelDialog(
+        context,
+        title: 'Move Invoice Date',
+        message: 'This invoice will be included in the Layout for '
+            '${DateFormat('MMMM dd, yyyy').format(newDate)}.',
+      );
+      if (result == null) return; // Cancel — leave date unchanged
+      if (mounted) {
+        setState(() {
+          _invoiceDate = newDate;
+          _includeInLayout = result; // Yes = stay included, No = excluded
+        });
+      }
+      return;
+    }
+    if (mounted) setState(() => _invoiceDate = newDate);
   }
 
   bool _isClientFlagged(Client c) =>
@@ -425,6 +468,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
       invoiceDate: _invoiceDate,
       totalAmount: _total,
       paymentType: _paymentType,
+      includeInLayout: _includeInLayout,
       partialAmount: partial
           ? double.tryParse(_partialAmountCtrl.text)
           : null,
@@ -463,9 +507,11 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     final partial = _paymentType == 'partial';
     final updatedInvoice = _invoice!.copyWith(
       clientId: _selectedClient!.id,
+      invoiceDate: _invoiceDate,
       totalAmount: _total,
       status: 'printed',
       paymentType: _paymentType,
+      includeInLayout: _includeInLayout,
       partialAmount: partial
           ? double.tryParse(_partialAmountCtrl.text)
           : null,
@@ -612,24 +658,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                       const SizedBox(width: 8),
                       if (!isCancelled)
                         InkWell(
-                          onTap: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: _invoiceDate,
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime(2100),
-                            );
-                            if (picked != null) {
-                              setState(() => _invoiceDate = DateTime(
-                                    picked.year,
-                                    picked.month,
-                                    picked.day,
-                                    _invoiceDate.hour,
-                                    _invoiceDate.minute,
-                                    _invoiceDate.second,
-                                  ));
-                            }
-                          },
+                          onTap: _pickInvoiceDate,
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -686,6 +715,23 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                     ],
                   ),
                 ),
+
+                if (!isCancelled && _invoice!.isDelivery)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+                    child: Row(
+                      children: [
+                        Switch(
+                          value: _includeInLayout,
+                          onChanged: (v) =>
+                              setState(() => _includeInLayout = v),
+                        ),
+                        const Text('Include in Layout',
+                            style: TextStyle(
+                                fontSize: 13, fontWeight: FontWeight.w500)),
+                      ],
+                    ),
+                  ),
 
                 if (!isCancelled) ...[
                   Expanded(child: SingleChildScrollView(child: Column(children: [

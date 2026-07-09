@@ -48,6 +48,21 @@ class _ClientPurchasesScreenState
   );
   bool _loading = false;
   List<_ClientPurchaseRow> _rows = [];
+  final _clientSearchCtrl = TextEditingController();
+  String _clientQuery = '';
+
+  List<_ClientPurchaseRow> get _visibleRows => _clientQuery.isEmpty
+      ? _rows
+      : _rows
+          .where((r) =>
+              r.clientName.toLowerCase().contains(_clientQuery.toLowerCase()))
+          .toList();
+
+  @override
+  void dispose() {
+    _clientSearchCtrl.dispose();
+    super.dispose();
+  }
 
   String get _supplierLabel => _selectedSupplier?.name ?? 'All Suppliers';
 
@@ -174,8 +189,9 @@ class _ClientPurchasesScreenState
   Widget build(BuildContext context) {
     final suppliersAsync = ref.watch(suppliersListProvider);
     final productsAsync = ref.watch(productsListProvider);
+    final visibleRows = _visibleRows;
     final grandTotal =
-        _rows.fold<int>(0, (s, r) => s + r.totalPieces);
+        visibleRows.fold<int>(0, (s, r) => s + r.totalPieces);
 
     final canExport = _rows.isNotEmpty;
 
@@ -307,22 +323,47 @@ class _ClientPurchasesScreenState
           ),
           const Divider(height: 1),
 
+          // Client search
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+            child: TextField(
+              controller: _clientSearchCtrl,
+              decoration: InputDecoration(
+                hintText: 'Search client…',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _clientQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _clientSearchCtrl.clear();
+                          setState(() => _clientQuery = '');
+                        },
+                      )
+                    : null,
+                border: const OutlineInputBorder(),
+                isDense: true,
+              ),
+              onChanged: (v) => setState(() => _clientQuery = v.trim()),
+            ),
+          ),
+
           // List
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
-                : _rows.isEmpty
+                : visibleRows.isEmpty
                     ? Center(
-                        child: Text(
-                            'No purchases of $_filterLabel '
-                            'for $_periodLabel.'))
+                        child: Text(_clientQuery.isEmpty
+                            ? 'No purchases of $_filterLabel '
+                                'for $_periodLabel.'
+                            : 'No clients matching "$_clientQuery".'))
                     : ListView.separated(
                             padding: const EdgeInsets.all(8),
-                            itemCount: _rows.length,
+                            itemCount: visibleRows.length,
                             separatorBuilder: (_, _) =>
                                 const Divider(height: 1),
                             itemBuilder: (ctx, i) {
-                              final row = _rows[i];
+                              final row = visibleRows[i];
                               final isTop = i < 3;
                               return ListTile(
                                 leading: CircleAvatar(
@@ -369,7 +410,7 @@ class _ClientPurchasesScreenState
           ),
 
           // Footer
-          if (!_loading && _rows.isNotEmpty)
+          if (!_loading && visibleRows.isNotEmpty)
             Container(
               color: Theme.of(context).colorScheme.surfaceContainerHighest,
               padding:
@@ -377,7 +418,7 @@ class _ClientPurchasesScreenState
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('${_rows.length} client(s)',
+                  Text('${visibleRows.length} client(s)',
                       style: const TextStyle(color: Colors.grey)),
                   Text(
                     'Total: ${formatNumber(grandTotal)} pcs',

@@ -1438,6 +1438,7 @@ class _TopProductRow {
   final int piecesPerBox;
   int soldPieces;
   double totalAmount;
+  double totalCapital;
 
   _TopProductRow({
     required this.productName,
@@ -1446,11 +1447,15 @@ class _TopProductRow {
     required this.piecesPerBox,
     required this.soldPieces,
     required this.totalAmount,
+    this.totalCapital = 0,
   });
 
   int get soldBoxes  => soldPieces ~/ piecesPerBox;
   int get soldRemain => soldPieces % piecesPerBox;
+  double get profit  => totalAmount - totalCapital;
 }
+
+enum _TopSortField { sales, boxes, pieces, profit }
 
 class _TopMovingProductsTab extends ConsumerStatefulWidget {
   const _TopMovingProductsTab();
@@ -1465,7 +1470,57 @@ class _TopMovingProductsTabState
   _MovementPeriod _period = _MovementPeriod.month;
   DateTime _anchor = DateTime.now();
   String? _selectedSupplierId;
+  _TopSortField _sortField = _TopSortField.sales;
+  bool _sortAscending = false;
   late Future<List<_TopProductRow>> _future;
+
+  void _setSortField(_TopSortField field) => setState(() {
+        if (_sortField == field) {
+          _sortAscending = !_sortAscending;
+        } else {
+          _sortField = field;
+          _sortAscending = false;
+        }
+      });
+
+  List<_TopProductRow> _sortRows(List<_TopProductRow> rows) {
+    final sorted = List<_TopProductRow>.from(rows);
+    int Function(_TopProductRow, _TopProductRow) cmp;
+    switch (_sortField) {
+      case _TopSortField.sales:
+        cmp = (a, b) => a.totalAmount.compareTo(b.totalAmount);
+      case _TopSortField.boxes:
+        cmp = (a, b) => a.soldBoxes.compareTo(b.soldBoxes);
+      case _TopSortField.pieces:
+        cmp = (a, b) => a.soldPieces.compareTo(b.soldPieces);
+      case _TopSortField.profit:
+        cmp = (a, b) => a.profit.compareTo(b.profit);
+    }
+    sorted.sort((a, b) => _sortAscending ? cmp(a, b) : cmp(b, a));
+    return sorted;
+  }
+
+  Widget _sortChip(String label, _TopSortField field) {
+    final active = _sortField == field;
+    return ChoiceChip(
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label),
+          if (active) ...[
+            const SizedBox(width: 4),
+            Icon(
+              _sortAscending ? Icons.arrow_upward : Icons.arrow_downward,
+              size: 14,
+            ),
+          ],
+        ],
+      ),
+      selected: active,
+      visualDensity: VisualDensity.compact,
+      onSelected: (_) => _setSortField(field),
+    );
+  }
 
   @override
   void initState() {
@@ -1559,6 +1614,14 @@ class _TopMovingProductsTabState
             totalAmount:  item.subtotal,
           );
         }
+      }
+    }
+
+    for (final entry in rows.entries) {
+      final price =
+          await ref.read(productRepositoryProvider).getCurrentPrice(entry.key);
+      if (price != null) {
+        entry.value.totalCapital = price.withdrawalPrice * entry.value.soldPieces;
       }
     }
 
@@ -1677,6 +1740,25 @@ class _TopMovingProductsTabState
                 orElse: () => const SizedBox.shrink(),
               ),
         ),
+
+        // Sort controls
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+          child: Row(
+            children: [
+              const Text('Sort by:',
+                  style: TextStyle(fontSize: 13, color: Colors.grey)),
+              const SizedBox(width: 8),
+              _sortChip('Sales', _TopSortField.sales),
+              const SizedBox(width: 6),
+              _sortChip('Boxes', _TopSortField.boxes),
+              const SizedBox(width: 6),
+              _sortChip('Pieces', _TopSortField.pieces),
+              const SizedBox(width: 6),
+              _sortChip('Profit', _TopSortField.profit),
+            ],
+          ),
+        ),
         const Divider(height: 1),
 
         // Ranked list
@@ -1687,7 +1769,7 @@ class _TopMovingProductsTabState
               if (snap.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
-              final rows = snap.data ?? [];
+              final rows = _sortRows(snap.data ?? []);
               if (rows.isEmpty) {
                 return const Center(
                     child: Text('No sales data for this period.'));
@@ -1720,12 +1802,31 @@ class _TopMovingProductsTabState
                       '${row.soldRemain > 0 ? "${row.soldRemain} pcs" : ""}'
                       '${row.soldBoxes == 0 && row.soldRemain == 0 ? "—" : ""}',
                     ),
-                    trailing: Text(
-                      formatCurrency(row.totalAmount),
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                        color: isTop ? Colors.green.shade700 : null,
+                    trailing: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            formatCurrency(row.totalAmount),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: isTop ? Colors.green.shade700 : null,
+                            ),
+                          ),
+                          Text(
+                            'Profit: ${formatCurrency(row.profit)}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: row.profit >= 0
+                                  ? Colors.green.shade700
+                                  : Colors.red,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   );

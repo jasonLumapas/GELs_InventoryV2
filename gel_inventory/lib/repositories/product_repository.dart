@@ -40,6 +40,8 @@ class ProductRepository extends BaseRepository {
               supplierId: r.supplierId,
               piecesPerBox: r.piecesPerBox,
               createdAt: r.createdAt,
+              reorderPoint: r.reorderPoint,
+              reorderQuantity: r.reorderQuantity,
             ))
         .toList();
   }
@@ -188,6 +190,8 @@ class ProductRepository extends BaseRepository {
           piecesPerBox: drift.Value(p.piecesPerBox),
           createdAt: drift.Value(p.createdAt),
           isDeleted: const drift.Value(false),
+          reorderPoint: drift.Value(p.reorderPoint),
+          reorderQuantity: drift.Value(p.reorderQuantity),
         ));
   }
 }

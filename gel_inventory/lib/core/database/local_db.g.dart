@@ -856,6 +856,28 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _reorderPointMeta = const VerificationMeta(
+    'reorderPoint',
+  );
+  @override
+  late final GeneratedColumn<int> reorderPoint = GeneratedColumn<int>(
+    'reorder_point',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _reorderQuantityMeta = const VerificationMeta(
+    'reorderQuantity',
+  );
+  @override
+  late final GeneratedColumn<int> reorderQuantity = GeneratedColumn<int>(
+    'reorder_quantity',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -865,6 +887,8 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
     piecesPerBox,
     createdAt,
     isDeleted,
+    reorderPoint,
+    reorderQuantity,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -931,6 +955,24 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
         isDeleted.isAcceptableOrUnknown(data['is_deleted']!, _isDeletedMeta),
       );
     }
+    if (data.containsKey('reorder_point')) {
+      context.handle(
+        _reorderPointMeta,
+        reorderPoint.isAcceptableOrUnknown(
+          data['reorder_point']!,
+          _reorderPointMeta,
+        ),
+      );
+    }
+    if (data.containsKey('reorder_quantity')) {
+      context.handle(
+        _reorderQuantityMeta,
+        reorderQuantity.isAcceptableOrUnknown(
+          data['reorder_quantity']!,
+          _reorderQuantityMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -968,6 +1010,14 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
         DriftSqlType.bool,
         data['${effectivePrefix}is_deleted'],
       )!,
+      reorderPoint: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}reorder_point'],
+      ),
+      reorderQuantity: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}reorder_quantity'],
+      ),
     );
   }
 
@@ -985,6 +1035,8 @@ class Product extends DataClass implements Insertable<Product> {
   final int piecesPerBox;
   final DateTime createdAt;
   final bool isDeleted;
+  final int? reorderPoint;
+  final int? reorderQuantity;
   const Product({
     required this.id,
     required this.name,
@@ -993,6 +1045,8 @@ class Product extends DataClass implements Insertable<Product> {
     required this.piecesPerBox,
     required this.createdAt,
     required this.isDeleted,
+    this.reorderPoint,
+    this.reorderQuantity,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1006,6 +1060,12 @@ class Product extends DataClass implements Insertable<Product> {
     map['pieces_per_box'] = Variable<int>(piecesPerBox);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['is_deleted'] = Variable<bool>(isDeleted);
+    if (!nullToAbsent || reorderPoint != null) {
+      map['reorder_point'] = Variable<int>(reorderPoint);
+    }
+    if (!nullToAbsent || reorderQuantity != null) {
+      map['reorder_quantity'] = Variable<int>(reorderQuantity);
+    }
     return map;
   }
 
@@ -1020,6 +1080,12 @@ class Product extends DataClass implements Insertable<Product> {
       piecesPerBox: Value(piecesPerBox),
       createdAt: Value(createdAt),
       isDeleted: Value(isDeleted),
+      reorderPoint: reorderPoint == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reorderPoint),
+      reorderQuantity: reorderQuantity == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reorderQuantity),
     );
   }
 
@@ -1036,6 +1102,8 @@ class Product extends DataClass implements Insertable<Product> {
       piecesPerBox: serializer.fromJson<int>(json['piecesPerBox']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       isDeleted: serializer.fromJson<bool>(json['isDeleted']),
+      reorderPoint: serializer.fromJson<int?>(json['reorderPoint']),
+      reorderQuantity: serializer.fromJson<int?>(json['reorderQuantity']),
     );
   }
   @override
@@ -1049,6 +1117,8 @@ class Product extends DataClass implements Insertable<Product> {
       'piecesPerBox': serializer.toJson<int>(piecesPerBox),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'isDeleted': serializer.toJson<bool>(isDeleted),
+      'reorderPoint': serializer.toJson<int?>(reorderPoint),
+      'reorderQuantity': serializer.toJson<int?>(reorderQuantity),
     };
   }
 
@@ -1060,6 +1130,8 @@ class Product extends DataClass implements Insertable<Product> {
     int? piecesPerBox,
     DateTime? createdAt,
     bool? isDeleted,
+    Value<int?> reorderPoint = const Value.absent(),
+    Value<int?> reorderQuantity = const Value.absent(),
   }) => Product(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -1068,6 +1140,10 @@ class Product extends DataClass implements Insertable<Product> {
     piecesPerBox: piecesPerBox ?? this.piecesPerBox,
     createdAt: createdAt ?? this.createdAt,
     isDeleted: isDeleted ?? this.isDeleted,
+    reorderPoint: reorderPoint.present ? reorderPoint.value : this.reorderPoint,
+    reorderQuantity: reorderQuantity.present
+        ? reorderQuantity.value
+        : this.reorderQuantity,
   );
   Product copyWithCompanion(ProductsCompanion data) {
     return Product(
@@ -1084,6 +1160,12 @@ class Product extends DataClass implements Insertable<Product> {
           : this.piecesPerBox,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       isDeleted: data.isDeleted.present ? data.isDeleted.value : this.isDeleted,
+      reorderPoint: data.reorderPoint.present
+          ? data.reorderPoint.value
+          : this.reorderPoint,
+      reorderQuantity: data.reorderQuantity.present
+          ? data.reorderQuantity.value
+          : this.reorderQuantity,
     );
   }
 
@@ -1096,7 +1178,9 @@ class Product extends DataClass implements Insertable<Product> {
           ..write('supplierId: $supplierId, ')
           ..write('piecesPerBox: $piecesPerBox, ')
           ..write('createdAt: $createdAt, ')
-          ..write('isDeleted: $isDeleted')
+          ..write('isDeleted: $isDeleted, ')
+          ..write('reorderPoint: $reorderPoint, ')
+          ..write('reorderQuantity: $reorderQuantity')
           ..write(')'))
         .toString();
   }
@@ -1110,6 +1194,8 @@ class Product extends DataClass implements Insertable<Product> {
     piecesPerBox,
     createdAt,
     isDeleted,
+    reorderPoint,
+    reorderQuantity,
   );
   @override
   bool operator ==(Object other) =>
@@ -1121,7 +1207,9 @@ class Product extends DataClass implements Insertable<Product> {
           other.supplierId == this.supplierId &&
           other.piecesPerBox == this.piecesPerBox &&
           other.createdAt == this.createdAt &&
-          other.isDeleted == this.isDeleted);
+          other.isDeleted == this.isDeleted &&
+          other.reorderPoint == this.reorderPoint &&
+          other.reorderQuantity == this.reorderQuantity);
 }
 
 class ProductsCompanion extends UpdateCompanion<Product> {
@@ -1132,6 +1220,8 @@ class ProductsCompanion extends UpdateCompanion<Product> {
   final Value<int> piecesPerBox;
   final Value<DateTime> createdAt;
   final Value<bool> isDeleted;
+  final Value<int?> reorderPoint;
+  final Value<int?> reorderQuantity;
   final Value<int> rowid;
   const ProductsCompanion({
     this.id = const Value.absent(),
@@ -1141,6 +1231,8 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.piecesPerBox = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.isDeleted = const Value.absent(),
+    this.reorderPoint = const Value.absent(),
+    this.reorderQuantity = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ProductsCompanion.insert({
@@ -1151,6 +1243,8 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     required int piecesPerBox,
     this.createdAt = const Value.absent(),
     this.isDeleted = const Value.absent(),
+    this.reorderPoint = const Value.absent(),
+    this.reorderQuantity = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        name = Value(name),
@@ -1164,6 +1258,8 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     Expression<int>? piecesPerBox,
     Expression<DateTime>? createdAt,
     Expression<bool>? isDeleted,
+    Expression<int>? reorderPoint,
+    Expression<int>? reorderQuantity,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1174,6 +1270,8 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       if (piecesPerBox != null) 'pieces_per_box': piecesPerBox,
       if (createdAt != null) 'created_at': createdAt,
       if (isDeleted != null) 'is_deleted': isDeleted,
+      if (reorderPoint != null) 'reorder_point': reorderPoint,
+      if (reorderQuantity != null) 'reorder_quantity': reorderQuantity,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1186,6 +1284,8 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     Value<int>? piecesPerBox,
     Value<DateTime>? createdAt,
     Value<bool>? isDeleted,
+    Value<int?>? reorderPoint,
+    Value<int?>? reorderQuantity,
     Value<int>? rowid,
   }) {
     return ProductsCompanion(
@@ -1196,6 +1296,8 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       piecesPerBox: piecesPerBox ?? this.piecesPerBox,
       createdAt: createdAt ?? this.createdAt,
       isDeleted: isDeleted ?? this.isDeleted,
+      reorderPoint: reorderPoint ?? this.reorderPoint,
+      reorderQuantity: reorderQuantity ?? this.reorderQuantity,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1224,6 +1326,12 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     if (isDeleted.present) {
       map['is_deleted'] = Variable<bool>(isDeleted.value);
     }
+    if (reorderPoint.present) {
+      map['reorder_point'] = Variable<int>(reorderPoint.value);
+    }
+    if (reorderQuantity.present) {
+      map['reorder_quantity'] = Variable<int>(reorderQuantity.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1240,6 +1348,8 @@ class ProductsCompanion extends UpdateCompanion<Product> {
           ..write('piecesPerBox: $piecesPerBox, ')
           ..write('createdAt: $createdAt, ')
           ..write('isDeleted: $isDeleted, ')
+          ..write('reorderPoint: $reorderPoint, ')
+          ..write('reorderQuantity: $reorderQuantity, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -12396,6 +12506,8 @@ typedef $$ProductsTableCreateCompanionBuilder =
       required int piecesPerBox,
       Value<DateTime> createdAt,
       Value<bool> isDeleted,
+      Value<int?> reorderPoint,
+      Value<int?> reorderQuantity,
       Value<int> rowid,
     });
 typedef $$ProductsTableUpdateCompanionBuilder =
@@ -12407,6 +12519,8 @@ typedef $$ProductsTableUpdateCompanionBuilder =
       Value<int> piecesPerBox,
       Value<DateTime> createdAt,
       Value<bool> isDeleted,
+      Value<int?> reorderPoint,
+      Value<int?> reorderQuantity,
       Value<int> rowid,
     });
 
@@ -12712,6 +12826,16 @@ class $$ProductsTableFilterComposer
 
   ColumnFilters<bool> get isDeleted => $composableBuilder(
     column: $table.isDeleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get reorderPoint => $composableBuilder(
+    column: $table.reorderPoint,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get reorderQuantity => $composableBuilder(
+    column: $table.reorderQuantity,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -13058,6 +13182,16 @@ class $$ProductsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get reorderPoint => $composableBuilder(
+    column: $table.reorderPoint,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get reorderQuantity => $composableBuilder(
+    column: $table.reorderQuantity,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$SuppliersTableOrderingComposer get supplierId {
     final $$SuppliersTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -13112,6 +13246,16 @@ class $$ProductsTableAnnotationComposer
 
   GeneratedColumn<bool> get isDeleted =>
       $composableBuilder(column: $table.isDeleted, builder: (column) => column);
+
+  GeneratedColumn<int> get reorderPoint => $composableBuilder(
+    column: $table.reorderPoint,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get reorderQuantity => $composableBuilder(
+    column: $table.reorderQuantity,
+    builder: (column) => column,
+  );
 
   $$SuppliersTableAnnotationComposer get supplierId {
     final $$SuppliersTableAnnotationComposer composer = $composerBuilder(
@@ -13467,6 +13611,8 @@ class $$ProductsTableTableManager
                 Value<int> piecesPerBox = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<bool> isDeleted = const Value.absent(),
+                Value<int?> reorderPoint = const Value.absent(),
+                Value<int?> reorderQuantity = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProductsCompanion(
                 id: id,
@@ -13476,6 +13622,8 @@ class $$ProductsTableTableManager
                 piecesPerBox: piecesPerBox,
                 createdAt: createdAt,
                 isDeleted: isDeleted,
+                reorderPoint: reorderPoint,
+                reorderQuantity: reorderQuantity,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -13487,6 +13635,8 @@ class $$ProductsTableTableManager
                 required int piecesPerBox,
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<bool> isDeleted = const Value.absent(),
+                Value<int?> reorderPoint = const Value.absent(),
+                Value<int?> reorderQuantity = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProductsCompanion.insert(
                 id: id,
@@ -13496,6 +13646,8 @@ class $$ProductsTableTableManager
                 piecesPerBox: piecesPerBox,
                 createdAt: createdAt,
                 isDeleted: isDeleted,
+                reorderPoint: reorderPoint,
+                reorderQuantity: reorderQuantity,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

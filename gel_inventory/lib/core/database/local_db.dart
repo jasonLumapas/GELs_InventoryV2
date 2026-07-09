@@ -41,6 +41,11 @@ class Products extends Table {
   IntColumn get piecesPerBox => integer()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   BoolColumn get isDeleted => boolean().withDefault(const Constant(false))();
+  // Minimum stock (in pieces) below which the product is flagged for reorder.
+  IntColumn get reorderPoint => integer().nullable()();
+  // Fixed reorder batch size (in pieces). When null, the suggested quantity
+  // is computed from recent sales velocity instead.
+  IntColumn get reorderQuantity => integer().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -429,7 +434,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 33;
+  int get schemaVersion => 34;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -583,6 +588,12 @@ class LocalDatabase extends _$LocalDatabase {
           if (from < 33) {
             await _addColumnIfMissing(m.database, 'invoices',
                 'include_in_layout', 'INTEGER NOT NULL DEFAULT 1');
+          }
+          if (from < 34) {
+            await _addColumnIfMissing(
+                m.database, 'products', 'reorder_point', 'INTEGER');
+            await _addColumnIfMissing(
+                m.database, 'products', 'reorder_quantity', 'INTEGER');
           }
         },
       );

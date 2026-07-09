@@ -5,6 +5,11 @@ class Product {
   final String supplierId;
   final int piecesPerBox;
   final DateTime createdAt;
+  // Minimum stock (in pieces) below which the product is flagged for reorder.
+  final int? reorderPoint;
+  // Fixed reorder batch size (in pieces). When null, the suggested quantity
+  // is computed from recent sales velocity instead.
+  final int? reorderQuantity;
 
   const Product({
     required this.id,
@@ -13,6 +18,8 @@ class Product {
     required this.supplierId,
     required this.piecesPerBox,
     required this.createdAt,
+    this.reorderPoint,
+    this.reorderQuantity,
   });
 
   factory Product.fromJson(Map<String, dynamic> j) => Product(
@@ -22,6 +29,8 @@ class Product {
         supplierId: j['supplier_id'] as String,
         piecesPerBox: j['pieces_per_box'] as int,
         createdAt: DateTime.parse(j['created_at'] as String),
+        reorderPoint: j['reorder_point'] as int?,
+        reorderQuantity: j['reorder_quantity'] as int?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -31,6 +40,8 @@ class Product {
         'supplier_id': supplierId,
         'pieces_per_box': piecesPerBox,
         'created_at': createdAt.toIso8601String(),
+        'reorder_point': reorderPoint,
+        'reorder_quantity': reorderQuantity,
       };
 
   Product copyWith(
@@ -45,5 +56,7 @@ class Product {
         supplierId: supplierId ?? this.supplierId,
         piecesPerBox: piecesPerBox ?? this.piecesPerBox,
         createdAt: createdAt,
+        reorderPoint: reorderPoint,
+        reorderQuantity: reorderQuantity,
       );
 }

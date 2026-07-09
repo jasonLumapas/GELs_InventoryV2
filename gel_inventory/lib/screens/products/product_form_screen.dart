@@ -32,6 +32,8 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
   final _piecesCtrl = TextEditingController();
   final _withdrawalCtrl = TextEditingController();
   final _sellingCtrl = TextEditingController();
+  final _reorderPointCtrl = TextEditingController();
+  final _reorderQuantityCtrl = TextEditingController();
 
   late TabController _tabController;
   bool _loading = false;
@@ -82,6 +84,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
         _productCodeCtrl.text = _existing!.productCode ?? '';
         _piecesCtrl.text = _existing!.piecesPerBox.toString();
         _selectedSupplierId = _existing!.supplierId;
+        _reorderPointCtrl.text = _existing!.reorderPoint?.toString() ?? '';
+        _reorderQuantityCtrl.text =
+            _existing!.reorderQuantity?.toString() ?? '';
         _priceHistory = await ref
             .read(productRepositoryProvider)
             .getPriceHistory(_existing!.id);
@@ -142,6 +147,8 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
     _piecesCtrl.dispose();
     _withdrawalCtrl.dispose();
     _sellingCtrl.dispose();
+    _reorderPointCtrl.dispose();
+    _reorderQuantityCtrl.dispose();
     _percentMinQtyCtrl.dispose();
     _percentValueCtrl.dispose();
     _amountMinQtyCtrl.dispose();
@@ -165,6 +172,8 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
       supplierId: _selectedSupplierId!,
       piecesPerBox: int.parse(_piecesCtrl.text),
       createdAt: _existing?.createdAt ?? DateTime.now(),
+      reorderPoint: int.tryParse(_reorderPointCtrl.text),
+      reorderQuantity: int.tryParse(_reorderQuantityCtrl.text),
     );
     await ref.read(productRepositoryProvider).upsertProduct(product);
 
@@ -357,6 +366,39 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
                 }
                 return null;
               },
+            ),
+            const SizedBox(height: 16),
+            const Text('Reorder Settings',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Text(
+              'Used by the Reports > Reorder tab to flag low stock. Leave '
+              'blank to rely on sales velocity only.',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _reorderPointCtrl,
+                    decoration: const InputDecoration(
+                        labelText: 'Reorder Point (pcs)'),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextFormField(
+                    controller: _reorderQuantityCtrl,
+                    decoration: const InputDecoration(
+                        labelText: 'Reorder Quantity (pcs)'),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             const Text('Pricing',

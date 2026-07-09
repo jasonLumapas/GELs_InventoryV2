@@ -64,7 +64,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 4, vsync: this);
+    _tabs = TabController(length: 5, vsync: this);
     _loadSummary();
   }
 
@@ -149,6 +149,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
               Tab(text: 'Inventory Report'),
               Tab(text: 'Top Products'),
               Tab(text: 'Purchase History'),
+              Tab(text: 'Reorder'),
             ],
           ),
           Expanded(
@@ -159,6 +160,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
                 const _InventoryReportTab(),
                 const _TopMovingProductsTab(),
                 const _PurchaseHistoryTab(),
+                const _ReorderSuggestionsTab(),
               ],
             ),
           ),
@@ -2223,4 +2225,249 @@ class _PurchaseHistoryDetailDialog extends StatelessWidget {
                 ))
             .toList(),
       );
+}
+
+// ── Reorder Suggestions Tab ────────────────────────────────────────────────
+//
+// Forecasting is a simple moving-average model: average daily sales pieces
+// over the trailing window, projected forward against current stock. No ML/
+// external calls involved — this is deterministic arithmetic so it works
+// fully offline.
+
+class _ReorderRow {
+  final String productName;
+  final String supplierName;
+  final int piecesPerBox;
+  final int currentStockPieces;
+  final double avgDailyVelocity;
+  final double daysLeft; // double.infinity when no recent sales
+  final int? reorderPoint;
+  final int suggestedQtyPieces;
+  final bool flagged;
+
+  _ReorderRow({
+    required this.productName,
+    required this.supplierName,
+    required this.piecesPerBox,
+    required this.currentStockPieces,
+    required this.avgDailyVelocity,
+    required this.daysLeft,
+    required this.reorderPoint,
+    required this.suggestedQtyPieces,
+    required this.flagged,
+  });
+
+  int get suggestedBoxes => suggestedQtyPieces ~/ piecesPerBox;
+  int get suggestedRemainPieces => suggestedQtyPieces % piecesPerBox;
+  int get currentBoxes => currentStockPieces ~/ piecesPerBox;
+  int get currentRemainPieces => currentStockPieces % piecesPerBox;
+}
+
+class _ReorderSuggestionsTab extends ConsumerStatefulWidget {
+  const _ReorderSuggestionsTab();
+
+  @override
+  ConsumerState<_ReorderSuggestionsTab> createState() =>
+      _ReorderSuggestionsTabState();
+}
+
+class _ReorderSuggestionsTabState
+    extends ConsumerState<_ReorderSuggestionsTab> {
+  static const _lookbackDays = 30;
+  static const _bufferDays = 3;
+  int _leadTimeDays = 7;
+  bool _showAll = false;
+  late Future<List<_ReorderRow>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  void _setLeadTime(int days) {
+    if (days < 1) return;
+    setState(() {
+      _leadTimeDays = days;
+      _future = _load();
+    });
+  }
+
+  void _setShowAll(bool value) {
+    setState(() {
+      _showAll = value;
+      _future = _load();
+    });
+  }
+
+  Future<List<_ReorderRow>> _load() async {
+    final products = await ref.read(productRepositoryProvider).getAll();
+    final suppliers = await ref.read(supplierRepositoryProvider).getAll();
+    final suppMap = {for (final s in suppliers) s.id: s.name};
+
+    final inventory = await ref.read(inventoryRepositoryProvider).getAll();
+    final stockMap = {
+      for (final inv in inventory) inv.productId: inv.quantityPieces
+    };
+
+    final end = DateTime.now();
+    final start = end.subtract(const Duration(days: _lookbackDays));
+    final invoices = await ref
+        .read(invoiceRepositoryProvider)
+        .getAll(startDate: start, endDate: end);
+
+    final Map<String, int> soldMap = {};
+    for (final inv in invoices) {
+      if (inv.status == 'cancelled') continue;
+      final items = await ref.read(invoiceRepositoryProvider).getItems(inv.id);
+      for (final item in items) {
+        soldMap[item.productId] =
+            (soldMap[item.productId] ?? 0) + item.quantity;
+      }
+    }
+
+    final rows = <_ReorderRow>[];
+    for (final p in products) {
+      final currentStock = stockMap[p.id] ?? 0;
+      final sold = soldMap[p.id] ?? 0;
+      final velocity = sold / _lookbackDays;
+      final daysLeft =
+          velocity > 0 ? currentStock / velocity : double.infinity;
+      final belowReorderPoint =
+          p.reorderPoint != null && currentStock <= p.reorderPoint!;
+      final runningLow = velocity > 0 && daysLeft <= _leadTimeDays;
+      final flagged = belowReorderPoint || runningLow;
+      if (!flagged && !_showAll) continue;
+
+      final targetCoverDays = _leadTimeDays + _bufferDays;
+      final computedQty = (velocity * targetCoverDays - currentStock).ceil();
+      final suggestedQty =
+          p.reorderQuantity ?? (computedQty > 0 ? computedQty : 0);
+
+      rows.add(_ReorderRow(
+        productName: p.name,
+        supplierName: suppMap[p.supplierId] ?? 'Unknown',
+        piecesPerBox: p.piecesPerBox,
+        currentStockPieces: currentStock,
+        avgDailyVelocity: velocity,
+        daysLeft: daysLeft,
+        reorderPoint: p.reorderPoint,
+        suggestedQtyPieces: suggestedQty,
+        flagged: flagged,
+      ));
+    }
+
+    rows.sort((a, b) => a.daysLeft.compareTo(b.daysLeft));
+    return rows;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+          child: Row(
+            children: [
+              const Text('Lead time:', style: TextStyle(fontSize: 13)),
+              IconButton(
+                icon: const Icon(Icons.remove_circle_outline),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => _setLeadTime(_leadTimeDays - 1),
+              ),
+              Text('$_leadTimeDays day(s)',
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              IconButton(
+                icon: const Icon(Icons.add_circle_outline),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => _setLeadTime(_leadTimeDays + 1),
+              ),
+              const Spacer(),
+              FilterChip(
+                label: const Text('Show all'),
+                selected: _showAll,
+                onSelected: _setShowAll,
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Based on sales velocity over the last $_lookbackDays days.',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            ),
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: FutureBuilder<List<_ReorderRow>>(
+            future: _future,
+            builder: (ctx, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final rows = snap.data ?? [];
+              if (rows.isEmpty) {
+                return const Center(
+                    child: Text('No products need reordering right now.'));
+              }
+              return ListView.separated(
+                padding: const EdgeInsets.all(8),
+                itemCount: rows.length,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (ctx, i) {
+                  final row = rows[i];
+                  final daysLeftLabel = row.daysLeft.isInfinite
+                      ? 'no recent sales'
+                      : '${row.daysLeft.toStringAsFixed(1)} days left';
+                  final stockLabel = [
+                    if (row.currentBoxes > 0) '${row.currentBoxes} box(es)',
+                    if (row.currentRemainPieces > 0 || row.currentBoxes == 0)
+                      '${row.currentRemainPieces} pcs',
+                  ].join(' + ');
+                  final suggestedLabel = [
+                    if (row.suggestedBoxes > 0)
+                      '${row.suggestedBoxes} box(es)',
+                    if (row.suggestedRemainPieces > 0)
+                      '${row.suggestedRemainPieces} pcs',
+                  ].join(' + ');
+                  return ListTile(
+                    leading: Icon(
+                      row.flagged
+                          ? Icons.warning_amber_rounded
+                          : Icons.inventory_2_outlined,
+                      color: row.flagged
+                          ? Colors.red.shade600
+                          : Colors.grey.shade500,
+                    ),
+                    title: Text(row.productName,
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text(
+                        '${row.supplierName}  •  Stock: $stockLabel  •  $daysLeftLabel'),
+                    trailing: row.suggestedQtyPieces > 0
+                        ? Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              const Text('Reorder',
+                                  style: TextStyle(
+                                      fontSize: 11, color: Colors.grey)),
+                              Text(suggestedLabel,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold)),
+                            ],
+                          )
+                        : null,
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
 }

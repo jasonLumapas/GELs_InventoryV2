@@ -86,6 +86,7 @@ class _PurchaseOrderFormScreenState
   String _status = 'open';
   final _referenceCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
+  final _preparedByCtrl = TextEditingController();
   final List<_LineItem> _lineItems = [];
   final List<double> _discountPercents = [];
   bool _vatEnabled = false;
@@ -131,6 +132,7 @@ class _PurchaseOrderFormScreenState
     }
     _referenceCtrl.dispose();
     _notesCtrl.dispose();
+    _preparedByCtrl.dispose();
     for (final item in _lineItems) {
       item.casesCtrl.dispose();
       item.supplierPriceCtrl.dispose();
@@ -152,6 +154,7 @@ class _PurchaseOrderFormScreenState
         _status = order.status == 'draft' ? 'open' : order.status;
         _referenceCtrl.text = order.referenceNumber ?? '';
         _notesCtrl.text = order.notes ?? '';
+        _preparedByCtrl.text = order.preparedBy ?? '';
         _selectedSupplier =
             suppliers.where((s) => s.id == order.supplierId).firstOrNull;
         if (widget.draftId != null) _draftPersisted = true;
@@ -537,6 +540,7 @@ class _PurchaseOrderFormScreenState
       !_saving &&
       _status != 'cancelled' &&
       _selectedSupplier != null &&
+      _preparedByCtrl.text.trim().isNotEmpty &&
       _lineItems.isNotEmpty &&
       _lineItems.every((item) => item.cases > 0);
 
@@ -554,6 +558,9 @@ class _PurchaseOrderFormScreenState
       createdAt: _createdAt,
       discountPercents: List<double>.from(_discountPercents),
       vatEnabled: _vatEnabled,
+      preparedBy: _preparedByCtrl.text.trim().isEmpty
+          ? null
+          : _preparedByCtrl.text.trim(),
     );
     final items = _lineItems
         .map((li) => PurchaseOrderItem(
@@ -588,6 +595,9 @@ class _PurchaseOrderFormScreenState
       createdAt: _createdAt,
       discountPercents: List<double>.from(_discountPercents),
       vatEnabled: _vatEnabled,
+      preparedBy: _preparedByCtrl.text.trim().isEmpty
+          ? null
+          : _preparedByCtrl.text.trim(),
     );
     final items = _lineItems
         .map((li) => PurchaseOrderItem(
@@ -806,6 +816,22 @@ class _PurchaseOrderFormScreenState
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _preparedByCtrl,
+                          enabled: _status != 'cancelled',
+                          decoration: const InputDecoration(
+                            labelText: 'Prepared by *',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          onChanged: (_) {
+                            setState(() {});
+                            _scheduleAutoSave();
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: TextField(
                           controller: _referenceCtrl,

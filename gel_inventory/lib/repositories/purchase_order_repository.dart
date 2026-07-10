@@ -96,6 +96,7 @@ class PurchaseOrderRepository extends BaseRepository {
         discountPercents:
             PurchaseOrder.decodeDiscountPercents(r.discountPercents),
         vatEnabled: r.vatEnabled,
+        preparedBy: r.preparedBy,
       );
 
   Future<List<PurchaseOrderItem>> getItems(String purchaseOrderId) async {
@@ -356,6 +357,7 @@ class PurchaseOrderRepository extends BaseRepository {
             discountPercents: drift.Value(
                 PurchaseOrder.encodeDiscountPercents(order.discountPercents)),
             vatEnabled: drift.Value(order.vatEnabled),
+            preparedBy: drift.Value(order.preparedBy),
           ),
         );
   }

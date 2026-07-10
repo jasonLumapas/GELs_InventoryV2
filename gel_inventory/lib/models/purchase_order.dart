@@ -11,6 +11,7 @@ class PurchaseOrder {
   // price, e.g. [10, 5] = 10% off, then 5% off the result.
   final List<double> discountPercents;
   final bool vatEnabled; // applies 12% VAT on top of the discounted price
+  final String? preparedBy;
 
   const PurchaseOrder({
     required this.id,
@@ -23,6 +24,7 @@ class PurchaseOrder {
     required this.createdAt,
     this.discountPercents = const [],
     this.vatEnabled = false,
+    this.preparedBy,
   });
 
   /// Decodes the comma-separated "discount_percents" column, e.g. "10,5".
@@ -47,6 +49,7 @@ class PurchaseOrder {
         discountPercents:
             decodeDiscountPercents(j['discount_percents'] as String?),
         vatEnabled: (j['vat_enabled'] as bool?) ?? false,
+        preparedBy: j['prepared_by'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -60,6 +63,7 @@ class PurchaseOrder {
         'created_at': createdAt.toIso8601String(),
         'discount_percents': encodeDiscountPercents(discountPercents),
         'vat_enabled': vatEnabled,
+        'prepared_by': preparedBy,
       };
 
   String get displayNumber =>
@@ -74,6 +78,7 @@ class PurchaseOrder {
     Object? notes = _sentinel,
     List<double>? discountPercents,
     bool? vatEnabled,
+    Object? preparedBy = _sentinel,
   }) =>
       PurchaseOrder(
         id: id,
@@ -88,6 +93,8 @@ class PurchaseOrder {
         createdAt: createdAt,
         discountPercents: discountPercents ?? this.discountPercents,
         vatEnabled: vatEnabled ?? this.vatEnabled,
+        preparedBy:
+            preparedBy == _sentinel ? this.preparedBy : preparedBy as String?,
       );
 }
 

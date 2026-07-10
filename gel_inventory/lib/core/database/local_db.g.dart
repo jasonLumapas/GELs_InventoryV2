@@ -10009,6 +10009,17 @@ class $PurchaseOrdersTable extends PurchaseOrders
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _preparedByMeta = const VerificationMeta(
+    'preparedBy',
+  );
+  @override
+  late final GeneratedColumn<String> preparedBy = GeneratedColumn<String>(
+    'prepared_by',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -10021,6 +10032,7 @@ class $PurchaseOrdersTable extends PurchaseOrders
     createdAt,
     discountPercents,
     vatEnabled,
+    preparedBy,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -10104,6 +10116,12 @@ class $PurchaseOrdersTable extends PurchaseOrders
         vatEnabled.isAcceptableOrUnknown(data['vat_enabled']!, _vatEnabledMeta),
       );
     }
+    if (data.containsKey('prepared_by')) {
+      context.handle(
+        _preparedByMeta,
+        preparedBy.isAcceptableOrUnknown(data['prepared_by']!, _preparedByMeta),
+      );
+    }
     return context;
   }
 
@@ -10153,6 +10171,10 @@ class $PurchaseOrdersTable extends PurchaseOrders
         DriftSqlType.bool,
         data['${effectivePrefix}vat_enabled'],
       )!,
+      preparedBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}prepared_by'],
+      ),
     );
   }
 
@@ -10173,6 +10195,7 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
   final DateTime createdAt;
   final String? discountPercents;
   final bool vatEnabled;
+  final String? preparedBy;
   const PurchaseOrder({
     required this.id,
     required this.supplierId,
@@ -10184,6 +10207,7 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
     required this.createdAt,
     this.discountPercents,
     required this.vatEnabled,
+    this.preparedBy,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -10204,6 +10228,9 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
       map['discount_percents'] = Variable<String>(discountPercents);
     }
     map['vat_enabled'] = Variable<bool>(vatEnabled);
+    if (!nullToAbsent || preparedBy != null) {
+      map['prepared_by'] = Variable<String>(preparedBy);
+    }
     return map;
   }
 
@@ -10225,6 +10252,9 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
           ? const Value.absent()
           : Value(discountPercents),
       vatEnabled: Value(vatEnabled),
+      preparedBy: preparedBy == null && nullToAbsent
+          ? const Value.absent()
+          : Value(preparedBy),
     );
   }
 
@@ -10244,6 +10274,7 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       discountPercents: serializer.fromJson<String?>(json['discountPercents']),
       vatEnabled: serializer.fromJson<bool>(json['vatEnabled']),
+      preparedBy: serializer.fromJson<String?>(json['preparedBy']),
     );
   }
   @override
@@ -10260,6 +10291,7 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'discountPercents': serializer.toJson<String?>(discountPercents),
       'vatEnabled': serializer.toJson<bool>(vatEnabled),
+      'preparedBy': serializer.toJson<String?>(preparedBy),
     };
   }
 
@@ -10274,6 +10306,7 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
     DateTime? createdAt,
     Value<String?> discountPercents = const Value.absent(),
     bool? vatEnabled,
+    Value<String?> preparedBy = const Value.absent(),
   }) => PurchaseOrder(
     id: id ?? this.id,
     supplierId: supplierId ?? this.supplierId,
@@ -10289,6 +10322,7 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
         ? discountPercents.value
         : this.discountPercents,
     vatEnabled: vatEnabled ?? this.vatEnabled,
+    preparedBy: preparedBy.present ? preparedBy.value : this.preparedBy,
   );
   PurchaseOrder copyWithCompanion(PurchaseOrdersCompanion data) {
     return PurchaseOrder(
@@ -10312,6 +10346,9 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
       vatEnabled: data.vatEnabled.present
           ? data.vatEnabled.value
           : this.vatEnabled,
+      preparedBy: data.preparedBy.present
+          ? data.preparedBy.value
+          : this.preparedBy,
     );
   }
 
@@ -10327,7 +10364,8 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
           ..write('notes: $notes, ')
           ..write('createdAt: $createdAt, ')
           ..write('discountPercents: $discountPercents, ')
-          ..write('vatEnabled: $vatEnabled')
+          ..write('vatEnabled: $vatEnabled, ')
+          ..write('preparedBy: $preparedBy')
           ..write(')'))
         .toString();
   }
@@ -10344,6 +10382,7 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
     createdAt,
     discountPercents,
     vatEnabled,
+    preparedBy,
   );
   @override
   bool operator ==(Object other) =>
@@ -10358,7 +10397,8 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
           other.notes == this.notes &&
           other.createdAt == this.createdAt &&
           other.discountPercents == this.discountPercents &&
-          other.vatEnabled == this.vatEnabled);
+          other.vatEnabled == this.vatEnabled &&
+          other.preparedBy == this.preparedBy);
 }
 
 class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
@@ -10372,6 +10412,7 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
   final Value<DateTime> createdAt;
   final Value<String?> discountPercents;
   final Value<bool> vatEnabled;
+  final Value<String?> preparedBy;
   final Value<int> rowid;
   const PurchaseOrdersCompanion({
     this.id = const Value.absent(),
@@ -10384,6 +10425,7 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
     this.createdAt = const Value.absent(),
     this.discountPercents = const Value.absent(),
     this.vatEnabled = const Value.absent(),
+    this.preparedBy = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   PurchaseOrdersCompanion.insert({
@@ -10397,6 +10439,7 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
     this.createdAt = const Value.absent(),
     this.discountPercents = const Value.absent(),
     this.vatEnabled = const Value.absent(),
+    this.preparedBy = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        supplierId = Value(supplierId);
@@ -10411,6 +10454,7 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
     Expression<DateTime>? createdAt,
     Expression<String>? discountPercents,
     Expression<bool>? vatEnabled,
+    Expression<String>? preparedBy,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -10424,6 +10468,7 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
       if (createdAt != null) 'created_at': createdAt,
       if (discountPercents != null) 'discount_percents': discountPercents,
       if (vatEnabled != null) 'vat_enabled': vatEnabled,
+      if (preparedBy != null) 'prepared_by': preparedBy,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -10439,6 +10484,7 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
     Value<DateTime>? createdAt,
     Value<String?>? discountPercents,
     Value<bool>? vatEnabled,
+    Value<String?>? preparedBy,
     Value<int>? rowid,
   }) {
     return PurchaseOrdersCompanion(
@@ -10452,6 +10498,7 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
       createdAt: createdAt ?? this.createdAt,
       discountPercents: discountPercents ?? this.discountPercents,
       vatEnabled: vatEnabled ?? this.vatEnabled,
+      preparedBy: preparedBy ?? this.preparedBy,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -10489,6 +10536,9 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
     if (vatEnabled.present) {
       map['vat_enabled'] = Variable<bool>(vatEnabled.value);
     }
+    if (preparedBy.present) {
+      map['prepared_by'] = Variable<String>(preparedBy.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -10508,6 +10558,7 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
           ..write('createdAt: $createdAt, ')
           ..write('discountPercents: $discountPercents, ')
           ..write('vatEnabled: $vatEnabled, ')
+          ..write('preparedBy: $preparedBy, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -20997,6 +21048,7 @@ typedef $$PurchaseOrdersTableCreateCompanionBuilder =
       Value<DateTime> createdAt,
       Value<String?> discountPercents,
       Value<bool> vatEnabled,
+      Value<String?> preparedBy,
       Value<int> rowid,
     });
 typedef $$PurchaseOrdersTableUpdateCompanionBuilder =
@@ -21011,6 +21063,7 @@ typedef $$PurchaseOrdersTableUpdateCompanionBuilder =
       Value<DateTime> createdAt,
       Value<String?> discountPercents,
       Value<bool> vatEnabled,
+      Value<String?> preparedBy,
       Value<int> rowid,
     });
 
@@ -21124,6 +21177,11 @@ class $$PurchaseOrdersTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get preparedBy => $composableBuilder(
+    column: $table.preparedBy,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$SuppliersTableFilterComposer get supplierId {
     final $$SuppliersTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -21227,6 +21285,11 @@ class $$PurchaseOrdersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get preparedBy => $composableBuilder(
+    column: $table.preparedBy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$SuppliersTableOrderingComposer get supplierId {
     final $$SuppliersTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -21292,6 +21355,11 @@ class $$PurchaseOrdersTableAnnotationComposer
 
   GeneratedColumn<bool> get vatEnabled => $composableBuilder(
     column: $table.vatEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get preparedBy => $composableBuilder(
+    column: $table.preparedBy,
     builder: (column) => column,
   );
 
@@ -21385,6 +21453,7 @@ class $$PurchaseOrdersTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<String?> discountPercents = const Value.absent(),
                 Value<bool> vatEnabled = const Value.absent(),
+                Value<String?> preparedBy = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PurchaseOrdersCompanion(
                 id: id,
@@ -21397,6 +21466,7 @@ class $$PurchaseOrdersTableTableManager
                 createdAt: createdAt,
                 discountPercents: discountPercents,
                 vatEnabled: vatEnabled,
+                preparedBy: preparedBy,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -21411,6 +21481,7 @@ class $$PurchaseOrdersTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<String?> discountPercents = const Value.absent(),
                 Value<bool> vatEnabled = const Value.absent(),
+                Value<String?> preparedBy = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PurchaseOrdersCompanion.insert(
                 id: id,
@@ -21423,6 +21494,7 @@ class $$PurchaseOrdersTableTableManager
                 createdAt: createdAt,
                 discountPercents: discountPercents,
                 vatEnabled: vatEnabled,
+                preparedBy: preparedBy,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

@@ -7,6 +7,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../../core/services/incentives_settings_service.dart';
+import '../../core/services/instance_config_service.dart';
 import '../../repositories/bad_order_repository.dart';
 import '../../repositories/invoice_repository.dart';
 import '../../repositories/product_repository.dart';
@@ -229,12 +230,18 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen>
       title: 'Incentives',
       actions: [
         if (_tabs.index == 0) ...[
-          if (_lastData != null)
+          if (_lastData != null) ...[
             IconButton(
               icon: const Icon(Icons.print),
               tooltip: 'Print incentives report',
               onPressed: () => _printIncentives(_lastData!),
             ),
+            IconButton(
+              icon: const Icon(Icons.file_download),
+              tooltip: 'Download as PDF',
+              onPressed: () => _downloadIncentives(_lastData!),
+            ),
+          ],
           IconButton(
             icon: const Icon(Icons.settings),
             tooltip: 'Configure additional supplier columns',
@@ -943,6 +950,27 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen>
   // ── PDF / Print ─────────────────────────────────────────────────────────────
 
   Future<void> _printIncentives(_MonthData data) async {
+    final doc = await _buildIncentivesDoc(data);
+    final bytes = await doc.save();
+    await Printing.layoutPdf(onLayout: (_) => bytes, format: PdfPageFormat.a4);
+  }
+
+  Future<void> _downloadIncentives(_MonthData data) async {
+    final doc = await _buildIncentivesDoc(data);
+    final bytes = await doc.save();
+    final home =
+        Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '.';
+    final monthTag = DateFormat('yyyyMM').format(_selectedMonth);
+    final file = File('$home\\Desktop\\incentives_report_$monthTag.pdf');
+    await file.writeAsBytes(bytes);
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Saved to ${file.path}')));
+  }
+
+  Future<pw.Document> _buildIncentivesDoc(_MonthData data) async {
+    final headerTitle = await ref.read(headerTitleProvider.future) ?? '';
     final target = double.tryParse(_targetCtrl.text) ?? 0.0;
     final percent = double.tryParse(_percentCtrl.text) ?? 90.0;
     final targetAmt = target * percent / 100;
@@ -1075,6 +1103,10 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen>
                     "GEL'S CONSUMER GOODS TRADING",
                     style: pw.TextStyle(font: fontBold, fontSize: 13),
                   ),
+                  if (headerTitle.isNotEmpty) ...[
+                    pw.SizedBox(height: 2),
+                    pw.Text('Area: $headerTitle', style: ts()),
+                  ],
                   pw.SizedBox(height: 2),
                   pw.Text(
                     'Incentives Report — $monthLabel',
@@ -1200,9 +1232,7 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen>
       ),
     );
 
-    final bytes = await doc.save();
-
-    await Printing.layoutPdf(onLayout: (_) => bytes, format: fmt);
+    return doc;
   }
 
   Widget _editableRow(

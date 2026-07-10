@@ -364,6 +364,7 @@ class PurchaseOrders extends Table {
   // Comma-separated cascading discount percentages, e.g. "10,5".
   TextColumn get discountPercents => text().nullable()();
   BoolColumn get vatEnabled => boolean().withDefault(const Constant(false))();
+  TextColumn get preparedBy => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -434,7 +435,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 34;
+  int get schemaVersion => 35;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -594,6 +595,10 @@ class LocalDatabase extends _$LocalDatabase {
                 m.database, 'products', 'reorder_point', 'INTEGER');
             await _addColumnIfMissing(
                 m.database, 'products', 'reorder_quantity', 'INTEGER');
+          }
+          if (from < 35) {
+            await _addColumnIfMissing(
+                m.database, 'purchase_orders', 'prepared_by', 'TEXT');
           }
         },
       );

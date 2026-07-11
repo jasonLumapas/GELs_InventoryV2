@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:excel/excel.dart' as xlsx;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -232,13 +233,8 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen>
         if (_tabs.index == 0) ...[
           if (_lastData != null) ...[
             IconButton(
-              icon: const Icon(Icons.print),
-              tooltip: 'Print incentives report',
-              onPressed: () => _printIncentives(_lastData!),
-            ),
-            IconButton(
               icon: const Icon(Icons.file_download),
-              tooltip: 'Download as PDF',
+              tooltip: 'Download as Excel',
               onPressed: () => _downloadIncentives(_lastData!),
             ),
           ],
@@ -758,47 +754,50 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           // Labels
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text('Total Gross Sales', style: tsBold),
-                              const SizedBox(height: 4),
-                              const Text('less:', style: ts),
-                              for (final c in data.additional) ...[
-                                const SizedBox(height: 2),
-                                Padding(
-                                  padding: const EdgeInsets.only(left: 20),
-                                  child: Text(c.name, style: ts),
-                                ),
-                              ],
-                              Container(
-                                padding: const EdgeInsets.only(top: 4),
-                                decoration: BoxDecoration(
-                                  border: Border(
-                                    top: BorderSide(
-                                      color: Colors.grey.shade300,
+                          IntrinsicWidth(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text('Total Gross Sales', style: tsBold),
+                                const SizedBox(height: 4),
+                                const Text('less:', style: ts),
+                                for (final c in data.additional) ...[
+                                  const SizedBox(height: 2),
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 20),
+                                    child: Text(c.name, style: ts),
+                                  ),
+                                ],
+                                Container(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  alignment: Alignment.centerRight,
+                                  decoration: BoxDecoration(
+                                    border: Border(
+                                      top: BorderSide(
+                                        color: Colors.grey.shade300,
+                                      ),
                                     ),
                                   ),
+                                  child: const Text('Total', style: ts),
                                 ),
-                                child: const Text('Net Total', style: ts),
-                              ),
-                              if (netBo < 0) ...[
-                                const SizedBox(height: 2),
-                                const Text('Net BO Allowance', style: ts),
-                              ],
-                              Container(
-                                padding: const EdgeInsets.only(top: 6),
-                                decoration: BoxDecoration(
-                                  border: Border(
-                                    top: BorderSide(
-                                      color: Colors.grey.shade300,
+                                if (netBo < 0) ...[
+                                  const SizedBox(height: 2),
+                                  const Text('Net BO Allowance', style: ts),
+                                ],
+                                Container(
+                                  padding: const EdgeInsets.only(top: 6),
+                                  decoration: BoxDecoration(
+                                    border: Border(
+                                      top: BorderSide(
+                                        color: Colors.grey.shade300,
+                                      ),
                                     ),
                                   ),
+                                  child: const Text('Net Sales', style: tsBold),
                                 ),
-                                child: const Text('Net Sales', style: tsBold),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                           const SizedBox(width: 16),
                           // Values
@@ -831,7 +830,13 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen>
                                   ),
                                 ),
                                 child: Text(
-                                  formatCurrency(netSales),
+                                  formatCurrency(
+                                    data.additional.fold(
+                                      0.0,
+                                      (s, c) =>
+                                          s + data.totalAdditionalSales(c.id),
+                                    ),
+                                  ),
                                   style: ts,
                                 ),
                               ),
@@ -956,17 +961,154 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen>
   }
 
   Future<void> _downloadIncentives(_MonthData data) async {
-    final doc = await _buildIncentivesDoc(data);
-    final bytes = await doc.save();
+    final bytes = _buildIncentivesExcel(data);
     final home =
-        Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '.';
+        Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        '.';
     final monthTag = DateFormat('yyyyMM').format(_selectedMonth);
-    final file = File('$home\\Desktop\\incentives_report_$monthTag.pdf');
+    final file = File('$home\\Desktop\\incentives_report_$monthTag.xlsx');
     await file.writeAsBytes(bytes);
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text('Saved to ${file.path}')));
+  }
+
+  List<int> _buildIncentivesExcel(_MonthData data) {
+    final target = double.tryParse(_targetCtrl.text) ?? 0.0;
+    final percent = double.tryParse(_percentCtrl.text) ?? 90.0;
+    final targetAmt = target * percent / 100;
+    final netBo = data.totalRamSales * 0.01 - data.totalRamBoAmount;
+    final netSales =
+        data.totalGrand -
+        data.additional.fold(
+          0.0,
+          (s, c) => s + data.totalAdditionalSales(c.id),
+        );
+    final eligible = netBo < 0 ? netSales + netBo : netSales;
+    final isEligible = eligible >= targetAmt;
+    final dateFmt = DateFormat('MMM d');
+
+    final numFmt = NumberFormat('#,##0.00');
+    String numPlain(double v) {
+      if (v == 0) return '';
+      return v < 0 ? '-${numFmt.format(-v)}' : numFmt.format(v);
+    }
+
+    String numBare(double v) =>
+        v < 0 ? '-${numFmt.format(-v)}' : numFmt.format(v);
+
+    final book = xlsx.Excel.createExcel();
+    final sheet = book[book.sheets.keys.first];
+
+    final thinBorder = xlsx.Border(
+      borderStyle: xlsx.BorderStyle.Thin,
+      borderColorHex: '#000000',
+    );
+
+    int r = 0;
+    void addRow(
+      List<String> cells, {
+      bool bold = false,
+      Set<int> rightAlign = const {},
+      bool border = false,
+    }) {
+      for (int c = 0; c < cells.length; c++) {
+        final cell = sheet.cell(
+          xlsx.CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r),
+        );
+        cell.value = cells[c];
+        // Column 0 is always the date/label column; every other column
+        // holds a currency (or percentage) value, so right-align it to
+        // keep decimals lined up.
+        final alignRight = c >= 1 || rightAlign.contains(c);
+        if (bold || alignRight || border) {
+          cell.cellStyle = xlsx.CellStyle(
+            bold: bold,
+            horizontalAlign: alignRight
+                ? xlsx.HorizontalAlign.Right
+                : xlsx.HorizontalAlign.Left,
+            leftBorder: border ? thinBorder : null,
+            rightBorder: border ? thinBorder : null,
+            topBorder: border ? thinBorder : null,
+            bottomBorder: border ? thinBorder : null,
+          );
+        }
+      }
+      r++;
+    }
+
+    void addBlankRow() => r++;
+
+    addRow([
+      'Date',
+      'Grand Total',
+      '${data.ramName} Sales',
+      '${data.ramName} BO',
+      for (final c in data.additional) '${c.name} Sales',
+    ], border: true);
+    for (final d in data.days) {
+      addRow([
+        dateFmt.format(
+          DateTime(_selectedMonth.year, _selectedMonth.month, d.day),
+        ),
+        numPlain(d.grandTotal),
+        numPlain(d.ramSales),
+        numPlain(d.ramBoAmount),
+        for (final c in data.additional)
+          numPlain(d.additionalSales[c.id] ?? 0.0),
+      ], border: true);
+    }
+    addRow([
+      'Total',
+      numBare(data.totalGrand),
+      numBare(data.totalRamSales),
+      numBare(data.totalRamBoAmount),
+      for (final c in data.additional) numBare(data.totalAdditionalSales(c.id)),
+    ], border: true);
+
+    addBlankRow();
+    addRow(['Monthly Target', '', '', numBare(target)]);
+    addRow(['% for incentive eligibility', '${percent.toStringAsFixed(0)}%']);
+    addRow(['Target Amount', '', '', numBare(targetAmt)]);
+    addBlankRow();
+    addRow([
+      'BO Allowance (1% of RAM sales)',
+      numBare(data.totalRamSales * 0.01),
+    ]);
+    addRow(['Total RAM BO for the month', numBare(data.totalRamBoAmount)]);
+    addRow(['Net BO Allowance', numBare(netBo)]);
+    addBlankRow();
+    addRow(['Total Gross Sales', '', numBare(data.totalGrand)]);
+    addRow(['less:']);
+    for (final c in data.additional) {
+      addRow([c.name, numBare(data.totalAdditionalSales(c.id))]);
+    }
+    addRow(
+      [
+        'Total',
+        '',
+        numBare(
+          data.additional.fold(
+            0.0,
+            (s, c) => s + data.totalAdditionalSales(c.id),
+          ),
+        ),
+      ],
+      rightAlign: {0},
+    );
+    addBlankRow();
+    if (netBo < 0) {
+      addRow(['Net BO Allowance', numBare(netBo)]);
+    }
+    addRow(['Net Sales', '', numBare(eligible)], bold: true);
+    addBlankRow();
+    addRow([
+      isEligible ? 'ELIGIBLE FOR INCENTIVE' : 'NOT ELIGIBLE FOR INCENTIVE',
+    ]);
+
+    return book.encode()!;
   }
 
   Future<pw.Document> _buildIncentivesDoc(_MonthData data) async {
@@ -999,8 +1141,9 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen>
       pw.Font.helveticaBold(),
     );
 
-    String fc(double v) => 'Php ${numFmt.format(v)}';
-    String fsign(double v) =>
+    String fc(double v) => numFmt.format(v);
+    String fcPhp(double v) => 'Php ${numFmt.format(v)}';
+    String fsignPhp(double v) =>
         v < 0 ? '-Php ${numFmt.format(-v)}' : 'Php ${numFmt.format(v)}';
 
     const double fs = 8.5;
@@ -1060,13 +1203,18 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen>
       String value, {
       bool bold = false,
       double indent = 0,
+      bool labelRight = false,
     }) => pw.Row(
       children: [
         pw.SizedBox(
           width: labelW - indent,
           child: pw.Padding(
             padding: pw.EdgeInsets.only(left: indent),
-            child: pw.Text(label, style: ts(bold: bold)),
+            child: pw.Text(
+              label,
+              style: ts(bold: bold),
+              textAlign: labelRight ? pw.TextAlign.right : pw.TextAlign.left,
+            ),
           ),
         ),
         pw.SizedBox(
@@ -1181,41 +1329,50 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen>
           pw.SizedBox(height: 8),
 
           // Summary
-          sumRow('Monthly Target', fc(target)),
+          sumRow('Monthly Target', fcPhp(target)),
           pw.SizedBox(height: 3),
           sumRow(
             '% for incentive eligibility',
             '${percent.toStringAsFixed(0)}%',
           ),
           pw.SizedBox(height: 3),
-          sumRow('Target Amount', fc(targetAmt), bold: true),
+          sumRow('Target Amount', fcPhp(targetAmt), bold: true),
 
           pw.SizedBox(height: 10),
           sumRow(
             'BO Allowance (1% of RAM sales)',
-            fc(data.totalRamSales * 0.01),
+            fcPhp(data.totalRamSales * 0.01),
           ),
           pw.SizedBox(height: 3),
-          sumRow('Total RAM BO for the month', fc(data.totalRamBoAmount)),
+          sumRow('Total RAM BO for the month', fcPhp(data.totalRamBoAmount)),
           pw.SizedBox(height: 3),
-          sumRow('Net BO Allowance', fsign(netBo), bold: true),
+          sumRow('Net BO Allowance', fsignPhp(netBo), bold: true),
 
           pw.SizedBox(height: 10),
-          sumRow('Total Gross Sales', fc(data.totalGrand), bold: true),
+          sumRow('Total Gross Sales', fcPhp(data.totalGrand), bold: true),
           pw.SizedBox(height: 3),
           pw.Text('less:', style: ts()),
           for (final c in data.additional) ...[
             pw.SizedBox(height: 2),
-            sumRow(c.name, fc(data.totalAdditionalSales(c.id)), indent: 12),
+            sumRow(c.name, fcPhp(data.totalAdditionalSales(c.id)), indent: 12),
           ],
           pw.SizedBox(height: 3),
-          sumRow('Net Total', fc(netSales)),
+          sumRow(
+            'Total',
+            fcPhp(
+              data.additional.fold(
+                0.0,
+                (s, c) => s + data.totalAdditionalSales(c.id),
+              ),
+            ),
+            labelRight: true,
+          ),
           if (netBo < 0) ...[
             pw.SizedBox(height: 3),
-            sumRow('Net BO Allowance', fsign(netBo)),
+            sumRow('Net BO Allowance', fsignPhp(netBo)),
           ],
           pw.SizedBox(height: 3),
-          sumRow('Net Sales', fc(eligible), bold: true),
+          sumRow('Net Sales', fcPhp(eligible), bold: true),
 
           pw.SizedBox(height: 12),
           pw.Text(
@@ -1656,11 +1813,14 @@ class _PerSupplierIncentivesTabState
       double width, {
       bool bold = false,
       pw.TextAlign align = pw.TextAlign.left,
-    }) =>
-        pw.SizedBox(
-          width: width,
-          child: pw.Text(text, style: ts(bold: bold), textAlign: align),
-        );
+    }) => pw.SizedBox(
+      width: width,
+      child: pw.Text(
+        text,
+        style: ts(bold: bold),
+        textAlign: align,
+      ),
+    );
 
     String fc(double v) => 'Php ${numFmt.format(v)}';
 
@@ -1668,54 +1828,78 @@ class _PerSupplierIncentivesTabState
     double totalIncentive = 0;
 
     final doc = pw.Document();
-    doc.addPage(pw.MultiPage(
-      pageFormat: pageFormat,
-      build: (ctx) => [
-        pw.Text('Per-Supplier Incentives', style: ts(bold: true, size: fsHead)),
-        pw.SizedBox(height: 4),
-        pw.Text('Month: $monthLabel', style: ts()),
-        pw.SizedBox(height: 10),
-
-        pw.Row(children: [
-          col('Supplier', nameW, bold: true),
-          col('Total Sales', salesW, bold: true, align: pw.TextAlign.right),
-          col('Incentive %', pctW, bold: true, align: pw.TextAlign.right),
-          col('Incentive Amount', incentiveW,
-              bold: true, align: pw.TextAlign.right),
-        ]),
-        pw.Divider(height: 6, thickness: 0.5),
-
-        for (final id in configuredIds) ...[
-          pw.Padding(
-            padding: const pw.EdgeInsets.symmetric(vertical: 3),
-            child: pw.Row(children: [
-              col(suppById[id] ?? id, nameW),
-              col(fc(_salesBySupplier[id] ?? 0), salesW,
-                  align: pw.TextAlign.right),
-              col('${(_percents[id] ?? 0).toStringAsFixed(1)}%', pctW,
-                  align: pw.TextAlign.right),
-              col(() {
-                final amt = (_salesBySupplier[id] ?? 0) *
-                    (_percents[id] ?? 0) /
-                    100;
-                totalIncentive += amt;
-                return fc(amt);
-              }(), incentiveW, align: pw.TextAlign.right),
-            ]),
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: pageFormat,
+        build: (ctx) => [
+          pw.Text(
+            'Per-Supplier Incentives',
+            style: ts(bold: true, size: fsHead),
           ),
-          pw.Divider(height: 1, thickness: 0.3),
+          pw.SizedBox(height: 4),
+          pw.Text('Month: $monthLabel', style: ts()),
+          pw.SizedBox(height: 10),
+
+          pw.Row(
+            children: [
+              col('Supplier', nameW, bold: true),
+              col('Total Sales', salesW, bold: true, align: pw.TextAlign.right),
+              col('Incentive %', pctW, bold: true, align: pw.TextAlign.right),
+              col(
+                'Incentive Amount',
+                incentiveW,
+                bold: true,
+                align: pw.TextAlign.right,
+              ),
+            ],
+          ),
+          pw.Divider(height: 6, thickness: 0.5),
+
+          for (final id in configuredIds) ...[
+            pw.Padding(
+              padding: const pw.EdgeInsets.symmetric(vertical: 3),
+              child: pw.Row(
+                children: [
+                  col(suppById[id] ?? id, nameW),
+                  col(
+                    fc(_salesBySupplier[id] ?? 0),
+                    salesW,
+                    align: pw.TextAlign.right,
+                  ),
+                  col(
+                    '${(_percents[id] ?? 0).toStringAsFixed(1)}%',
+                    pctW,
+                    align: pw.TextAlign.right,
+                  ),
+                  col(
+                    () {
+                      final amt =
+                          (_salesBySupplier[id] ?? 0) *
+                          (_percents[id] ?? 0) /
+                          100;
+                      totalIncentive += amt;
+                      return fc(amt);
+                    }(),
+                    incentiveW,
+                    align: pw.TextAlign.right,
+                  ),
+                ],
+              ),
+            ),
+            pw.Divider(height: 1, thickness: 0.3),
+          ],
+
+          pw.SizedBox(height: 8),
+          pw.Align(
+            alignment: pw.Alignment.centerRight,
+            child: pw.Text(
+              'Total Incentive: ${fc(totalIncentive)}',
+              style: ts(bold: true, size: fsHead - 1),
+            ),
+          ),
         ],
-
-        pw.SizedBox(height: 8),
-        pw.Align(
-          alignment: pw.Alignment.centerRight,
-          child: pw.Text(
-            'Total Incentive: ${fc(totalIncentive)}',
-            style: ts(bold: true, size: fsHead - 1),
-          ),
-        ),
-      ],
-    ));
+      ),
+    );
     return doc;
   }
 
@@ -1727,17 +1911,17 @@ class _PerSupplierIncentivesTabState
   Future<void> _download() async {
     final doc = await _buildPerSupplierDoc();
     final bytes = await doc.save();
-    final home = Platform.environment['USERPROFILE'] ??
+    final home =
+        Platform.environment['USERPROFILE'] ??
         Platform.environment['HOME'] ??
         '.';
     final tag = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-    final file =
-        File('$home\\Desktop\\per_supplier_incentives_$tag.pdf');
+    final file = File('$home\\Desktop\\per_supplier_incentives_$tag.pdf');
     await file.writeAsBytes(bytes);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Saved to ${file.path}')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Saved to ${file.path}')));
   }
 
   @override
@@ -1798,8 +1982,7 @@ class _PerSupplierIncentivesTabState
                 icon: const Icon(Icons.file_download),
                 tooltip: 'Download as PDF',
                 visualDensity: VisualDensity.compact,
-                onPressed:
-                    _percents.isNotEmpty && !_loading ? _download : null,
+                onPressed: _percents.isNotEmpty && !_loading ? _download : null,
               ),
             ],
           ),

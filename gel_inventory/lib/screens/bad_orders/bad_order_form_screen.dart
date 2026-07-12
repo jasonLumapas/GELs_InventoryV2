@@ -70,16 +70,16 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
   }
 
   Future<void> _load() async {
-    final clientsFuture    = ref.read(clientRepositoryProvider).getAll();
-    final productsFuture   = ref.read(productRepositoryProvider).getAll();
-    final invFuture        = ref.read(inventoryRepositoryProvider).getAll();
-    final suppliersFuture  = ref.read(supplierRepositoryProvider).getAll();
-    _clients  = await clientsFuture;
+    final clientsFuture = ref.read(clientRepositoryProvider).getAll();
+    final productsFuture = ref.read(productRepositoryProvider).getAll();
+    final invFuture = ref.read(inventoryRepositoryProvider).getAll();
+    final suppliersFuture = ref.read(supplierRepositoryProvider).getAll();
+    _clients = await clientsFuture;
     _products = await productsFuture;
-    final invItems  = await invFuture;
+    final invItems = await invFuture;
     final suppliers = await suppliersFuture;
     _allowNoClient = await AppSettingsService.getAllowBadOrderNoClient();
-    _inventoryQty  = {for (final i in invItems) i.productId: i.quantityPieces};
+    _inventoryQty = {for (final i in invItems) i.productId: i.quantityPieces};
     _suppliersById = {for (final s in suppliers) s.id: s.name};
 
     if (widget.draftId != null) {
@@ -118,13 +118,15 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
     for (final di in draft.items) {
       final product = productsById[di.productId];
       if (product == null) continue;
-      _items.add(_BoItem(
-        productId: product.id,
-        productName: product.name,
-        piecesPerBox: product.piecesPerBox,
-      )
-        ..boxes = di.boxes
-        ..pieces = di.pieces);
+      _items.add(
+        _BoItem(
+            productId: product.id,
+            productName: product.name,
+            piecesPerBox: product.piecesPerBox,
+          )
+          ..boxes = di.boxes
+          ..pieces = di.pieces,
+      );
     }
   }
 
@@ -137,26 +139,33 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
   }
 
   bool get _hasDraftContent =>
-      (_selectedClient != null || _noClient || _type == 'stock_release') && _items.isNotEmpty;
+      (_selectedClient != null || _noClient || _type == 'stock_release') &&
+      _items.isNotEmpty;
 
   BadOrderDraft _buildDraftPayload() => BadOrderDraft(
-        id: _draftId,
-        type: _type,
-        clientId: (_noClient || (_type == 'stock_release' && _selectedClient == null)) ? null : _selectedClient?.id,
-        noClient: _noClient || (_type == 'stock_release' && _selectedClient == null),
-        date: _selectedDate,
-        notes: _type == 'stock_release'
-            ? _reason
-            : (_notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim()),
-        items: _items
-            .map((i) => BadOrderDraftItem(
-                  productId: i.productId,
-                  boxes: i.boxes,
-                  pieces: i.pieces,
-                ))
-            .toList(),
-        createdAt: _createdAt,
-      );
+    id: _draftId,
+    type: _type,
+    clientId:
+        (_noClient || (_type == 'stock_release' && _selectedClient == null))
+        ? null
+        : _selectedClient?.id,
+    noClient:
+        _noClient || (_type == 'stock_release' && _selectedClient == null),
+    date: _selectedDate,
+    notes: _type == 'stock_release'
+        ? _reason
+        : (_notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim()),
+    items: _items
+        .map(
+          (i) => BadOrderDraftItem(
+            productId: i.productId,
+            boxes: i.boxes,
+            pieces: i.pieces,
+          ),
+        )
+        .toList(),
+    createdAt: _createdAt,
+  );
 
   Future<void> _autoSaveDraft() async {
     if (_finalized || !mounted) return;
@@ -177,14 +186,17 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
 
   int _effectiveAvailable(String productId, {int? excludeIndex}) {
     final stock = _inventoryQty[productId] ?? 0;
-    final avail = stock - _committedPieces(productId, excludeIndex: excludeIndex);
+    final avail =
+        stock - _committedPieces(productId, excludeIndex: excludeIndex);
     return avail < 0 ? 0 : (avail > stock ? stock : avail);
   }
 
   bool get _canSave {
     if (_saving) return false;
-    if (_selectedClient == null && !_noClient && _type != 'stock_release') return false;
-    if (_type == 'stock_release' && (_reason == null || _reason!.isEmpty)) return false;
+    if (_selectedClient == null && !_noClient && _type != 'stock_release')
+      return false;
+    if (_type == 'stock_release' && (_reason == null || _reason!.isEmpty))
+      return false;
     if (_items.isEmpty) return false;
     if (_type == 'bad_order' || _type == 'stock_release') {
       for (int i = 0; i < _items.length; i++) {
@@ -255,11 +267,18 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
     });
     // Invoice dates are timestamps; include the entire selected day.
     final cutoff = DateTime(
-        _selectedDate.year, _selectedDate.month, _selectedDate.day, 23, 59, 59);
+      _selectedDate.year,
+      _selectedDate.month,
+      _selectedDate.day,
+      23,
+      59,
+      59,
+    );
     final invoices = await ref.read(invoiceRepositoryProvider).getAll();
     final ids = <String>{};
     for (final inv in invoices.where(
-        (i) => i.clientId == client.id && !i.invoiceDate.isAfter(cutoff))) {
+      (i) => i.clientId == client.id && !i.invoiceDate.isAfter(cutoff),
+    )) {
       final items = await ref.read(invoiceRepositoryProvider).getItems(inv.id);
       for (final item in items) {
         ids.add(item.productId);
@@ -274,8 +293,9 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
 
   Future<void> _pickProduct() async {
     if (_selectedClient == null && !_noClient && _type != 'stock_release') {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Select a client first.')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Select a client first.')));
       return;
     }
     final already = _items.map((i) => i.productId).toSet();
@@ -283,31 +303,40 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
     final available = showAll
         ? _products.where((p) => !already.contains(p.id)).toList()
         : _products
-            .where((p) =>
-                !already.contains(p.id) && _orderedProductIds.contains(p.id))
-            .toList();
+              .where(
+                (p) =>
+                    !already.contains(p.id) &&
+                    _orderedProductIds.contains(p.id),
+              )
+              .toList();
     if (available.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(showAll
-              ? 'No products available to add.'
-              : 'No previously ordered products found for this client.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            showAll
+                ? 'No products available to add.'
+                : 'No previously ordered products found for this client.',
+          ),
+        ),
+      );
       return;
     }
     final isBadOrder = _type == 'bad_order' || _type == 'stock_release';
 
     List<SearchFilter<Product>>? supplierFilters;
-    if (_type == 'stock_release') {
-      final ids = available.map((p) => p.supplierId).toSet();
-      final list = ids
-          .where(_suppliersById.containsKey)
-          .map((id) => SearchFilter<Product>(
+    final supplierIds = available.map((p) => p.supplierId).toSet();
+    final supplierFilterList =
+        supplierIds
+            .where(_suppliersById.containsKey)
+            .map(
+              (id) => SearchFilter<Product>(
                 label: _suppliersById[id]!,
                 test: (p) => p.supplierId == id,
-              ))
-          .toList()
-        ..sort((a, b) => a.label.compareTo(b.label));
-      if (list.isNotEmpty) supplierFilters = list;
-    }
+              ),
+            )
+            .toList()
+          ..sort((a, b) => a.label.compareTo(b.label));
+    if (supplierFilterList.isNotEmpty) supplierFilters = supplierFilterList;
 
     // Multi-pick mode: the dialog stays open after each selection so the
     // user can add several products in one go, closing only via "Done" or
@@ -321,14 +350,10 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
       filters: supplierFilters,
       leadingOf: isBadOrder
           ? (p) => Icon(
-                _effectiveAvailable(p.id) > 0
-                    ? Icons.check_circle
-                    : Icons.cancel,
-                color: _effectiveAvailable(p.id) > 0
-                    ? Colors.green
-                    : Colors.red,
-                size: 20,
-              )
+              _effectiveAvailable(p.id) > 0 ? Icons.check_circle : Icons.cancel,
+              color: _effectiveAvailable(p.id) > 0 ? Colors.green : Colors.red,
+              size: 20,
+            )
           : null,
       subtitleOf: isBadOrder
           ? (p) {
@@ -344,10 +369,10 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
           : null,
       subtitleStyleOf: isBadOrder
           ? (p) => TextStyle(
-                color: _effectiveAvailable(p.id) > 0
-                    ? Colors.green.shade700
-                    : Colors.red,
-              )
+              color: _effectiveAvailable(p.id) > 0
+                  ? Colors.green.shade700
+                  : Colors.red,
+            )
           : null,
       // Disable once already added (so it can't be picked twice in this
       // session) and, for bad orders, once out of stock.
@@ -359,11 +384,15 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
   }
 
   void _addItem(Product picked) {
-    setState(() => _items.add(_BoItem(
+    setState(
+      () => _items.add(
+        _BoItem(
           productId: picked.id,
           productName: picked.name,
           piecesPerBox: picked.piecesPerBox,
-        )));
+        ),
+      ),
+    );
     _scheduleAutoSave();
   }
 
@@ -372,8 +401,12 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
     setState(() => _saving = true);
     _autoSaveTimer?.cancel();
     final now = DateTime.now();
-    final clientId = (_noClient || (_type == 'stock_release' && _selectedClient == null))
-        ? (await ref.read(clientRepositoryProvider).getOrCreateNoClientPlaceholder()).id
+    final clientId =
+        (_noClient || (_type == 'stock_release' && _selectedClient == null))
+        ? (await ref
+                  .read(clientRepositoryProvider)
+                  .getOrCreateNoClientPlaceholder())
+              .id
         : _selectedClient!.id;
     final order = BadOrder(
       id: const Uuid().v4(),
@@ -386,13 +419,15 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
       createdAt: now,
     );
     final items = _items
-        .map((i) => BadOrderItem(
-              id: const Uuid().v4(),
-              badOrderId: order.id,
-              productId: i.productId,
-              unitType: 'piece',
-              quantity: i.quantityInPieces,
-            ))
+        .map(
+          (i) => BadOrderItem(
+            id: const Uuid().v4(),
+            badOrderId: order.id,
+            productId: i.productId,
+            unitType: 'piece',
+            quantity: i.quantityInPieces,
+          ),
+        )
         .toList();
     final ppbMap = {for (final p in _products) p.id: p.piecesPerBox};
     await ref
@@ -463,17 +498,20 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                       SegmentedButton<String>(
                         segments: const [
                           ButtonSegment(
-                              value: 'bad_order',
-                              icon: Icon(Icons.remove_shopping_cart, size: 16),
-                              label: Text('Bad Order')),
+                            value: 'bad_order',
+                            icon: Icon(Icons.remove_shopping_cart, size: 16),
+                            label: Text('Bad Order'),
+                          ),
                           ButtonSegment(
-                              value: 'return',
-                              icon: Icon(Icons.undo, size: 16),
-                              label: Text('Return')),
+                            value: 'return',
+                            icon: Icon(Icons.undo, size: 16),
+                            label: Text('Return'),
+                          ),
                           ButtonSegment(
-                              value: 'stock_release',
-                              icon: Icon(Icons.output, size: 16),
-                              label: Text('Stock Release')),
+                            value: 'stock_release',
+                            icon: Icon(Icons.output, size: 16),
+                            label: Text('Stock Release'),
+                          ),
                         ],
                         selected: {_type},
                         onSelectionChanged: (s) {
@@ -566,7 +604,8 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                             suffixIcon: Icon(Icons.calendar_today, size: 18),
                           ),
                           child: Text(
-                              DateFormat('MMM dd, yyyy').format(_selectedDate)),
+                            DateFormat('MMM dd, yyyy').format(_selectedDate),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -585,15 +624,15 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                             suffixIcon: (_noClient && _type != 'stock_release')
                                 ? null
                                 : const Icon(Icons.search),
-                            enabled:
-                                !_noClient || _type == 'stock_release',
+                            enabled: !_noClient || _type == 'stock_release',
                           ),
                           child: Text(
                             (_noClient && _type != 'stock_release')
                                 ? 'No Client Specified'
                                 : _selectedClient?.name ?? 'Tap to search…',
                             style: TextStyle(
-                              color: ((_noClient && _type != 'stock_release') ||
+                              color:
+                                  ((_noClient && _type != 'stock_release') ||
                                       _selectedClient == null)
                                   ? Theme.of(context).hintColor
                                   : null,
@@ -615,8 +654,9 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                       if (_type != 'stock_release')
                         TextField(
                           controller: _notesCtrl,
-                          decoration:
-                              const InputDecoration(labelText: 'Notes (optional)'),
+                          decoration: const InputDecoration(
+                            labelText: 'Notes (optional)',
+                          ),
                           onChanged: (_) => _scheduleAutoSave(),
                         ),
                     ],
@@ -625,11 +665,15 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                 // Items header
                 Padding(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 4),
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
                   child: Row(
                     children: [
-                      const Text('Items',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      const Text(
+                        'Items',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
                       const Spacer(),
                       if (_loadingOrderedProducts)
                         const Padding(
@@ -643,7 +687,9 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                       TextButton.icon(
                         icon: const Icon(Icons.add),
                         label: const Text('Add Product'),
-                        onPressed: _loadingOrderedProducts ? null : _pickProduct,
+                        onPressed: _loadingOrderedProducts
+                            ? null
+                            : _pickProduct,
                       ),
                     ],
                   ),
@@ -655,13 +701,13 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                             (_noClient || _type == 'stock_release')
                                 ? 'Add at least one product.'
                                 : _selectedClient == null
-                                    ? 'Select a client, then add at least one product.'
-                                    : (!_loadingOrderedProducts &&
-                                            _orderedProductIds.isEmpty)
-                                        ? 'This client has no orders on or before '
-                                            '${DateFormat('MMM dd, yyyy').format(_selectedDate)} — '
-                                            'nothing available to add.'
-                                        : 'Add at least one product.',
+                                ? 'Select a client, then add at least one product.'
+                                : (!_loadingOrderedProducts &&
+                                      _orderedProductIds.isEmpty)
+                                ? 'This client has no orders on or before '
+                                      '${DateFormat('MMM dd, yyyy').format(_selectedDate)} — '
+                                      'nothing available to add.'
+                                : 'Add at least one product.',
                             textAlign: TextAlign.center,
                             style: const TextStyle(color: Colors.grey),
                           ),
@@ -671,9 +717,12 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                           itemBuilder: (_, i) => _BoItemTile(
                             item: _items[i],
                             availablePieces: _effectiveAvailable(
-                                _items[i].productId,
-                                excludeIndex: i),
-                            isBadOrder: _type == 'bad_order' || _type == 'stock_release',
+                              _items[i].productId,
+                              excludeIndex: i,
+                            ),
+                            isBadOrder:
+                                _type == 'bad_order' ||
+                                _type == 'stock_release',
                             onRemove: () {
                               setState(() => _items.removeAt(i));
                               _scheduleAutoSave();
@@ -687,9 +736,7 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                 ),
                 // Save bar
                 Container(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .surfaceContainerHighest,
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   padding: const EdgeInsets.all(12),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.end,
@@ -755,9 +802,11 @@ class _BoItemTileState extends State<_BoItemTile> {
   void initState() {
     super.initState();
     _boxCtrl = TextEditingController(
-        text: widget.item.boxes > 0 ? widget.item.boxes.toString() : '');
+      text: widget.item.boxes > 0 ? widget.item.boxes.toString() : '',
+    );
     _pcsCtrl = TextEditingController(
-        text: widget.item.pieces > 0 ? widget.item.pieces.toString() : '');
+      text: widget.item.pieces > 0 ? widget.item.pieces.toString() : '',
+    );
   }
 
   @override
@@ -766,10 +815,10 @@ class _BoItemTileState extends State<_BoItemTile> {
     // The ListView has no keys, so when a row above is removed, Flutter
     // reuses this State for a different _BoItem — resync the controllers.
     if (!identical(oldWidget.item, widget.item)) {
-      _boxCtrl.text =
-          widget.item.boxes > 0 ? widget.item.boxes.toString() : '';
-      _pcsCtrl.text =
-          widget.item.pieces > 0 ? widget.item.pieces.toString() : '';
+      _boxCtrl.text = widget.item.boxes > 0 ? widget.item.boxes.toString() : '';
+      _pcsCtrl.text = widget.item.pieces > 0
+          ? widget.item.pieces.toString()
+          : '';
     }
   }
 
@@ -782,12 +831,12 @@ class _BoItemTileState extends State<_BoItemTile> {
 
   @override
   Widget build(BuildContext context) {
-    final item    = widget.item;
-    final avail   = widget.availablePieces;
+    final item = widget.item;
+    final avail = widget.availablePieces;
     final stockOk = !widget.isBadOrder || item.quantityInPieces <= avail;
-    final ppb     = item.piecesPerBox;
+    final ppb = item.piecesPerBox;
     final availBoxes = avail ~/ ppb;
-    final availPcs   = avail % ppb;
+    final availPcs = avail % ppb;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -800,18 +849,19 @@ class _BoItemTileState extends State<_BoItemTile> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(item.productName,
-                      style: const TextStyle(fontWeight: FontWeight.w500)),
+                  Text(
+                    item.productName,
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
                   if (widget.isBadOrder)
                     Text(
                       stockOk
                           ? 'Available: $availBoxes box(es) + $availPcs pcs'
                           : 'Only $availBoxes box(es) + $availPcs pcs available',
                       style: TextStyle(
-                          fontSize: 12,
-                          color: stockOk
-                              ? Colors.grey.shade600
-                              : Colors.red),
+                        fontSize: 12,
+                        color: stockOk ? Colors.grey.shade600 : Colors.red,
+                      ),
                     ),
                 ],
               ),
@@ -821,7 +871,9 @@ class _BoItemTileState extends State<_BoItemTile> {
               child: TextField(
                 controller: _boxCtrl,
                 decoration: const InputDecoration(
-                    labelText: 'Box', isDense: true),
+                  labelText: 'Box',
+                  isDense: true,
+                ),
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 onChanged: (v) {
@@ -836,7 +888,9 @@ class _BoItemTileState extends State<_BoItemTile> {
               child: TextField(
                 controller: _pcsCtrl,
                 decoration: const InputDecoration(
-                    labelText: 'Pcs', isDense: true),
+                  labelText: 'Pcs',
+                  isDense: true,
+                ),
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 onChanged: (v) {

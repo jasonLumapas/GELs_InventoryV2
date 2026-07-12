@@ -1797,7 +1797,7 @@ class _PerSupplierIncentivesTabState
         pw.TextStyle(font: bold ? fontBold : font, fontSize: size ?? fs);
 
     final pageFormat = PdfPageFormat.a4.copyWith(
-      marginTop: 40,
+      marginTop: 72,
       marginBottom: 40,
       marginLeft: 40,
       marginRight: 40,
@@ -1823,6 +1823,7 @@ class _PerSupplierIncentivesTabState
     );
 
     String fc(double v) => 'Php ${numFmt.format(v)}';
+    String fcPlain(double v) => numFmt.format(v);
 
     final configuredIds = _percents.keys.toList();
     double totalIncentive = 0;
@@ -1855,30 +1856,32 @@ class _PerSupplierIncentivesTabState
           ),
           pw.Divider(height: 6, thickness: 0.5),
 
-          for (final id in configuredIds) ...[
+          for (int i = 0; i < configuredIds.length; i++) ...[
             pw.Padding(
               padding: const pw.EdgeInsets.symmetric(vertical: 3),
               child: pw.Row(
                 children: [
-                  col(suppById[id] ?? id, nameW),
+                  col(suppById[configuredIds[i]] ?? configuredIds[i], nameW),
                   col(
-                    fc(_salesBySupplier[id] ?? 0),
+                    i == 0
+                        ? fc(_salesBySupplier[configuredIds[i]] ?? 0)
+                        : fcPlain(_salesBySupplier[configuredIds[i]] ?? 0),
                     salesW,
                     align: pw.TextAlign.right,
                   ),
                   col(
-                    '${(_percents[id] ?? 0).toStringAsFixed(1)}%',
+                    '${(_percents[configuredIds[i]] ?? 0).toStringAsFixed(1)}%',
                     pctW,
                     align: pw.TextAlign.right,
                   ),
                   col(
                     () {
                       final amt =
-                          (_salesBySupplier[id] ?? 0) *
-                          (_percents[id] ?? 0) /
+                          (_salesBySupplier[configuredIds[i]] ?? 0) *
+                          (_percents[configuredIds[i]] ?? 0) /
                           100;
                       totalIncentive += amt;
-                      return fc(amt);
+                      return i == 0 ? fc(amt) : fcPlain(amt);
                     }(),
                     incentiveW,
                     align: pw.TextAlign.right,
@@ -2010,12 +2013,79 @@ class _PerSupplierIncentivesTabState
                     return ListView(
                       padding: const EdgeInsets.all(12),
                       children: [
+                        if (available.isNotEmpty) ...[
+                          const Text(
+                            'Add supplier:',
+                            style: TextStyle(fontSize: 13, color: Colors.grey),
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.outline,
+                                    ),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                  ),
+                                  child: DropdownButton<String>(
+                                    value: _selectedToAdd,
+                                    hint: const Text('Select supplier...'),
+                                    isExpanded: true,
+                                    isDense: true,
+                                    underline: const SizedBox(),
+                                    items: available
+                                        .map(
+                                          (s) => DropdownMenuItem(
+                                            value: s.id,
+                                            child: Text(s.name),
+                                          ),
+                                        )
+                                        .toList(),
+                                    onChanged: (v) =>
+                                        setState(() => _selectedToAdd = v),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              FilledButton.icon(
+                                icon: const Icon(Icons.add, size: 18),
+                                label: const Text('Add'),
+                                onPressed: _selectedToAdd == null
+                                    ? null
+                                    : () => _addSupplier(_selectedToAdd!),
+                              ),
+                            ],
+                          ),
+                        ] else if (configuredIds.isNotEmpty)
+                          Text(
+                            'All suppliers are already added.',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade500,
+                            ),
+                          )
+                        else
+                          Text(
+                            'No suppliers found. Add a supplier first.',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                        const SizedBox(height: 12),
                         if (configuredIds.isEmpty)
                           const Padding(
                             padding: EdgeInsets.symmetric(vertical: 24),
                             child: Center(
                               child: Text(
-                                'No suppliers configured yet. Add one below.',
+                                'No suppliers configured yet. Add one above.',
                               ),
                             ),
                           )
@@ -2102,73 +2172,6 @@ class _PerSupplierIncentivesTabState
                               ),
                             );
                           }),
-                        const SizedBox(height: 8),
-                        if (available.isNotEmpty) ...[
-                          const Text(
-                            'Add supplier:',
-                            style: TextStyle(fontSize: 13, color: Colors.grey),
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    border: Border.all(
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.outline,
-                                    ),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                  ),
-                                  child: DropdownButton<String>(
-                                    value: _selectedToAdd,
-                                    hint: const Text('Select supplier...'),
-                                    isExpanded: true,
-                                    isDense: true,
-                                    underline: const SizedBox(),
-                                    items: available
-                                        .map(
-                                          (s) => DropdownMenuItem(
-                                            value: s.id,
-                                            child: Text(s.name),
-                                          ),
-                                        )
-                                        .toList(),
-                                    onChanged: (v) =>
-                                        setState(() => _selectedToAdd = v),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              FilledButton.icon(
-                                icon: const Icon(Icons.add, size: 18),
-                                label: const Text('Add'),
-                                onPressed: _selectedToAdd == null
-                                    ? null
-                                    : () => _addSupplier(_selectedToAdd!),
-                              ),
-                            ],
-                          ),
-                        ] else if (configuredIds.isNotEmpty)
-                          Text(
-                            'All suppliers are already added.',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.grey.shade500,
-                            ),
-                          )
-                        else
-                          Text(
-                            'No suppliers found. Add a supplier first.',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.grey.shade500,
-                            ),
-                          ),
                         if (configuredIds.isNotEmpty) ...[
                           const SizedBox(height: 16),
                           Container(

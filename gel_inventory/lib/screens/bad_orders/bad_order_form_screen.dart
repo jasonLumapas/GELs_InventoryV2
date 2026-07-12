@@ -18,6 +18,7 @@ import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../repositories/supplier_repository.dart';
+import '../../utils/currency_format.dart';
 import '../../widgets/common/app_scaffold.dart';
 import '../../widgets/common/search_picker.dart';
 
@@ -45,6 +46,7 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
   DateTime _selectedDate = DateTime.now();
   final List<_BoItem> _items = [];
   Map<String, int> _inventoryQty = {};
+  Map<String, double> _prices = {};
   Map<String, String> _suppliersById = {};
   String? _reason; // stock_release only; stored in notes column
   bool _loading = true;
@@ -74,10 +76,12 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
     final productsFuture = ref.read(productRepositoryProvider).getAll();
     final invFuture = ref.read(inventoryRepositoryProvider).getAll();
     final suppliersFuture = ref.read(supplierRepositoryProvider).getAll();
+    final pricesFuture = ref.read(productRepositoryProvider).getAllCurrentPrices();
     _clients = await clientsFuture;
     _products = await productsFuture;
     final invItems = await invFuture;
     final suppliers = await suppliersFuture;
+    _prices = await pricesFuture;
     _allowNoClient = await AppSettingsService.getAllowBadOrderNoClient();
     _inventoryQty = {for (final i in invItems) i.productId: i.quantityPieces};
     _suppliersById = {for (final s in suppliers) s.id: s.name};
@@ -174,6 +178,11 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
     _draftPersisted = true;
     ref.invalidate(badOrderDraftsProvider);
   }
+
+  double get _grandTotal => _items.fold(
+    0.0,
+    (sum, item) => sum + item.quantityInPieces * (_prices[item.productId] ?? 0),
+  );
 
   int _committedPieces(String productId, {int? excludeIndex}) {
     int total = 0;
@@ -720,6 +729,7 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                               _items[i].productId,
                               excludeIndex: i,
                             ),
+                            unitPrice: _prices[_items[i].productId] ?? 0,
                             isBadOrder:
                                 _type == 'bad_order' ||
                                 _type == 'stock_release',
@@ -734,6 +744,21 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                           ),
                         ),
                 ),
+                if (_items.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      'Grand Total: ${formatCurrency(_grandTotal)}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
                 // Save bar
                 Container(
                   color: Theme.of(context).colorScheme.surfaceContainerHighest,
@@ -778,6 +803,7 @@ class _BoItem {
 class _BoItemTile extends StatefulWidget {
   final _BoItem item;
   final int availablePieces;
+  final double unitPrice;
   final bool isBadOrder;
   final VoidCallback onRemove;
   final VoidCallback onChanged;
@@ -785,6 +811,7 @@ class _BoItemTile extends StatefulWidget {
   const _BoItemTile({
     required this.item,
     required this.availablePieces,
+    required this.unitPrice,
     required this.isBadOrder,
     required this.onRemove,
     required this.onChanged,
@@ -863,6 +890,14 @@ class _BoItemTileState extends State<_BoItemTile> {
                         color: stockOk ? Colors.grey.shade600 : Colors.red,
                       ),
                     ),
+                  Text(
+                    formatCurrency(item.quantityInPieces * widget.unitPrice),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
                 ],
               ),
             ),

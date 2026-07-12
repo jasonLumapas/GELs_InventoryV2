@@ -25,9 +25,9 @@ class BadOrderListScreen extends ConsumerStatefulWidget {
 class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen> {
   final _searchCtrl = TextEditingController();
   String? _filterType; // null = all
-  DateTime? _filterFrom;
-  DateTime? _filterTo;
+  DateTime? _filterDate;
   Map<String, List<String>> _productNamesByOrderId = {};
+  Map<String, double> _amountByOrderId = {};
 
   @override
   void initState() {
@@ -47,12 +47,23 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen> {
     final grouped =
         await ref.read(badOrderRepositoryProvider).getAllItemsGrouped();
     final products = await ref.read(productRepositoryProvider).getAll();
+    final prices =
+        await ref.read(productRepositoryProvider).getAllCurrentPrices();
     final nameMap = {for (final p in products) p.id: p.name};
+    final ppbMap = {for (final p in products) p.id: p.piecesPerBox};
     if (!mounted) return;
     setState(() {
       _productNamesByOrderId = {
         for (final e in grouped.entries)
           e.key: e.value.map((i) => nameMap[i.productId] ?? '').toList(),
+      };
+      _amountByOrderId = {
+        for (final e in grouped.entries)
+          e.key: e.value.fold<double>(0, (sum, i) {
+            final ppb = ppbMap[i.productId] ?? 1;
+            final pieces = i.unitType == 'box' ? i.quantity * ppb : i.quantity;
+            return sum + pieces * (prices[i.productId] ?? 0.0);
+          }),
       };
     });
   }
@@ -62,15 +73,11 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen> {
     final q = _searchCtrl.text.toLowerCase().trim();
     return orders.where((o) {
       if (_filterType != null && o.type != _filterType) return false;
-      if (_filterFrom != null) {
+      if (_filterDate != null) {
         final from = DateTime(
-            _filterFrom!.year, _filterFrom!.month, _filterFrom!.day);
-        if (o.date.isBefore(from)) return false;
-      }
-      if (_filterTo != null) {
-        final to = DateTime(
-            _filterTo!.year, _filterTo!.month, _filterTo!.day + 1);
-        if (!o.date.isBefore(to)) return false;
+            _filterDate!.year, _filterDate!.month, _filterDate!.day);
+        final to = from.add(const Duration(days: 1));
+        if (o.date.isBefore(from) || !o.date.isBefore(to)) return false;
       }
       if (q.isNotEmpty) {
         final clientName =
@@ -86,26 +93,21 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen> {
     }).toList();
   }
 
-  Future<void> _pickDateRange() async {
-    final picked = await showDateRangePicker(
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
       context: context,
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
-      initialDateRange: _filterFrom != null && _filterTo != null
-          ? DateTimeRange(start: _filterFrom!, end: _filterTo!)
-          : null,
+      initialDate: _filterDate ?? DateTime.now(),
     );
     if (picked != null) {
-      setState(() {
-        _filterFrom = picked.start;
-        _filterTo = picked.end;
-      });
+      setState(() => _filterDate = picked);
     }
   }
 
   bool get _hasFilters =>
       _filterType != null ||
-      _filterFrom != null ||
+      _filterDate != null ||
       _searchCtrl.text.isNotEmpty;
 
   @override
@@ -157,39 +159,32 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             child: Row(
               children: [
-                // Date range chip
+                // Date chip
                 ActionChip(
                   avatar: Icon(
                     Icons.calendar_today,
                     size: 14,
-                    color: _filterFrom != null
+                    color: _filterDate != null
                         ? Theme.of(context).colorScheme.onPrimary
                         : null,
                   ),
                   label: Text(
-                    _filterFrom == null
+                    _filterDate == null
                         ? 'All dates'
-                        : _filterTo == null ||
-                                _filterFrom!
-                                    .isAtSameMomentAs(_filterTo!)
-                            ? shortFmt.format(_filterFrom!)
-                            : '${shortFmt.format(_filterFrom!)} – ${shortFmt.format(_filterTo!)}',
+                        : shortFmt.format(_filterDate!),
                     style: TextStyle(
                       fontSize: 12,
-                      color: _filterFrom != null
+                      color: _filterDate != null
                           ? Theme.of(context).colorScheme.onPrimary
                           : null,
                     ),
                   ),
-                  backgroundColor: _filterFrom != null
+                  backgroundColor: _filterDate != null
                       ? Theme.of(context).colorScheme.primary
                       : null,
-                  onPressed: _filterFrom == null
-                      ? _pickDateRange
-                      : () => setState(() {
-                            _filterFrom = null;
-                            _filterTo = null;
-                          }),
+                  onPressed: _filterDate == null
+                      ? _pickDate
+                      : () => setState(() => _filterDate = null),
                 ),
                 const SizedBox(width: 6),
                 // Type filter chips
@@ -324,49 +319,88 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen> {
                     ),
                   );
                 }
-                return ListView.separated(
-                  itemCount: filtered.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (ctx, i) {
-                    final o = filtered[i];
-                    final client = clientsMap[o.clientId];
-                    return ListTile(
-                      leading: Icon(
-                        o.isReturn
-                            ? Icons.undo
-                            : o.isStockRelease
-                                ? Icons.output
-                                : Icons.remove_shopping_cart,
-                        color: o.isReturn
-                            ? Colors.green
-                            : o.isStockRelease
-                                ? Colors.red
-                                : Colors.orange,
-                      ),
-                      title: Text(
-                          '${o.typeLabel} — ${client?.name ?? o.clientId}'),
-                      subtitle: Text(
-                          '${dateFmt.format(o.date)}${o.notes != null ? ' • ${o.notes}' : ''}'),
-                      onTap: () => _showDetail(context, ref, o, client),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline,
-                            color: Colors.red),
-                        onPressed: () async {
-                          final ok = await showConfirmDialog(ctx,
-                              title: 'Delete',
-                              message:
-                                  'Delete this ${o.typeLabel}? This cannot be undone.',
-                              confirmLabel: 'Delete');
-                          if (ok) {
-                            await ref
-                                .read(badOrderRepositoryProvider)
-                                .delete(o.id);
-                            ref.invalidate(badOrdersListProvider);
-                          }
+                final grandTotal = filtered.fold<double>(
+                    0, (sum, o) => sum + (_amountByOrderId[o.id] ?? 0));
+                return Column(
+                  children: [
+                    Expanded(
+                      child: ListView.separated(
+                        itemCount: filtered.length,
+                        separatorBuilder: (_, _) => const Divider(height: 1),
+                        itemBuilder: (ctx, i) {
+                          final o = filtered[i];
+                          final client = clientsMap[o.clientId];
+                          return ListTile(
+                            leading: Icon(
+                              o.isReturn
+                                  ? Icons.undo
+                                  : o.isStockRelease
+                                      ? Icons.output
+                                      : Icons.remove_shopping_cart,
+                              color: o.isReturn
+                                  ? Colors.green
+                                  : o.isStockRelease
+                                      ? Colors.red
+                                      : Colors.orange,
+                            ),
+                            title: Text(
+                                '${o.typeLabel} — ${client?.name ?? o.clientId}'),
+                            subtitle: Text(
+                                '${dateFmt.format(o.date)}${o.notes != null ? ' • ${o.notes}' : ''}'),
+                            onTap: () => _showDetail(context, ref, o, client),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  formatCurrency(
+                                      _amountByOrderId[o.id] ?? 0),
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w500),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline,
+                                      color: Colors.red),
+                                  onPressed: () async {
+                                    final ok = await showConfirmDialog(ctx,
+                                        title: 'Delete',
+                                        message:
+                                            'Delete this ${o.typeLabel}? This cannot be undone.',
+                                        confirmLabel: 'Delete');
+                                    if (ok) {
+                                      await ref
+                                          .read(badOrderRepositoryProvider)
+                                          .delete(o.id);
+                                      ref.invalidate(badOrdersListProvider);
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
+                          );
                         },
                       ),
-                    );
-                  },
+                    ),
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                      decoration: BoxDecoration(
+                        border: Border(
+                            top: BorderSide(color: Colors.grey.shade300)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          const Text('Grand Total: ',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 15)),
+                          Text(
+                            formatCurrency(grandTotal),
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 15),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 );
               },
             ),

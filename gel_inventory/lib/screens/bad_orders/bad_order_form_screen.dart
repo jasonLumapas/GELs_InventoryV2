@@ -406,7 +406,10 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
   }
 
   Future<void> _save() async {
-    if ((_selectedClient == null && !_noClient) || _items.isEmpty) return;
+    if ((_selectedClient == null && !_noClient && _type != 'stock_release') ||
+        _items.isEmpty) {
+      return;
+    }
     setState(() => _saving = true);
     _autoSaveTimer?.cancel();
     final now = DateTime.now();
@@ -591,6 +594,10 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                                 DropdownMenuItem(
                                   value: 'Give-aways',
                                   child: Text('Give-aways'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'Warehouse BO',
+                                  child: Text('Warehouse BO'),
                                 ),
                               ],
                               onChanged: (v) {

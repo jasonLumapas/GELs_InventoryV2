@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../models/bad_order.dart';
+import '../../models/bad_order_draft.dart';
 import '../../models/bad_order_item.dart';
 import '../../models/client.dart';
 import '../../models/product.dart';
@@ -14,6 +15,26 @@ import '../../utils/currency_format.dart';
 import '../../widgets/common/app_scaffold.dart';
 import '../../widgets/common/confirm_dialog.dart';
 
+enum _FilterType { day, week, month }
+
+enum _ReportView { clients, products }
+
+// Aggregated row for the Report tab — accumulates totals per client or
+// per product across the currently filtered orders.
+class _ReportRow {
+  final String label;
+  final int piecesPerBox;
+  int totalPieces = 0;
+  double totalAmount = 0;
+  int orderCount = 0;
+
+  _ReportRow({required this.label, this.piecesPerBox = 1});
+
+  int get boxes => piecesPerBox > 0 ? totalPieces ~/ piecesPerBox : 0;
+  int get remainingPieces =>
+      piecesPerBox > 0 ? totalPieces % piecesPerBox : totalPieces;
+}
+
 class BadOrderListScreen extends ConsumerStatefulWidget {
   const BadOrderListScreen({super.key});
 
@@ -22,16 +43,27 @@ class BadOrderListScreen extends ConsumerStatefulWidget {
       _BadOrderListScreenState();
 }
 
-class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen> {
+class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
+    with SingleTickerProviderStateMixin {
+  static DateTime _lastAnchor = DateTime.now();
+
+  late final TabController _tabs;
   final _searchCtrl = TextEditingController();
   String? _filterType; // null = all
-  DateTime? _filterDate;
+  String? _filterReason; // stock_release only; null = all
+  _FilterType _filter = _FilterType.day;
+  DateTime _anchor = _lastAnchor;
+  _ReportView _reportView = _ReportView.clients;
   Map<String, List<String>> _productNamesByOrderId = {};
   Map<String, double> _amountByOrderId = {};
+  Map<String, List<BadOrderItem>> _itemsByOrderId = {};
+  Map<String, Product> _productsById = {};
+  Map<String, double> _prices = {};
 
   @override
   void initState() {
     super.initState();
+    _tabs = TabController(length: 2, vsync: this);
     _searchCtrl.addListener(() => setState(() {}));
     WidgetsBinding.instance
         .addPostFrameCallback((_) => _loadProductNames());
@@ -39,6 +71,7 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen> {
 
   @override
   void dispose() {
+    _tabs.dispose();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -49,10 +82,14 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen> {
     final products = await ref.read(productRepositoryProvider).getAll();
     final prices =
         await ref.read(productRepositoryProvider).getAllCurrentPrices();
+    final productsById = {for (final p in products) p.id: p};
     final nameMap = {for (final p in products) p.id: p.name};
     final ppbMap = {for (final p in products) p.id: p.piecesPerBox};
     if (!mounted) return;
     setState(() {
+      _itemsByOrderId = grouped;
+      _productsById = productsById;
+      _prices = prices;
       _productNamesByOrderId = {
         for (final e in grouped.entries)
           e.key: e.value.map((i) => nameMap[i.productId] ?? '').toList(),
@@ -68,17 +105,55 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen> {
     });
   }
 
+  // Aggregates the currently filtered orders by client or by product,
+  // depending on _reportView, sorted from highest to lowest total amount.
+  List<_ReportRow> _buildReportRows(
+      List<BadOrder> orders, Map<String, Client> clientsMap) {
+    final Map<String, _ReportRow> acc = {};
+    if (_reportView == _ReportView.clients) {
+      for (final o in orders) {
+        final name = clientsMap[o.clientId]?.name ?? 'No Client Specified';
+        final row = acc.putIfAbsent(name, () => _ReportRow(label: name));
+        row.totalAmount += _amountByOrderId[o.id] ?? 0;
+        row.orderCount += 1;
+      }
+    } else {
+      for (final o in orders) {
+        for (final item in _itemsByOrderId[o.id] ?? const <BadOrderItem>[]) {
+          final product = _productsById[item.productId];
+          if (product == null) continue;
+          final pieces = item.unitType == 'box'
+              ? item.quantity * product.piecesPerBox
+              : item.quantity;
+          final row = acc.putIfAbsent(
+            item.productId,
+            () => _ReportRow(
+                label: product.name, piecesPerBox: product.piecesPerBox),
+          );
+          row.totalPieces += pieces;
+          row.totalAmount += pieces * (_prices[item.productId] ?? 0.0);
+          row.orderCount += 1;
+        }
+      }
+    }
+    final rows = acc.values.toList()
+      ..sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
+    return rows;
+  }
+
   List<BadOrder> _applyFilters(
       List<BadOrder> orders, Map<String, Client> clientsMap) {
     final q = _searchCtrl.text.toLowerCase().trim();
+    final from = _startDate;
+    final to = _endDate;
     return orders.where((o) {
       if (_filterType != null && o.type != _filterType) return false;
-      if (_filterDate != null) {
-        final from = DateTime(
-            _filterDate!.year, _filterDate!.month, _filterDate!.day);
-        final to = from.add(const Duration(days: 1));
-        if (o.date.isBefore(from) || !o.date.isBefore(to)) return false;
+      if (_filterType == 'stock_release' &&
+          _filterReason != null &&
+          o.notes != _filterReason) {
+        return false;
       }
+      if (o.date.isBefore(from) || !o.date.isBefore(to)) return false;
       if (q.isNotEmpty) {
         final clientName =
             (clientsMap[o.clientId]?.name ?? '').toLowerCase();
@@ -93,21 +168,87 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen> {
     }).toList();
   }
 
+  // ── Date range helpers (mirrors Invoices' Day/Week/Month filter) ────────
+
+  DateTime get _startDate {
+    switch (_filter) {
+      case _FilterType.day:
+        return DateTime(_anchor.year, _anchor.month, _anchor.day);
+      case _FilterType.week:
+        final monday = _anchor.subtract(Duration(days: _anchor.weekday - 1));
+        return DateTime(monday.year, monday.month, monday.day);
+      case _FilterType.month:
+        return DateTime(_anchor.year, _anchor.month);
+    }
+  }
+
+  DateTime get _endDate {
+    switch (_filter) {
+      case _FilterType.day:
+        return _startDate.add(const Duration(days: 1));
+      case _FilterType.week:
+        return _startDate.add(const Duration(days: 7));
+      case _FilterType.month:
+        return DateTime(_anchor.year, _anchor.month + 1);
+    }
+  }
+
+  String get _periodLabel {
+    final s = _startDate;
+    switch (_filter) {
+      case _FilterType.day:
+        return DateFormat('EEE, MMM d, y').format(s);
+      case _FilterType.week:
+        final e = _endDate.subtract(const Duration(days: 1));
+        final sameMonth = s.month == e.month && s.year == e.year;
+        return sameMonth
+            ? '${DateFormat('MMM d').format(s)} – ${DateFormat('d, y').format(e)}'
+            : '${DateFormat('MMM d').format(s)} – ${DateFormat('MMM d, y').format(e)}';
+      case _FilterType.month:
+        return DateFormat('MMMM y').format(s);
+    }
+  }
+
+  void _setAnchor(DateTime date) => setState(() {
+        _anchor = date;
+        _lastAnchor = date;
+      });
+
+  void _prev() {
+    switch (_filter) {
+      case _FilterType.day:
+        _setAnchor(_anchor.subtract(const Duration(days: 1)));
+      case _FilterType.week:
+        _setAnchor(_anchor.subtract(const Duration(days: 7)));
+      case _FilterType.month:
+        _setAnchor(DateTime(_anchor.year, _anchor.month - 1, _anchor.day));
+    }
+  }
+
+  void _next() {
+    switch (_filter) {
+      case _FilterType.day:
+        _setAnchor(_anchor.add(const Duration(days: 1)));
+      case _FilterType.week:
+        _setAnchor(_anchor.add(const Duration(days: 7)));
+      case _FilterType.month:
+        _setAnchor(DateTime(_anchor.year, _anchor.month + 1, _anchor.day));
+    }
+  }
+
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
+      initialDate: _anchor,
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
-      initialDate: _filterDate ?? DateTime.now(),
     );
-    if (picked != null) {
-      setState(() => _filterDate = picked);
-    }
+    if (picked != null) _setAnchor(picked);
   }
 
   bool get _hasFilters =>
       _filterType != null ||
-      _filterDate != null ||
+      _filterReason != null ||
       _searchCtrl.text.isNotEmpty;
 
   @override
@@ -116,7 +257,6 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen> {
     final clientsAsync = ref.watch(clientsListProvider);
     final draftsAsync  = ref.watch(badOrderDraftsProvider);
     final dateFmt      = DateFormat('MMM dd, yyyy');
-    final shortFmt     = DateFormat('MMM d');
 
     final clientsMap = <String, Client>{
       for (final c in clientsAsync.valueOrNull ?? []) c.id: c
@@ -154,259 +294,428 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen> {
             ),
           ),
 
-          // ── Filter row ────────────────────────────────────────────────
+          // ── Period filter (Day/Week/Month, mirrors Invoices) ────────────
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
             child: Row(
               children: [
-                // Date chip
-                ActionChip(
-                  avatar: Icon(
-                    Icons.calendar_today,
-                    size: 14,
-                    color: _filterDate != null
-                        ? Theme.of(context).colorScheme.onPrimary
-                        : null,
+                SegmentedButton<_FilterType>(
+                  segments: const [
+                    ButtonSegment(value: _FilterType.day, label: Text('Day')),
+                    ButtonSegment(
+                        value: _FilterType.week, label: Text('Week')),
+                    ButtonSegment(
+                        value: _FilterType.month, label: Text('Month')),
+                  ],
+                  selected: {_filter},
+                  onSelectionChanged: (s) => setState(() => _filter = s.first),
+                  style: const ButtonStyle(
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
                   ),
-                  label: Text(
-                    _filterDate == null
-                        ? 'All dates'
-                        : shortFmt.format(_filterDate!),
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: _filterDate != null
-                          ? Theme.of(context).colorScheme.onPrimary
-                          : null,
-                    ),
-                  ),
-                  backgroundColor: _filterDate != null
-                      ? Theme.of(context).colorScheme.primary
-                      : null,
-                  onPressed: _filterDate == null
-                      ? _pickDate
-                      : () => setState(() => _filterDate = null),
                 ),
-                const SizedBox(width: 6),
-                // Type filter chips
+                const SizedBox(width: 8),
                 Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        for (final (typeValue, typeLabel) in [
-                          (null as String?, 'All'),
-                          ('bad_order', 'Bad Order'),
-                          ('return', 'Return'),
-                          ('stock_release', 'Stock Release'),
-                        ])
-                          Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: ChoiceChip(
-                              label: Text(typeLabel,
-                                  style: const TextStyle(fontSize: 12)),
-                              selected: _filterType == typeValue,
-                              onSelected: (_) => setState(
-                                  () => _filterType = typeValue),
-                            ),
-                          ),
-                      ],
-                    ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.chevron_left),
+                        onPressed: _prev,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      GestureDetector(
+                        onTap: _pickDate,
+                        child: Text(
+                          _periodLabel,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.chevron_right),
+                        onPressed: _next,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ],
                   ),
+                ),
+                TextButton(
+                  onPressed: () => _setAnchor(DateTime.now()),
+                  style:
+                      TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                  child: const Text('Today'),
                 ),
               ],
             ),
           ),
 
-          const Divider(height: 1),
-
-          // ── Draft bad orders / returns banner ──────────────────────────
-          draftsAsync.when(
-            loading: () => const SizedBox.shrink(),
-            error: (_, _) => const SizedBox.shrink(),
-            data: (drafts) {
-              if (drafts.isEmpty) return const SizedBox.shrink();
-              return Container(
-                width: double.infinity,
-                color: Colors.amber.shade100,
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 6),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
+          // ── Type filter chips ────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final (typeValue, typeLabel) in [
+                    (null as String?, 'All'),
+                    ('bad_order', 'Bad Order'),
+                    ('return', 'Return'),
+                    ('stock_release', 'Stock Release'),
+                  ])
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text(
-                        '${drafts.length} unfinished bad order(s)/return(s)',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 13),
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ChoiceChip(
+                        label:
+                            Text(typeLabel, style: const TextStyle(fontSize: 12)),
+                        selected: _filterType == typeValue,
+                        onSelected: (_) => setState(() {
+                          _filterType = typeValue;
+                          if (typeValue != 'stock_release') {
+                            _filterReason = null;
+                          }
+                        }),
                       ),
                     ),
-                    ...drafts.map((d) {
-                      final client =
-                          d.noClient ? null : clientsMap[d.clientId];
-                      final typeLabel = d.type == 'return'
-                          ? 'Return'
-                          : d.type == 'stock_release'
-                              ? 'Stock Release'
-                              : 'Bad Order';
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.edit_note, size: 18),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                '$typeLabel — '
-                                '${d.noClient ? "No Client Specified" : client?.name ?? "Unknown client"}'
-                                '  •  ${dateFmt.format(d.date)}'
-                                '  •  ${d.items.length} item(s)',
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            TextButton(
-                              onPressed: () => context
-                                  .go('/bad-orders/new?draft=${d.id}'),
-                              child: const Text('Resume'),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline,
-                                  color: Colors.red, size: 20),
-                              tooltip: 'Discard draft',
-                              onPressed: () async {
-                                final ok = await showConfirmDialog(
-                                  context,
-                                  title: 'Discard Draft',
-                                  message:
-                                      'Discard this unfinished $typeLabel? This cannot be undone.',
-                                  confirmLabel: 'Discard',
-                                );
-                                if (ok) {
-                                  await ref
-                                      .read(badOrderRepositoryProvider)
-                                      .discardDraft(d.id);
-                                  ref.invalidate(badOrderDraftsProvider);
-                                }
-                              },
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
-                  ],
-                ),
-              );
-            },
+                ],
+              ),
+            ),
           ),
 
-          // ── Orders list ───────────────────────────────────────────────
-          Expanded(
-            child: listAsync.when(
-              loading: () =>
-                  const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Error: $e')),
-              data: (orders) {
-                final filtered = _applyFilters(orders, clientsMap);
-                if (filtered.isEmpty) {
-                  return Center(
-                    child: Text(
-                      _hasFilters
-                          ? 'No results match your search or filters.'
-                          : 'No bad orders or returns yet.',
-                      style: const TextStyle(color: Colors.grey),
-                      textAlign: TextAlign.center,
-                    ),
-                  );
-                }
-                final grandTotal = filtered.fold<double>(
-                    0, (sum, o) => sum + (_amountByOrderId[o.id] ?? 0));
-                return Column(
+          // ── Reason filter chips (Stock Release only) ─────────────────────
+          if (_filterType == 'stock_release')
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
                   children: [
-                    Expanded(
-                      child: ListView.separated(
-                        itemCount: filtered.length,
-                        separatorBuilder: (_, _) => const Divider(height: 1),
-                        itemBuilder: (ctx, i) {
-                          final o = filtered[i];
-                          final client = clientsMap[o.clientId];
-                          return ListTile(
-                            leading: Icon(
-                              o.isReturn
-                                  ? Icons.undo
-                                  : o.isStockRelease
-                                      ? Icons.output
-                                      : Icons.remove_shopping_cart,
-                              color: o.isReturn
-                                  ? Colors.green
-                                  : o.isStockRelease
-                                      ? Colors.red
-                                      : Colors.orange,
-                            ),
-                            title: Text(
-                                '${o.typeLabel} — ${client?.name ?? o.clientId}'),
-                            subtitle: Text(
-                                '${dateFmt.format(o.date)}${o.notes != null ? ' • ${o.notes}' : ''}'),
-                            onTap: () => _showDetail(context, ref, o, client),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  formatCurrency(
-                                      _amountByOrderId[o.id] ?? 0),
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w500),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline,
-                                      color: Colors.red),
-                                  onPressed: () async {
-                                    final ok = await showConfirmDialog(ctx,
-                                        title: 'Delete',
-                                        message:
-                                            'Delete this ${o.typeLabel}? This cannot be undone.',
-                                        confirmLabel: 'Delete');
-                                    if (ok) {
-                                      await ref
-                                          .read(badOrderRepositoryProvider)
-                                          .delete(o.id);
-                                      ref.invalidate(badOrdersListProvider);
-                                    }
-                                  },
-                                ),
-                              ],
-                            ),
-                          );
-                        },
+                    for (final (reasonValue, reasonLabel) in [
+                      (null as String?, 'All Reasons'),
+                      ('Missed delivery', 'Missed delivery'),
+                      ('Give-aways', 'Give-aways'),
+                      ('Warehouse BO', 'Warehouse BO'),
+                    ])
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: ChoiceChip(
+                          label: Text(reasonLabel,
+                              style: const TextStyle(fontSize: 12)),
+                          selected: _filterReason == reasonValue,
+                          onSelected: (_) =>
+                              setState(() => _filterReason = reasonValue),
+                        ),
                       ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                      decoration: BoxDecoration(
-                        border: Border(
-                            top: BorderSide(color: Colors.grey.shade300)),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          const Text('Grand Total: ',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 15)),
-                          Text(
-                            formatCurrency(grandTotal),
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 15),
-                          ),
-                        ],
-                      ),
-                    ),
                   ],
-                );
-              },
+                ),
+              ),
+            ),
+
+          const Divider(height: 1),
+
+          // ── Tabs: List / Report ──────────────────────────────────────────
+          TabBar(
+            controller: _tabs,
+            tabs: const [
+              Tab(text: 'List'),
+              Tab(text: 'Report'),
+            ],
+          ),
+
+          Expanded(
+            child: TabBarView(
+              controller: _tabs,
+              children: [
+                _buildListTab(listAsync, draftsAsync, clientsMap, dateFmt),
+                listAsync.when(
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                  error: (e, _) => Center(child: Text('Error: $e')),
+                  data: (orders) => _buildReportTab(
+                      _applyFilters(orders, clientsMap), clientsMap),
+                ),
+              ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildListTab(
+    AsyncValue<List<BadOrder>> listAsync,
+    AsyncValue<List<BadOrderDraft>> draftsAsync,
+    Map<String, Client> clientsMap,
+    DateFormat dateFmt,
+  ) {
+    return Column(
+      children: [
+        // ── Draft bad orders / returns banner ──────────────────────────
+        draftsAsync.when(
+          loading: () => const SizedBox.shrink(),
+          error: (_, _) => const SizedBox.shrink(),
+          data: (drafts) {
+            if (drafts.isEmpty) return const SizedBox.shrink();
+            return Container(
+              width: double.infinity,
+              color: Colors.amber.shade100,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                      '${drafts.length} unfinished bad order(s)/return(s)',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                  ),
+                  ...drafts.map((d) {
+                    final client =
+                        d.noClient ? null : clientsMap[d.clientId];
+                    final typeLabel = d.type == 'return'
+                        ? 'Return'
+                        : d.type == 'stock_release'
+                            ? 'Stock Release'
+                            : 'Bad Order';
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.edit_note, size: 18),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              '$typeLabel — '
+                              '${d.noClient ? "No Client Specified" : client?.name ?? "Unknown client"}'
+                              '  •  ${dateFmt.format(d.date)}'
+                              '  •  ${d.items.length} item(s)',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => context
+                                .go('/bad-orders/new?draft=${d.id}'),
+                            child: const Text('Resume'),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline,
+                                color: Colors.red, size: 20),
+                            tooltip: 'Discard draft',
+                            onPressed: () async {
+                              final ok = await showConfirmDialog(
+                                context,
+                                title: 'Discard Draft',
+                                message:
+                                    'Discard this unfinished $typeLabel? This cannot be undone.',
+                                confirmLabel: 'Discard',
+                              );
+                              if (ok) {
+                                await ref
+                                    .read(badOrderRepositoryProvider)
+                                    .discardDraft(d.id);
+                                ref.invalidate(badOrderDraftsProvider);
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            );
+          },
+        ),
+
+        // ── Orders list ───────────────────────────────────────────────
+        Expanded(
+          child: listAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => Center(child: Text('Error: $e')),
+            data: (orders) {
+              final filtered = _applyFilters(orders, clientsMap);
+              if (filtered.isEmpty) {
+                return Center(
+                  child: Text(
+                    _hasFilters
+                        ? 'No results match your search or filters.'
+                        : 'No bad orders or returns yet.',
+                    style: const TextStyle(color: Colors.grey),
+                    textAlign: TextAlign.center,
+                  ),
+                );
+              }
+              final grandTotal = filtered.fold<double>(
+                  0, (sum, o) => sum + (_amountByOrderId[o.id] ?? 0));
+              return Column(
+                children: [
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: filtered.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1),
+                      itemBuilder: (ctx, i) {
+                        final o = filtered[i];
+                        final client = clientsMap[o.clientId];
+                        return ListTile(
+                          leading: Icon(
+                            o.isReturn
+                                ? Icons.undo
+                                : o.isStockRelease
+                                    ? Icons.output
+                                    : Icons.remove_shopping_cart,
+                            color: o.isReturn
+                                ? Colors.green
+                                : o.isStockRelease
+                                    ? Colors.red
+                                    : Colors.orange,
+                          ),
+                          title: Text(
+                              '${o.typeLabel} — ${client?.name ?? o.clientId}'),
+                          subtitle: Text(
+                              '${dateFmt.format(o.date)}${o.notes != null ? ' • ${o.notes}' : ''}'),
+                          onTap: () => _showDetail(context, ref, o, client),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                formatCurrency(_amountByOrderId[o.id] ?? 0),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w500),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline,
+                                    color: Colors.red),
+                                onPressed: () async {
+                                  final ok = await showConfirmDialog(ctx,
+                                      title: 'Delete',
+                                      message:
+                                          'Delete this ${o.typeLabel}? This cannot be undone.',
+                                      confirmLabel: 'Delete');
+                                  if (ok) {
+                                    await ref
+                                        .read(badOrderRepositoryProvider)
+                                        .delete(o.id);
+                                    ref.invalidate(badOrdersListProvider);
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                    decoration: BoxDecoration(
+                      border: Border(
+                          top: BorderSide(color: Colors.grey.shade300)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        const Text('Grand Total: ',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 15)),
+                        Text(
+                          formatCurrency(grandTotal),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReportTab(
+      List<BadOrder> orders, Map<String, Client> clientsMap) {
+    final rows = _buildReportRows(orders, clientsMap);
+    final isClients = _reportView == _ReportView.clients;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          child: SegmentedButton<_ReportView>(
+            segments: const [
+              ButtonSegment(
+                  value: _ReportView.clients, label: Text('Clients')),
+              ButtonSegment(
+                  value: _ReportView.products, label: Text('Products')),
+            ],
+            selected: {_reportView},
+            onSelectionChanged: (s) => setState(() => _reportView = s.first),
+            style: const ButtonStyle(
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+            ),
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: rows.isEmpty
+              ? Center(
+                  child: Text(
+                    'No ${isClients ? "clients" : "products"} for $_periodLabel.',
+                    style: const TextStyle(color: Colors.grey),
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(8),
+                  itemCount: rows.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (ctx, i) {
+                    final row = rows[i];
+                    final isTop = i < 3;
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: isTop
+                            ? Colors.green.shade100
+                            : Colors.grey.shade100,
+                        child: Text(
+                          '${i + 1}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: isTop
+                                ? Colors.green.shade800
+                                : Colors.grey.shade600,
+                          ),
+                        ),
+                      ),
+                      title: Text(row.label,
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: Text(
+                        isClients
+                            ? '${row.orderCount} order(s)'
+                            : '${row.boxes > 0 ? "${row.boxes} box(es)" : ""}'
+                                '${row.boxes > 0 && row.remainingPieces > 0 ? " + " : ""}'
+                                '${row.remainingPieces > 0 ? "${row.remainingPieces} pcs" : ""}'
+                                '${row.boxes == 0 && row.remainingPieces == 0 ? "—" : ""}',
+                      ),
+                      trailing: Text(
+                        formatCurrency(row.totalAmount),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: isTop ? Colors.green.shade700 : null,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 }

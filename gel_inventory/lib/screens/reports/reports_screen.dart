@@ -1432,6 +1432,7 @@ class _InvData {
 enum _MovementPeriod { day, week, month, year }
 
 class _TopProductRow {
+  final String productId;
   final String productName;
   final String supplierName;
   final String supplierId;
@@ -1441,6 +1442,7 @@ class _TopProductRow {
   double totalCapital;
 
   _TopProductRow({
+    required this.productId,
     required this.productName,
     required this.supplierName,
     required this.supplierId,
@@ -1473,6 +1475,13 @@ class _TopMovingProductsTabState
   _TopSortField _sortField = _TopSortField.sales;
   bool _sortAscending = false;
   late Future<List<_TopProductRow>> _future;
+  final Set<String> _excludedProductIds = {};
+
+  void _toggleExcluded(String productId) => setState(() {
+        if (!_excludedProductIds.add(productId)) {
+          _excludedProductIds.remove(productId);
+        }
+      });
 
   void _setSortField(_TopSortField field) => setState(() {
         if (_sortField == field) {
@@ -1606,6 +1615,7 @@ class _TopMovingProductsTabState
           rows[item.productId]!.totalAmount += item.subtotal;
         } else {
           rows[item.productId] = _TopProductRow(
+            productId:    item.productId,
             productName:  p.name,
             supplierName: suppMap[p.supplierId] ?? 'Unknown',
             supplierId:   p.supplierId,
@@ -1774,63 +1784,127 @@ class _TopMovingProductsTabState
                 return const Center(
                     child: Text('No sales data for this period.'));
               }
-              return ListView.separated(
-                padding: const EdgeInsets.all(8),
-                itemCount: rows.length,
-                separatorBuilder: (_, _) => const Divider(height: 1),
-                itemBuilder: (ctx, i) {
-                  final row   = rows[i];
-                  final isTop = i < 3;
-                  return ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: isTop
-                          ? Colors.green.shade100
-                          : Colors.grey.shade100,
-                      child: Text('${i + 1}',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: isTop
-                                  ? Colors.green.shade800
-                                  : Colors.grey.shade600)),
-                    ),
-                    title: Text(row.productName,
-                        style: const TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: Text(
-                      '${row.supplierName}  •  '
-                      '${row.soldBoxes > 0 ? "${row.soldBoxes} box(es)" : ""}'
-                      '${row.soldBoxes > 0 && row.soldRemain > 0 ? " + " : ""}'
-                      '${row.soldRemain > 0 ? "${row.soldRemain} pcs" : ""}'
-                      '${row.soldBoxes == 0 && row.soldRemain == 0 ? "—" : ""}',
-                    ),
-                    trailing: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerRight,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            formatCurrency(row.totalAmount),
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15,
-                              color: isTop ? Colors.green.shade700 : null,
+              final includedRows = rows
+                  .where((r) => !_excludedProductIds.contains(r.productId));
+              final grandTotalAmount =
+                  includedRows.fold<double>(0, (sum, r) => sum + r.totalAmount);
+              final grandTotalProfit =
+                  includedRows.fold<double>(0, (sum, r) => sum + r.profit);
+              return Column(
+                children: [
+                  Expanded(
+                    child: ListView.separated(
+                      padding: const EdgeInsets.all(8),
+                      itemCount: rows.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1),
+                      itemBuilder: (ctx, i) {
+                        final row      = rows[i];
+                        final isTop    = i < 3;
+                        final excluded =
+                            _excludedProductIds.contains(row.productId);
+                        return Opacity(
+                          opacity: excluded ? 0.45 : 1,
+                          child: ListTile(
+                            leading: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Checkbox(
+                                  value: excluded,
+                                  onChanged: (_) =>
+                                      _toggleExcluded(row.productId),
+                                ),
+                                CircleAvatar(
+                                  backgroundColor: isTop
+                                      ? Colors.green.shade100
+                                      : Colors.grey.shade100,
+                                  child: Text('${i + 1}',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: isTop
+                                              ? Colors.green.shade800
+                                              : Colors.grey.shade600)),
+                                ),
+                              ],
+                            ),
+                            title: Text(row.productName,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600)),
+                            subtitle: Text(
+                              '${row.supplierName}  •  '
+                              '${row.soldBoxes > 0 ? "${row.soldBoxes} box(es)" : ""}'
+                              '${row.soldBoxes > 0 && row.soldRemain > 0 ? " + " : ""}'
+                              '${row.soldRemain > 0 ? "${row.soldRemain} pcs" : ""}'
+                              '${row.soldBoxes == 0 && row.soldRemain == 0 ? "—" : ""}',
+                            ),
+                            trailing: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerRight,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    formatCurrency(row.totalAmount),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                      color:
+                                          isTop ? Colors.green.shade700 : null,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Profit: ${formatCurrency(row.profit)}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: row.profit >= 0
+                                          ? Colors.green.shade700
+                                          : Colors.red,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                          Text(
-                            'Profit: ${formatCurrency(row.profit)}',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: row.profit >= 0
-                                  ? Colors.green.shade700
-                                  : Colors.red,
-                            ),
-                          ),
-                        ],
-                      ),
+                        );
+                      },
                     ),
-                  );
-                },
+                  ),
+                  const Divider(height: 1),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    color: Theme.of(context)
+                        .colorScheme
+                        .surfaceContainerHighest
+                        .withValues(alpha: 0.5),
+                    child: Row(
+                      children: [
+                        const Text('Grand Total',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        const Spacer(),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              formatCurrency(grandTotalAmount),
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                            Text(
+                              'Profit: ${formatCurrency(grandTotalProfit)}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: grandTotalProfit >= 0
+                                    ? Colors.green.shade700
+                                    : Colors.red,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               );
             },
           ),

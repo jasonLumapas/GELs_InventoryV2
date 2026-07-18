@@ -210,6 +210,29 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
     await printInvoiceList(periodLabel: _periodLabel, items: items);
   }
 
+  Future<void> _printEachInvoice() async {
+    final invoices   = ref.read(filteredInvoicesProvider((_startDate, _endDate))).valueOrNull;
+    final clientsMap = {
+      for (final c in ref.read(clientsListProvider).valueOrNull ?? []) c.id: c
+    };
+    if (invoices == null || invoices.isEmpty) return;
+
+    final products     = await ref.read(productsListProvider.future);
+    final productsById = {for (final p in products) p.id: p};
+
+    for (final inv in invoices) {
+      final client = clientsMap[inv.clientId];
+      if (client == null) continue;
+      final items = await ref.read(invoiceRepositoryProvider).getItems(inv.id);
+      await printInvoice(
+        invoice: inv,
+        client: client,
+        items: items,
+        productsById: productsById,
+      );
+    }
+  }
+
   // ── Build ────────────────────────────────────────────────────────────────
 
   @override
@@ -227,6 +250,11 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
           icon: const Icon(Icons.print),
           tooltip: 'Print invoice list',
           onPressed: _print,
+        ),
+        IconButton(
+          icon: const Icon(Icons.print_outlined),
+          tooltip: 'Print each invoice',
+          onPressed: _printEachInvoice,
         ),
         IconButton(
           icon: const Icon(Icons.cancel_outlined),

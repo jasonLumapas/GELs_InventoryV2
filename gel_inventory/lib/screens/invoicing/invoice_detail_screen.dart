@@ -134,6 +134,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   final _checkAmountCtrl   = TextEditingController();
   final _notesCtrl         = TextEditingController();
   final _actualAmountCtrl  = TextEditingController();
+  final _swapAmountCtrl    = TextEditingController();
   DateTime? _checkIssuedDate;
   DateTime? _checkDueDate;
   DateTime? _partialDate;
@@ -162,6 +163,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     _checkAmountCtrl.dispose();
     _notesCtrl.dispose();
     _actualAmountCtrl.dispose();
+    _swapAmountCtrl.dispose();
     super.dispose();
   }
 
@@ -202,6 +204,9 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     _notesCtrl.text = _invoice!.notes ?? '';
     _actualAmountCtrl.text = _invoice!.actualAmount != null
         ? _invoice!.actualAmount!.toStringAsFixed(2)
+        : '';
+    _swapAmountCtrl.text = _invoice!.swapAmount != null
+        ? _invoice!.swapAmount!.toStringAsFixed(2)
         : '';
     _payments = await ref
         .read(invoicePaymentRepositoryProvider)
@@ -447,6 +452,12 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   double? get _actualAmount =>
       double.tryParse(_actualAmountCtrl.text.trim());
 
+  double? get _swapAmount =>
+      double.tryParse(_swapAmountCtrl.text.trim());
+
+  double get _netTotal =>
+      (_total - (_swapAmount ?? 0)).clamp(0.0, double.infinity);
+
   bool get _canSave {
     if (_selectedClient == null || _editItems.isEmpty) return false;
     // Block saving while a fully-entered payment (amount + date) is still
@@ -466,7 +477,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     final updatedInvoice = _invoice!.copyWith(
       clientId: _selectedClient!.id,
       invoiceDate: _invoiceDate,
-      totalAmount: _total,
+      totalAmount: _netTotal,
       paymentType: _paymentType,
       includeInLayout: _includeInLayout,
       partialAmount: partial
@@ -483,6 +494,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
       checkDueDate: _paymentType == 'check' ? _checkDueDate : null,
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
       actualAmount: _actualAmount,
+      swapAmount: _swapAmount,
     );
     final newItems = _editItems
         .map((li) => li.toInvoiceItem(widget.invoiceId))
@@ -508,7 +520,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     final updatedInvoice = _invoice!.copyWith(
       clientId: _selectedClient!.id,
       invoiceDate: _invoiceDate,
-      totalAmount: _total,
+      totalAmount: _netTotal,
       status: 'printed',
       paymentType: _paymentType,
       includeInLayout: _includeInLayout,
@@ -526,6 +538,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
       checkDueDate: _paymentType == 'check' ? _checkDueDate : null,
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
       actualAmount: _actualAmount,
+      swapAmount: _swapAmount,
     );
     final newItems = _editItems
         .map((li) => li.toInvoiceItem(widget.invoiceId))
@@ -959,7 +972,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                       final cashPaid =
                           _payments.fold(0.0, (s, p) => s + p.amount);
                       final balance =
-                          (_total - checkAmt - cashPaid)
+                          (_netTotal - checkAmt - cashPaid)
                               .clamp(0.0, double.infinity);
                       return Padding(
                         padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
@@ -1119,7 +1132,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                     Builder(builder: (_) {
                       final totalPaid =
                           _payments.fold(0.0, (s, p) => s + p.amount);
-                      final balance = (_total - totalPaid)
+                      final balance = (_netTotal - totalPaid)
                           .clamp(0.0, double.infinity);
                       return Padding(
                         padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
@@ -1237,6 +1250,24 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                             ],
                           ),
                         ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: _swapAmountCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Adjustment Amount (deducted from total, optional)',
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                            keyboardType:
+                                const TextInputType.numberWithOptions(decimal: true),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(
+                                  RegExp(r'^\d*\.?\d{0,2}')),
+                            ],
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -1342,7 +1373,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                                     fontSize: 12, color: Colors.grey),
                               ),
                               Text(
-                                'Total: ${formatCurrency(_total)}',
+                                'Total: ${formatCurrency(_netTotal)}',
                                 style: const TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold),
@@ -1427,7 +1458,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
           const SizedBox(height: 12),
           Align(
             alignment: Alignment.centerRight,
-            child: Text('Total: ${formatCurrency(_total)}',
+            child: Text('Total: ${formatCurrency(_netTotal)}',
                 style: const TextStyle(
                     fontSize: 16, fontWeight: FontWeight.bold)),
           ),

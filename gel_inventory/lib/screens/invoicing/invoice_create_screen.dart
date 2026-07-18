@@ -121,6 +121,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
   final List<_LineItem> _lineItems = [];
   final _notesCtrl = TextEditingController();
   final _actualAmountCtrl = TextEditingController();
+  final _swapAmountCtrl = TextEditingController();
   bool _loading = true;
   bool _saving = false;
 
@@ -198,6 +199,9 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
     _notesCtrl.text = draft.notes ?? '';
     _actualAmountCtrl.text = draft.actualAmount != null
         ? draft.actualAmount!.toStringAsFixed(2)
+        : '';
+    _swapAmountCtrl.text = draft.swapAmount != null
+        ? draft.swapAmount!.toStringAsFixed(2)
         : '';
 
     final items = await _invoiceRepo.getItems(draftId);
@@ -286,12 +290,15 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
   double? get _actualAmount =>
       double.tryParse(_actualAmountCtrl.text.trim());
 
+  double? get _swapAmount =>
+      double.tryParse(_swapAmountCtrl.text.trim());
+
   ({Invoice invoice, List<InvoiceItem> items}) _buildDraftPayload() {
     final invoice = Invoice(
       id: _invoiceId,
       clientId: _selectedClient!.id,
       invoiceDate: _invoiceDate,
-      totalAmount: _total,
+      totalAmount: _netTotal,
       status: 'draft',
       createdAt: _createdAt,
       invoiceNumber: _invoiceNumber,
@@ -299,6 +306,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       paymentType: _paymentType,
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
       actualAmount: _actualAmount,
+      swapAmount: _swapAmount,
     );
     final items = _lineItems.map((li) => InvoiceItem(
           id: const Uuid().v4(),
@@ -649,6 +657,9 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
   double get _total =>
       _lineItems.fold(0.0, (sum, item) => sum + item.subtotal);
 
+  double get _netTotal =>
+      (_total - (_swapAmount ?? 0)).clamp(0.0, double.infinity);
+
   bool get _canPrint {
     if (_selectedClient == null || _lineItems.isEmpty) return false;
     for (int i = 0; i < _lineItems.length; i++) {
@@ -668,7 +679,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       id: _invoiceId,
       clientId: _selectedClient!.id,
       invoiceDate: _invoiceDate,
-      totalAmount: _total,
+      totalAmount: _netTotal,
       status: 'printed',
       createdAt: _createdAt,
       invoiceNumber: _invoiceNumber,
@@ -676,6 +687,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       paymentType:  _paymentType,
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
       actualAmount: _actualAmount,
+      swapAmount: _swapAmount,
     );
 
     final items = _lineItems.map((li) {
@@ -767,6 +779,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
     }
     _notesCtrl.dispose();
     _actualAmountCtrl.dispose();
+    _swapAmountCtrl.dispose();
     super.dispose();
   }
 
@@ -949,6 +962,27 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                           onChanged: (_) => _scheduleAutoSave(),
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _swapAmountCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Adjustment Amount (deducted from total, optional)',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          keyboardType:
+                              const TextInputType.numberWithOptions(decimal: true),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                                RegExp(r'^\d*\.?\d{0,2}')),
+                          ],
+                          onChanged: (_) {
+                            setState(() {});
+                            _scheduleAutoSave();
+                          },
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1012,7 +1046,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              'Total: ${formatCurrency(_total)}',
+                              'Total: ${formatCurrency(_netTotal)}',
                               style: const TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold),

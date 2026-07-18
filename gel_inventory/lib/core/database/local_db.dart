@@ -137,6 +137,8 @@ class Invoices extends Table {
   TextColumn get notes => text().nullable()();
   // Optional: the actual amount shown on the referenced (physical) receipt.
   RealColumn get actualAmount => real().nullable()();
+  // Optional: amount deducted from the invoice total for swapped items.
+  RealColumn get swapAmount => real().nullable()();
   // Whether this invoice should be counted in the Layout (Order Summary)
   // screen for its invoice date. Only relevant for delivery invoices.
   BoolColumn get includeInLayout =>
@@ -435,7 +437,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 35;
+  int get schemaVersion => 36;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -599,6 +601,10 @@ class LocalDatabase extends _$LocalDatabase {
           if (from < 35) {
             await _addColumnIfMissing(
                 m.database, 'purchase_orders', 'prepared_by', 'TEXT');
+          }
+          if (from < 36) {
+            await _addColumnIfMissing(
+                m.database, 'invoices', 'swap_amount', 'REAL');
           }
         },
       );

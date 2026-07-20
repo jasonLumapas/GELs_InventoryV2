@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -64,7 +65,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 5, vsync: this);
+    _tabs = TabController(length: 6, vsync: this);
     _loadSummary();
   }
 
@@ -148,6 +149,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
               Tab(text: 'Daily Summary'),
               Tab(text: 'Inventory Report'),
               Tab(text: 'Top Products'),
+              Tab(text: 'Monthly Sales'),
               Tab(text: 'Purchase History'),
               Tab(text: 'Reorder'),
             ],
@@ -159,6 +161,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
                 _buildDailySummary(context),
                 const _InventoryReportTab(),
                 const _TopMovingProductsTab(),
+                const _MonthlySalesTab(),
                 const _PurchaseHistoryTab(),
                 const _ReorderSuggestionsTab(),
               ],
@@ -1905,6 +1908,351 @@ class _TopMovingProductsTabState
                     ),
                   ),
                 ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Monthly Sales Tab ───────────────────────────────────────────────────────
+
+class _MonthlySalesTab extends ConsumerStatefulWidget {
+  const _MonthlySalesTab();
+
+  @override
+  ConsumerState<_MonthlySalesTab> createState() => _MonthlySalesTabState();
+}
+
+class _MonthlySalesTabState extends ConsumerState<_MonthlySalesTab> {
+  int _year = DateTime.now().year;
+  String? _selectedSupplierId;
+  String? _selectedProductId;
+  late Future<List<double>> _future;
+
+  static const _monthLabels = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  void _reload() => setState(() => _future = _load());
+
+  void _setYear(int y) => setState(() {
+        _year = y;
+        _future = _load();
+      });
+
+  Future<List<double>> _load() async {
+    final products = await ref.read(productRepositoryProvider).getAll();
+    final productsById = {for (final p in products) p.id: p};
+
+    final start = DateTime(_year);
+    final end = DateTime(_year + 1);
+    final invoices = await ref
+        .read(invoiceRepositoryProvider)
+        .getAll(startDate: start, endDate: end);
+
+    final totals = List<double>.filled(12, 0);
+    for (final inv in invoices) {
+      if (inv.status == 'cancelled') continue;
+      final items = await ref.read(invoiceRepositoryProvider).getItems(inv.id);
+      // inv.totalAmount is net of any adjustment (e.g. swap amount) applied
+      // to the invoice as a whole; distribute that adjustment proportionally
+      // across items so filtered/monthly sums still foot to the invoice total.
+      final grossTotal = items.fold(0.0, (s, it) => s + it.subtotal);
+      final netFactor = grossTotal > 0 ? inv.totalAmount / grossTotal : 1.0;
+      for (final item in items) {
+        final product = productsById[item.productId];
+        if (product == null) continue;
+        if (_selectedSupplierId != null &&
+            product.supplierId != _selectedSupplierId) {
+          continue;
+        }
+        if (_selectedProductId != null && item.productId != _selectedProductId) {
+          continue;
+        }
+        totals[inv.invoiceDate.month - 1] += item.subtotal * netFactor;
+      }
+    }
+    return totals;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // ── Year navigation ─────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.chevron_left),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => _setYear(_year - 1),
+              ),
+              Text(
+                '$_year',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              IconButton(
+                icon: const Icon(Icons.chevron_right),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => _setYear(_year + 1),
+              ),
+              const SizedBox(width: 16),
+              TextButton(
+                onPressed: () => _setYear(DateTime.now().year),
+                style:
+                    TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                child: const Text('This Year'),
+              ),
+            ],
+          ),
+        ),
+        // ── Supplier filter ─────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          child: ref.watch(suppliersListProvider).maybeWhen(
+                data: (suppliers) => Row(
+                  children: [
+                    const Text('Supplier:',
+                        style: TextStyle(fontSize: 13, color: Colors.grey)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: DropdownButton<String?>(
+                        value: _selectedSupplierId,
+                        isDense: true,
+                        isExpanded: true,
+                        underline: const SizedBox(),
+                        items: [
+                          const DropdownMenuItem(
+                              value: null, child: Text('All Suppliers')),
+                          ...suppliers.map((s) => DropdownMenuItem(
+                              value: s.id, child: Text(s.name))),
+                        ],
+                        onChanged: (v) {
+                          setState(() {
+                            _selectedSupplierId = v;
+                            _selectedProductId = null;
+                          });
+                          _reload();
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                orElse: () => const SizedBox.shrink(),
+              ),
+        ),
+        // ── Product filter ──────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+          child: ref.watch(productsListProvider).maybeWhen(
+                data: (products) {
+                  final filtered = _selectedSupplierId == null
+                      ? products
+                      : products
+                          .where((p) => p.supplierId == _selectedSupplierId)
+                          .toList();
+                  return Row(
+                    children: [
+                      const Text('Product:',
+                          style: TextStyle(fontSize: 13, color: Colors.grey)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: DropdownButton<String?>(
+                          value: _selectedProductId,
+                          isDense: true,
+                          isExpanded: true,
+                          underline: const SizedBox(),
+                          items: [
+                            const DropdownMenuItem(
+                                value: null, child: Text('All Products')),
+                            ...filtered.map((p) => DropdownMenuItem(
+                                value: p.id, child: Text(p.name))),
+                          ],
+                          onChanged: (v) {
+                            setState(() => _selectedProductId = v);
+                            _reload();
+                          },
+                        ),
+                      ),
+                    ],
+                  );
+                },
+                orElse: () => const SizedBox.shrink(),
+              ),
+        ),
+        const Divider(height: 1),
+        // ── Chart ────────────────────────────────────────────────────
+        Expanded(
+          child: FutureBuilder<List<double>>(
+            future: _future,
+            builder: (ctx, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final totals = snapshot.data ?? List.filled(12, 0);
+              final grandTotal = totals.fold(0.0, (s, v) => s + v);
+              final maxValue = totals.fold(0.0, (m, v) => v > m ? v : m);
+              final maxY = maxValue <= 0 ? 100.0 : maxValue * 1.25;
+
+              final spots = [
+                for (var i = 0; i < 12; i++) FlSpot(i.toDouble(), totals[i]),
+              ];
+
+              return Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Monthly Sales Trend — $_year',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          fontSize: 17, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 16),
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.fromLTRB(8, 24, 16, 8),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.blue.shade400),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: LineChart(
+                          LineChartData(
+                            minX: 0,
+                            maxX: 11,
+                            minY: 0,
+                            maxY: maxY,
+                            gridData: FlGridData(
+                              show: true,
+                              drawVerticalLine: false,
+                              horizontalInterval: maxY / 5,
+                              getDrawingHorizontalLine: (_) => FlLine(
+                                  color: Colors.grey.shade300, strokeWidth: 1),
+                            ),
+                            borderData: FlBorderData(
+                              show: true,
+                              border: Border.all(color: Colors.grey.shade400),
+                            ),
+                            titlesData: FlTitlesData(
+                              topTitles: const AxisTitles(
+                                  sideTitles: SideTitles(showTitles: false)),
+                              rightTitles: const AxisTitles(
+                                  sideTitles: SideTitles(showTitles: false)),
+                              bottomTitles: AxisTitles(
+                                sideTitles: SideTitles(
+                                  showTitles: true,
+                                  reservedSize: 28,
+                                  interval: 1,
+                                  getTitlesWidget: (value, meta) {
+                                    final i = value.round();
+                                    if (i < 0 ||
+                                        i > 11 ||
+                                        (value - i).abs() > 0.01) {
+                                      return const SizedBox.shrink();
+                                    }
+                                    return Padding(
+                                      padding: const EdgeInsets.only(top: 6),
+                                      child: Text(_monthLabels[i],
+                                          style: const TextStyle(fontSize: 11)),
+                                    );
+                                  },
+                                ),
+                              ),
+                              leftTitles: AxisTitles(
+                                sideTitles: SideTitles(
+                                  showTitles: true,
+                                  reservedSize: 56,
+                                  interval: maxY / 5,
+                                  getTitlesWidget: (value, meta) => Padding(
+                                    padding: const EdgeInsets.only(right: 4),
+                                    child: Text(
+                                      NumberFormat.compact().format(value),
+                                      style: const TextStyle(fontSize: 11),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            lineTouchData: LineTouchData(
+                              enabled: false,
+                              touchTooltipData: LineTouchTooltipData(
+                                getTooltipColor: (_) => Colors.transparent,
+                                tooltipBorder: BorderSide.none,
+                                tooltipPadding: EdgeInsets.zero,
+                                tooltipMargin: 12,
+                                getTooltipItems: (touchedSpots) => touchedSpots
+                                    .map((s) => LineTooltipItem(
+                                          formatNumber(s.y),
+                                          const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                            color: Colors.black87,
+                                          ),
+                                        ))
+                                    .toList(),
+                              ),
+                            ),
+                            lineBarsData: [
+                              LineChartBarData(
+                                spots: spots,
+                                isCurved: false,
+                                color: Colors.orange,
+                                barWidth: 3,
+                                dotData: FlDotData(
+                                  show: true,
+                                  getDotPainter: (spot, percent, bar, index) =>
+                                      FlDotCirclePainter(
+                                    radius: 4,
+                                    color: Colors.orange,
+                                    strokeWidth: 2,
+                                    strokeColor: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
+                            showingTooltipIndicators: [
+                              for (var i = 0; i < 12; i++)
+                                if (totals[i] > 0)
+                                  ShowingTooltipIndicators(
+                                      [LineBarSpot(
+                                          LineChartBarData(spots: spots),
+                                          0,
+                                          spots[i])]),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        const Text('Total for Year: ',
+                            style: TextStyle(
+                                fontSize: 15, fontWeight: FontWeight.bold)),
+                        Text(formatCurrency(grandTotal),
+                            style: const TextStyle(
+                                fontSize: 15, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ],
+                ),
               );
             },
           ),

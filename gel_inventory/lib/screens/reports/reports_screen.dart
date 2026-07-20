@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:excel/excel.dart' as xlsx;
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -518,6 +519,7 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
   bool? _endingSortAscending; // null = unsorted (original product order)
   bool _showOnlyWithEnding = false;
   bool _showOnlyWithBulkClear = false;
+  bool _showOnlyWithBO = false;
   bool _showOnlyZeroEnding = false;
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
@@ -555,16 +557,7 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
     if (picked != null) _setDate(picked);
   }
 
-  Future<void> _print(_InvData data) async {
-    String? supplierName;
-    if (_selectedSupplierId != null) {
-      final suppliers = ref.read(suppliersListProvider).valueOrNull ?? [];
-      supplierName = suppliers
-          .where((s) => s.id == _selectedSupplierId)
-          .map((s) => s.name)
-          .firstOrNull;
-    }
-
+  List<Product> _filteredProducts(_InvData data) {
     var products = data.products;
     if (_endingSortAscending != null) {
       products = List.of(data.products)
@@ -585,9 +578,27 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
           .where((p) => (data.stockOutBulkClear[p.id] ?? 0) > 0)
           .toList();
     }
+    if (_showOnlyWithBO) {
+      products =
+          products.where((p) => (data.stockOutBO[p.id] ?? 0) > 0).toList();
+    }
     if (_showOnlyZeroEnding) {
       products = products.where((p) => (data.ending[p.id] ?? 0) == 0).toList();
     }
+    return products;
+  }
+
+  Future<void> _print(_InvData data) async {
+    String? supplierName;
+    if (_selectedSupplierId != null) {
+      final suppliers = ref.read(suppliersListProvider).valueOrNull ?? [];
+      supplierName = suppliers
+          .where((s) => s.id == _selectedSupplierId)
+          .map((s) => s.name)
+          .firstOrNull;
+    }
+
+    final products = _filteredProducts(data);
 
     final showSelling =
         ref.read(inventoryReportShowSellingProvider).valueOrNull ?? false;
@@ -638,6 +649,90 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
     final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
     final file = File('$home\\Desktop\\bulk_clear_$dateStr.csv');
     await file.writeAsString(buffer.toString());
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Exported to ${file.path}')),
+    );
+  }
+
+  Future<void> _exportExcel(_InvData data) async {
+    final products = _filteredProducts(data);
+    final showSelling =
+        ref.read(inventoryReportShowSellingProvider).valueOrNull ?? false;
+    final endingValueLabel = showSelling
+        ? 'Ending Inventory Selling Value'
+        : 'Ending Inventory Capital Value';
+    final endingValueTotal =
+        showSelling ? data.totalEndingSellingValue : data.totalEndingValue;
+
+    final book = xlsx.Excel.createExcel();
+    final sheet = book[book.sheets.keys.first];
+
+    void addRow(int r, List<Object> cells, {bool bold = false}) {
+      for (int c = 0; c < cells.length; c++) {
+        final cell = sheet.cell(
+          xlsx.CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r),
+        );
+        cell.value = cells[c];
+        if (bold) {
+          cell.cellStyle = xlsx.CellStyle(bold: true);
+        }
+      }
+    }
+
+    int r = 0;
+    addRow(r++, [
+      'Product',
+      'Beg Boxes', 'Beg Pcs',
+      'In Boxes', 'In Pcs',
+      'Invoices Boxes', 'Invoices Pcs',
+      'Off-site Boxes', 'Off-site Pcs',
+      'BO Boxes', 'BO Pcs',
+      'Bulk Clear Boxes', 'Bulk Clear Pcs',
+      'Manual Boxes', 'Manual Pcs',
+      'End Boxes', 'End Pcs',
+    ], bold: true);
+
+    for (final p in products) {
+      final row = InventoryReportRow(
+        productName: p.name,
+        piecesPerBox: p.piecesPerBox,
+        beginning: data.beginning[p.id] ?? 0,
+        stockIn: data.stockIn[p.id] ?? 0,
+        stockOutInvoices: data.stockOutInvoices[p.id] ?? 0,
+        stockOutVan: data.stockOutVan[p.id] ?? 0,
+        stockOutManual: data.stockOutManual[p.id] ?? 0,
+        stockOutBO: data.stockOutBO[p.id] ?? 0,
+        stockOutBulkClear: data.stockOutBulkClear[p.id] ?? 0,
+        ending: data.ending[p.id] ?? 0,
+      );
+      addRow(r++, [
+        row.productName,
+        row.begBoxes, row.begPcs,
+        row.inBoxes, row.inPcs,
+        row.outInvBoxes, row.outInvPcs,
+        row.outVanBoxes, row.outVanPcs,
+        row.outBOBoxes, row.outBOPcs,
+        row.outBCBoxes, row.outBCPcs,
+        row.outManBoxes, row.outManPcs,
+        row.endBoxes, row.endPcs,
+      ]);
+    }
+
+    r++;
+    addRow(r++, ['Stock In Value', data.totalStockInValue], bold: true);
+    addRow(r++, [endingValueLabel, endingValueTotal], bold: true);
+
+    final bytes = book.save();
+    if (bytes == null) return;
+
+    final home = Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        '';
+    final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
+    final file = File('$home\\Desktop\\inventory_report_$dateStr.xlsx');
+    await file.writeAsBytes(bytes);
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -699,6 +794,15 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                 onPressed: () async {
                   final data = await _future;
                   if (mounted) await _print(data);
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.table_chart),
+                tooltip: 'Download inventory report as Excel (Desktop)',
+                visualDensity: VisualDensity.compact,
+                onPressed: () async {
+                  final data = await _future;
+                  if (mounted) await _exportExcel(data);
                 },
               ),
               IconButton(
@@ -799,6 +903,22 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
             ],
           ),
         ),
+        // ── With-BO-only toggle ────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+          child: Row(
+            children: [
+              Switch(
+                value: _showOnlyWithBO,
+                onChanged: (v) => setState(() => _showOnlyWithBO = v),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              const SizedBox(width: 6),
+              const Text('Show only rows with BOs',
+                  style: TextStyle(fontSize: 13)),
+            ],
+          ),
+        ),
         // ── Zero-ending-only toggle ────────────────────────────────────
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
@@ -852,6 +972,11 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
               if (_showOnlyWithBulkClear) {
                 sortedProducts = sortedProducts
                     .where((p) => (data.stockOutBulkClear[p.id] ?? 0) > 0)
+                    .toList();
+              }
+              if (_showOnlyWithBO) {
+                sortedProducts = sortedProducts
+                    .where((p) => (data.stockOutBO[p.id] ?? 0) > 0)
                     .toList();
               }
               if (_showOnlyZeroEnding) {

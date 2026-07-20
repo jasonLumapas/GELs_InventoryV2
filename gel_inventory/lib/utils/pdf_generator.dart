@@ -47,7 +47,7 @@ pw.Font? _loadFont(String path) {
 // The last page is trimmed to its content height so the printer stops early
 // and doesn't feed blank paper after the signature block.
 
-Future<void> printInvoice({
+Future<({pw.Document doc, PdfPageFormat format})> _buildInvoiceDoc({
   required Invoice invoice,
   required Client client,
   required List<InvoiceItem> items,
@@ -242,6 +242,8 @@ Future<void> printInvoice({
 
   // ── Total section ────────────────────────────────────────────────────────────
   final itemCountLabel = '${items.length} item${items.length == 1 ? '' : 's'}';
+  final hasAdjustment  = (invoice.swapAmount ?? 0) > 0;
+  final subtotalAmt    = invoice.totalAmount + (invoice.swapAmount ?? 0);
   final totalSection = pw.Column(
     mainAxisSize: pw.MainAxisSize.min,
     crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -251,10 +253,31 @@ Future<void> printInvoice({
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text(itemCountLabel, style: tsSmall),
-          pw.Text("Total = ${_n(invoice.totalAmount)}",
-              style: pw.TextStyle(font: fontTahoma, fontSize: 12.0)),
+          pw.Text(
+              hasAdjustment
+                  ? "Subtotal = ${_n(subtotalAmt)}"
+                  : "Total = ${_n(invoice.totalAmount)}",
+              style: hasAdjustment
+                  ? tsSmall
+                  : pw.TextStyle(font: fontTahoma, fontSize: 12.0)),
         ],
       ),
+      if (hasAdjustment) ...[
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.end,
+          children: [
+            pw.Text("Adjustment = -${_n(invoice.swapAmount!)}",
+                style: pw.TextStyle(font: fontBold, fontSize: fs)),
+          ],
+        ),
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.end,
+          children: [
+            pw.Text("Total = ${_n(invoice.totalAmount)}",
+                style: pw.TextStyle(font: fontTahoma, fontSize: 12.0)),
+          ],
+        ),
+      ],
     ],
   );
 
@@ -318,8 +341,10 @@ Future<void> printInvoice({
   // kSigFooterH: tighter estimate used when computing the push-down gap below.
   const double kHeaderH    = 270.0;
   const double kPageIndH   = 20.0;
-  const double kTotalSigH  = 105.0;
-  const double kSigFooterH = 95.0;  // totalSection~20 + sig~58 + indicator~16 + slack
+  // Adjustment breakdown adds two extra lines (~28pt) to the total section.
+  final double kAdjExtraH  = hasAdjustment ? 28.0 : 0.0;
+  final double kTotalSigH  = 105.0 + kAdjExtraH;
+  final double kSigFooterH = 95.0 + kAdjExtraH;  // totalSection~20 + sig~58 + indicator~16 + slack
 
   final stdFormat = PdfPageFormat(
     pageW, 11.0 * PdfPageFormat.inch,
@@ -404,8 +429,37 @@ Future<void> printInvoice({
     ));
   }
 
+  return (doc: doc, format: stdFormat);
+}
+
+Future<void> printInvoice({
+  required Invoice invoice,
+  required Client client,
+  required List<InvoiceItem> items,
+  required Map<String, Product> productsById,
+}) async {
+  final built = await _buildInvoiceDoc(
+    invoice: invoice, client: client, items: items, productsById: productsById);
   await _printWithSlot(
-    doc: doc, format: stdFormat, slot: PrinterSettingsService.invoice);
+    doc: built.doc, format: built.format, slot: PrinterSettingsService.invoice);
+}
+
+// ── Temporary: Save invoice PDF to Desktop ────────────────────────────────────
+// Requested as a quick stopgap alongside Print in New Invoice / Invoice Detail.
+Future<void> saveInvoicePdfToDesktop({
+  required Invoice invoice,
+  required Client client,
+  required List<InvoiceItem> items,
+  required Map<String, Product> productsById,
+}) async {
+  final built = await _buildInvoiceDoc(
+    invoice: invoice, client: client, items: items, productsById: productsById);
+  final bytes = await built.doc.save();
+  final home  = Platform.environment['USERPROFILE'] ??
+      Platform.environment['HOME'] ?? '.';
+  final safeNumber =
+      invoice.displayNumber.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+  await File('$home\\Desktop\\Invoice_$safeNumber.pdf').writeAsBytes(bytes);
 }
 
 // ── Invoice List PDF ─────────────────────────────────────────────────────────

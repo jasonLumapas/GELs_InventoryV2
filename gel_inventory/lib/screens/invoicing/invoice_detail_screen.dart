@@ -513,9 +513,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     if (mounted) _goBack();
   }
 
-  Future<void> _saveAndPrint() async {
-    setState(() => _saving = true);
-
+  Future<({Invoice invoice, List<InvoiceItem> items})> _persistEdit() async {
     final partial = _paymentType == 'partial';
     final updatedInvoice = _invoice!.copyWith(
       clientId: _selectedClient!.id,
@@ -554,17 +552,47 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     ref.invalidate(filteredInvoicesProvider);
     ref.invalidate(inventoryListProvider);
 
+    return (invoice: updatedInvoice, items: newItems);
+  }
+
+  Future<void> _saveAndPrint() async {
+    setState(() => _saving = true);
+    final persisted = await _persistEdit();
+
     final productsById = {
       for (final li in _editItems) li.product.id: li.product
     };
     await printInvoice(
-      invoice: updatedInvoice,
+      invoice: persisted.invoice,
       client: _selectedClient!,
-      items: newItems,
+      items: persisted.items,
       productsById: productsById,
     );
 
     if (mounted) _goBack();
+  }
+
+  // Temporary: save the invoice as a PDF to the Desktop instead of printing.
+  Future<void> _saveAndPdf() async {
+    setState(() => _saving = true);
+    final persisted = await _persistEdit();
+
+    final productsById = {
+      for (final li in _editItems) li.product.id: li.product
+    };
+    await saveInvoicePdfToDesktop(
+      invoice: persisted.invoice,
+      client: _selectedClient!,
+      items: persisted.items,
+      productsById: productsById,
+    );
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Invoice PDF saved to Desktop')),
+      );
+      _goBack();
+    }
   }
 
   Future<void> _cancelInvoice() async {
@@ -1372,6 +1400,20 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                                 style: const TextStyle(
                                     fontSize: 12, color: Colors.grey),
                               ),
+                              if ((_swapAmount ?? 0) > 0) ...[
+                                Text(
+                                  'Subtotal: ${formatCurrency(_total)}',
+                                  style: const TextStyle(
+                                      fontSize: 12, color: Colors.grey),
+                                ),
+                                Text(
+                                  'Adjustment: -${formatCurrency(_swapAmount!)}',
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.red,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                              ],
                               Text(
                                 'Total: ${formatCurrency(_netTotal)}',
                                 style: const TextStyle(
@@ -1397,6 +1439,18 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                           label: const Text('Save'),
                           onPressed:
                               _canSave && !_saving ? _saveOnly : null,
+                        ),
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          icon: _saving
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Icon(Icons.picture_as_pdf_outlined),
+                          label: const Text('Save PDF'),
+                          onPressed:
+                              _canSave && !_saving ? _saveAndPdf : null,
                         ),
                         const SizedBox(width: 8),
                         FilledButton.icon(
@@ -1456,6 +1510,21 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
             ],
           ),
           const SizedBox(height: 12),
+          if ((_swapAmount ?? 0) > 0) ...[
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text('Subtotal: ${formatCurrency(_total)}',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text('Adjustment: -${formatCurrency(_swapAmount!)}',
+                  style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.red,
+                      fontWeight: FontWeight.bold)),
+            ),
+          ],
           Align(
             alignment: Alignment.centerRight,
             child: Text('Total: ${formatCurrency(_netTotal)}',

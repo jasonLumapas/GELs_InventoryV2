@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
 import '../../models/bad_order.dart';
 import '../../models/bad_order_draft.dart';
 import '../../models/bad_order_item.dart';
@@ -10,10 +12,12 @@ import '../../models/product.dart';
 import '../../repositories/bad_order_repository.dart';
 import '../../repositories/client_repository.dart';
 import '../../repositories/inventory_repository.dart';
+import '../../repositories/invoice_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../widgets/common/app_scaffold.dart';
 import '../../widgets/common/confirm_dialog.dart';
+import '../../widgets/common/search_picker.dart';
 
 enum _FilterType { day, week, month }
 
@@ -39,8 +43,7 @@ class BadOrderListScreen extends ConsumerStatefulWidget {
   const BadOrderListScreen({super.key});
 
   @override
-  ConsumerState<BadOrderListScreen> createState() =>
-      _BadOrderListScreenState();
+  ConsumerState<BadOrderListScreen> createState() => _BadOrderListScreenState();
 }
 
 class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
@@ -65,8 +68,7 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
     super.initState();
     _tabs = TabController(length: 2, vsync: this);
     _searchCtrl.addListener(() => setState(() {}));
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => _loadProductNames());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadProductNames());
   }
 
   @override
@@ -77,11 +79,13 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
   }
 
   Future<void> _loadProductNames() async {
-    final grouped =
-        await ref.read(badOrderRepositoryProvider).getAllItemsGrouped();
+    final grouped = await ref
+        .read(badOrderRepositoryProvider)
+        .getAllItemsGrouped();
     final products = await ref.read(productRepositoryProvider).getAll();
-    final prices =
-        await ref.read(productRepositoryProvider).getAllCurrentPrices();
+    final prices = await ref
+        .read(productRepositoryProvider)
+        .getAllCurrentPrices();
     final productsById = {for (final p in products) p.id: p};
     final nameMap = {for (final p in products) p.id: p.name};
     final ppbMap = {for (final p in products) p.id: p.piecesPerBox};
@@ -108,7 +112,9 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
   // Aggregates the currently filtered orders by client or by product,
   // depending on _reportView, sorted from highest to lowest total amount.
   List<_ReportRow> _buildReportRows(
-      List<BadOrder> orders, Map<String, Client> clientsMap) {
+    List<BadOrder> orders,
+    Map<String, Client> clientsMap,
+  ) {
     final Map<String, _ReportRow> acc = {};
     if (_reportView == _ReportView.clients) {
       for (final o in orders) {
@@ -128,7 +134,9 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
           final row = acc.putIfAbsent(
             item.productId,
             () => _ReportRow(
-                label: product.name, piecesPerBox: product.piecesPerBox),
+              label: product.name,
+              piecesPerBox: product.piecesPerBox,
+            ),
           );
           row.totalPieces += pieces;
           row.totalAmount += pieces * (_prices[item.productId] ?? 0.0);
@@ -142,7 +150,9 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
   }
 
   List<BadOrder> _applyFilters(
-      List<BadOrder> orders, Map<String, Client> clientsMap) {
+    List<BadOrder> orders,
+    Map<String, Client> clientsMap,
+  ) {
     final q = _searchCtrl.text.toLowerCase().trim();
     final from = _startDate;
     final to = _endDate;
@@ -155,10 +165,10 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
       }
       if (o.date.isBefore(from) || !o.date.isBefore(to)) return false;
       if (q.isNotEmpty) {
-        final clientName =
-            (clientsMap[o.clientId]?.name ?? '').toLowerCase();
-        final productNames = (_productNamesByOrderId[o.id] ?? [])
-            .map((n) => n.toLowerCase());
+        final clientName = (clientsMap[o.clientId]?.name ?? '').toLowerCase();
+        final productNames = (_productNamesByOrderId[o.id] ?? []).map(
+          (n) => n.toLowerCase(),
+        );
         if (!clientName.contains(q) &&
             !productNames.any((n) => n.contains(q))) {
           return false;
@@ -210,9 +220,9 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
   }
 
   void _setAnchor(DateTime date) => setState(() {
-        _anchor = date;
-        _lastAnchor = date;
-      });
+    _anchor = date;
+    _lastAnchor = date;
+  });
 
   void _prev() {
     switch (_filter) {
@@ -253,13 +263,13 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
 
   @override
   Widget build(BuildContext context) {
-    final listAsync    = ref.watch(badOrdersListProvider);
+    final listAsync = ref.watch(badOrdersListProvider);
     final clientsAsync = ref.watch(clientsListProvider);
-    final draftsAsync  = ref.watch(badOrderDraftsProvider);
-    final dateFmt      = DateFormat('MMM dd, yyyy');
+    final draftsAsync = ref.watch(badOrderDraftsProvider);
+    final dateFmt = DateFormat('MMM dd, yyyy');
 
     final clientsMap = <String, Client>{
-      for (final c in clientsAsync.valueOrNull ?? []) c.id: c
+      for (final c in clientsAsync.valueOrNull ?? []) c.id: c,
     };
 
     return AppScaffold(
@@ -302,10 +312,11 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
                 SegmentedButton<_FilterType>(
                   segments: const [
                     ButtonSegment(value: _FilterType.day, label: Text('Day')),
+                    ButtonSegment(value: _FilterType.week, label: Text('Week')),
                     ButtonSegment(
-                        value: _FilterType.week, label: Text('Week')),
-                    ButtonSegment(
-                        value: _FilterType.month, label: Text('Month')),
+                      value: _FilterType.month,
+                      label: Text('Month'),
+                    ),
                   ],
                   selected: {_filter},
                   onSelectionChanged: (s) => setState(() => _filter = s.first),
@@ -342,8 +353,9 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
                 ),
                 TextButton(
                   onPressed: () => _setAnchor(DateTime.now()),
-                  style:
-                      TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                  ),
                   child: const Text('Today'),
                 ),
               ],
@@ -366,8 +378,10 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
                     Padding(
                       padding: const EdgeInsets.only(right: 6),
                       child: ChoiceChip(
-                        label:
-                            Text(typeLabel, style: const TextStyle(fontSize: 12)),
+                        label: Text(
+                          typeLabel,
+                          style: const TextStyle(fontSize: 12),
+                        ),
                         selected: _filterType == typeValue,
                         onSelected: (_) => setState(() {
                           _filterType = typeValue;
@@ -400,8 +414,10 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
                       Padding(
                         padding: const EdgeInsets.only(right: 6),
                         child: ChoiceChip(
-                          label: Text(reasonLabel,
-                              style: const TextStyle(fontSize: 12)),
+                          label: Text(
+                            reasonLabel,
+                            style: const TextStyle(fontSize: 12),
+                          ),
                           selected: _filterReason == reasonValue,
                           onSelected: (_) =>
                               setState(() => _filterReason = reasonValue),
@@ -433,7 +449,9 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
                       const Center(child: CircularProgressIndicator()),
                   error: (e, _) => Center(child: Text('Error: $e')),
                   data: (orders) => _buildReportTab(
-                      _applyFilters(orders, clientsMap), clientsMap),
+                    _applyFilters(orders, clientsMap),
+                    clientsMap,
+                  ),
                 ),
               ],
             ),
@@ -460,8 +478,7 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
             return Container(
               width: double.infinity,
               color: Colors.amber.shade100,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
@@ -471,17 +488,18 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
                     child: Text(
                       '${drafts.length} unfinished bad order(s)/return(s)',
                       style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 13),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                   ...drafts.map((d) {
-                    final client =
-                        d.noClient ? null : clientsMap[d.clientId];
+                    final client = d.noClient ? null : clientsMap[d.clientId];
                     final typeLabel = d.type == 'return'
                         ? 'Return'
                         : d.type == 'stock_release'
-                            ? 'Stock Release'
-                            : 'Bad Order';
+                        ? 'Stock Release'
+                        : 'Bad Order';
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 2),
                       child: Row(
@@ -498,13 +516,16 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
                             ),
                           ),
                           TextButton(
-                            onPressed: () => context
-                                .go('/bad-orders/new?draft=${d.id}'),
+                            onPressed: () =>
+                                context.go('/bad-orders/new?draft=${d.id}'),
                             child: const Text('Resume'),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.delete_outline,
-                                color: Colors.red, size: 20),
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.red,
+                              size: 20,
+                            ),
                             tooltip: 'Discard draft',
                             onPressed: () async {
                               final ok = await showConfirmDialog(
@@ -551,7 +572,9 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
                 );
               }
               final grandTotal = filtered.fold<double>(
-                  0, (sum, o) => sum + (_amountByOrderId[o.id] ?? 0));
+                0,
+                (sum, o) => sum + (_amountByOrderId[o.id] ?? 0),
+              );
               return Column(
                 children: [
                   Expanded(
@@ -566,18 +589,20 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
                             o.isReturn
                                 ? Icons.undo
                                 : o.isStockRelease
-                                    ? Icons.output
-                                    : Icons.remove_shopping_cart,
+                                ? Icons.output
+                                : Icons.remove_shopping_cart,
                             color: o.isReturn
                                 ? Colors.green
                                 : o.isStockRelease
-                                    ? Colors.red
-                                    : Colors.orange,
+                                ? Colors.red
+                                : Colors.orange,
                           ),
                           title: Text(
-                              '${o.typeLabel} — ${client?.name ?? o.clientId}'),
+                            '${o.typeLabel} — ${client?.name ?? o.clientId}',
+                          ),
                           subtitle: Text(
-                              '${dateFmt.format(o.date)}${o.notes != null ? ' • ${o.notes}' : ''}'),
+                            '${dateFmt.format(o.date)}${o.notes != null ? ' • ${o.notes}' : ''}',
+                          ),
                           onTap: () => _showDetail(context, ref, o, client),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -585,17 +610,22 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
                               Text(
                                 formatCurrency(_amountByOrderId[o.id] ?? 0),
                                 style: const TextStyle(
-                                    fontWeight: FontWeight.w500),
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
                               IconButton(
-                                icon: const Icon(Icons.delete_outline,
-                                    color: Colors.red),
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  color: Colors.red,
+                                ),
                                 onPressed: () async {
-                                  final ok = await showConfirmDialog(ctx,
-                                      title: 'Delete',
-                                      message:
-                                          'Delete this ${o.typeLabel}? This cannot be undone.',
-                                      confirmLabel: 'Delete');
+                                  final ok = await showConfirmDialog(
+                                    ctx,
+                                    title: 'Delete',
+                                    message:
+                                        'Delete this ${o.typeLabel}? This cannot be undone.',
+                                    confirmLabel: 'Delete',
+                                  );
                                   if (ok) {
                                     await ref
                                         .read(badOrderRepositoryProvider)
@@ -614,18 +644,25 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                     decoration: BoxDecoration(
                       border: Border(
-                          top: BorderSide(color: Colors.grey.shade300)),
+                        top: BorderSide(color: Colors.grey.shade300),
+                      ),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        const Text('Grand Total: ',
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 15)),
+                        const Text(
+                          'Grand Total: ',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
                         Text(
                           formatCurrency(grandTotal),
                           style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 15),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
                         ),
                       ],
                     ),
@@ -640,7 +677,9 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
   }
 
   Widget _buildReportTab(
-      List<BadOrder> orders, Map<String, Client> clientsMap) {
+    List<BadOrder> orders,
+    Map<String, Client> clientsMap,
+  ) {
     final rows = _buildReportRows(orders, clientsMap);
     final isClients = _reportView == _ReportView.clients;
     return Column(
@@ -649,10 +688,11 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
           child: SegmentedButton<_ReportView>(
             segments: const [
+              ButtonSegment(value: _ReportView.clients, label: Text('Clients')),
               ButtonSegment(
-                  value: _ReportView.clients, label: Text('Clients')),
-              ButtonSegment(
-                  value: _ReportView.products, label: Text('Products')),
+                value: _ReportView.products,
+                label: Text('Products'),
+              ),
             ],
             selected: {_reportView},
             onSelectionChanged: (s) => setState(() => _reportView = s.first),
@@ -694,15 +734,17 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
                           ),
                         ),
                       ),
-                      title: Text(row.label,
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      title: Text(
+                        row.label,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
                       subtitle: Text(
                         isClients
                             ? '${row.orderCount} order(s)'
                             : '${row.boxes > 0 ? "${row.boxes} box(es)" : ""}'
-                                '${row.boxes > 0 && row.remainingPieces > 0 ? " + " : ""}'
-                                '${row.remainingPieces > 0 ? "${row.remainingPieces} pcs" : ""}'
-                                '${row.boxes == 0 && row.remainingPieces == 0 ? "—" : ""}',
+                                  '${row.boxes > 0 && row.remainingPieces > 0 ? " + " : ""}'
+                                  '${row.remainingPieces > 0 ? "${row.remainingPieces} pcs" : ""}'
+                                  '${row.boxes == 0 && row.remainingPieces == 0 ? "—" : ""}',
                       ),
                       trailing: Text(
                         formatCurrency(row.totalAmount),
@@ -757,34 +799,111 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
   double _grandTotal = 0;
   Map<String, int> _inventoryQty = {};
 
+  int _selectedIndex = -1;
+  final FocusNode _listFocusNode = FocusNode();
+  List<GlobalKey> _itemKeys = [];
+  bool _pickingProduct = false;
+
   @override
   void initState() {
     super.initState();
     _loadData();
   }
 
+  @override
+  void dispose() {
+    _listFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _selectItem(int index) {
+    if (index < 0 || index >= _items.length) return;
+    setState(() => _selectedIndex = index);
+    _listFocusNode.requestFocus();
+    _ensureVisible(index);
+  }
+
+  void _ensureVisible(int index) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (index < 0 || index >= _itemKeys.length) return;
+      final ctx = _itemKeys[index].currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 150),
+        );
+      }
+    });
+  }
+
+  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.insert) {
+      _addItem();
+      return KeyEventResult.handled;
+    }
+
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (_items.isEmpty) return KeyEventResult.ignored;
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      final next = _selectedIndex < 0
+          ? 0
+          : (_selectedIndex + 1).clamp(0, _items.length - 1);
+      _selectItem(next);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      final prev = _selectedIndex < 0
+          ? _items.length - 1
+          : (_selectedIndex - 1).clamp(0, _items.length - 1);
+      _selectItem(prev);
+      return KeyEventResult.handled;
+    }
+    if (event is KeyDownEvent &&
+        (event.logicalKey == LogicalKeyboardKey.delete ||
+            event.logicalKey == LogicalKeyboardKey.backspace) &&
+        _selectedIndex >= 0 &&
+        _selectedIndex < _items.length) {
+      _deleteItem(_items[_selectedIndex]);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   Future<void> _loadData() async {
     if (!mounted) return;
     setState(() => _loading = true);
 
-    final itemsFuture    = ref.read(badOrderRepositoryProvider).getItems(widget.order.id);
+    final itemsFuture = ref
+        .read(badOrderRepositoryProvider)
+        .getItems(widget.order.id);
     final productsFuture = ref.read(productRepositoryProvider).getAll();
-    final pricesFuture   = ref.read(productRepositoryProvider).getAllCurrentPrices();
+    final pricesFuture = ref
+        .read(productRepositoryProvider)
+        .getAllCurrentPrices();
     final inventoryFuture = ref.read(inventoryRepositoryProvider).getAll();
 
-    final results = await Future.wait([itemsFuture, productsFuture, pricesFuture, inventoryFuture]);
-    final items      = results[0] as List<BadOrderItem>;
-    final products   = results[1] as List<Product>;
-    final prices     = results[2] as Map<String, double>;
-    final inventory  = results[3] as List;
+    final results = await Future.wait([
+      itemsFuture,
+      productsFuture,
+      pricesFuture,
+      inventoryFuture,
+    ]);
+    final items = results[0] as List<BadOrderItem>;
+    final products = results[1] as List<Product>;
+    final prices = results[2] as Map<String, double>;
+    final inventory = results[3] as List;
 
     final productsById = <String, Product>{for (final p in products) p.id: p};
     final inventoryQty = <String, int>{
-      for (final i in inventory) i.productId as String: i.quantityPieces as int
+      for (final i in inventory) i.productId as String: i.quantityPieces as int,
     };
 
-    final amounts  = <String, double>{};
-    double total   = 0;
+    final amounts = <String, double>{};
+    double total = 0;
     for (final item in items) {
       final product = productsById[item.productId];
       if (product == null) continue;
@@ -796,21 +915,226 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
       total += amount;
     }
 
+    final previouslySelectedId =
+        (_selectedIndex >= 0 && _selectedIndex < _items.length)
+        ? _items[_selectedIndex].id
+        : null;
+    final newIndex = previouslySelectedId == null
+        ? -1
+        : items.indexWhere((i) => i.id == previouslySelectedId);
+
     if (!mounted) return;
     setState(() {
-      _loading      = false;
-      _items        = items;
+      _loading = false;
+      _items = items;
       _productsById = productsById;
-      _amounts      = amounts;
-      _grandTotal   = total;
+      _amounts = amounts;
+      _grandTotal = total;
       _inventoryQty = inventoryQty;
+      _itemKeys = List.generate(items.length, (_) => GlobalKey());
+      _selectedIndex = newIndex;
     });
   }
 
+  // Returns the set of product ids the client has ordered on or before this
+  // bad order's date — mirrors _loadOrderedProducts in bad_order_form_screen.
+  Future<Set<String>> _loadOrderedProductIds() async {
+    final client = widget.client;
+    if (client == null) return {};
+    final cutoff = DateTime(
+      widget.order.date.year,
+      widget.order.date.month,
+      widget.order.date.day,
+      23,
+      59,
+      59,
+    );
+    final invoices = await ref.read(invoiceRepositoryProvider).getAll();
+    final ids = <String>{};
+    for (final inv in invoices.where(
+      (i) => i.clientId == client.id && !i.invoiceDate.isAfter(cutoff),
+    )) {
+      final items = await ref.read(invoiceRepositoryProvider).getItems(inv.id);
+      for (final item in items) {
+        ids.add(item.productId);
+      }
+    }
+    return ids;
+  }
+
+  Future<void> _addItem() async {
+    if (_pickingProduct) return;
+    setState(() => _pickingProduct = true);
+
+    final alreadyIds = _items.map((i) => i.productId).toSet();
+    // Stock releases and "no client" orders aren't tied to a client's order
+    // history, so any product is eligible — same rule as the create form.
+    final showAll =
+        widget.client == null ||
+        widget.client!.id == ClientRepository.noClientId ||
+        widget.order.isStockRelease;
+    final orderedProductIds = showAll ? null : await _loadOrderedProductIds();
+
+    if (!mounted) return;
+    setState(() => _pickingProduct = false);
+
+    final candidates =
+        _productsById.values
+            .where(
+              (p) =>
+                  !alreadyIds.contains(p.id) &&
+                  (showAll || orderedProductIds!.contains(p.id)),
+            )
+            .toList()
+          ..sort((a, b) => a.name.compareTo(b.name));
+
+    if (candidates.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            showAll
+                ? 'No products available to add.'
+                : 'No previously ordered products found for this client.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final isReturn = widget.order.isReturn;
+    final product = await showSearchPicker<Product>(
+      context: context,
+      title: 'Select Product',
+      items: candidates,
+      labelOf: (p) => p.name,
+      searchableOf: (p) => '${p.name} ${p.productCode ?? ''}',
+      subtitleOf: isReturn
+          ? null
+          : (p) {
+              final qty = _inventoryQty[p.id] ?? 0;
+              final boxes = p.piecesPerBox > 0 ? qty ~/ p.piecesPerBox : 0;
+              final pcs = p.piecesPerBox > 0 ? qty % p.piecesPerBox : qty;
+              return boxes > 0
+                  ? '$boxes box(es) + $pcs pcs available'
+                  : '$pcs pcs available';
+            },
+    );
+    if (product == null || !mounted) return;
+
+    final piecesPerBox = product.piecesPerBox;
+    final maxPieces = isReturn ? null : (_inventoryQty[product.id] ?? 0);
+
+    String unitType = 'piece';
+    final qtyCtrl = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) {
+          final newQty = int.tryParse(qtyCtrl.text.trim()) ?? 0;
+          final newPieces = unitType == 'box' ? newQty * piecesPerBox : newQty;
+          final isOver = maxPieces != null && newPieces > maxPieces;
+
+          String availLabel = '';
+          if (maxPieces != null) {
+            final availBoxes = piecesPerBox > 0 ? maxPieces ~/ piecesPerBox : 0;
+            final availPcs = piecesPerBox > 0
+                ? maxPieces % piecesPerBox
+                : maxPieces;
+            availLabel = availBoxes > 0
+                ? '$availBoxes box(es)${availPcs > 0 ? ' + $availPcs pcs' : ''}'
+                : '$availPcs pcs';
+          }
+
+          return AlertDialog(
+            title: Text('Add — ${product.name}'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (maxPieces != null) ...[
+                  Text(
+                    'Available: $availLabel',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isOver ? Colors.red : Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                const Text('Unit type'),
+                const SizedBox(height: 6),
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(value: 'box', label: Text('Box')),
+                    ButtonSegment(value: 'piece', label: Text('Piece')),
+                  ],
+                  selected: {unitType},
+                  onSelectionChanged: (s) => setDlg(() => unitType = s.first),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: qtyCtrl,
+                  autofocus: true,
+                  keyboardType: TextInputType.number,
+                  onChanged: (_) => setDlg(() {}),
+                  decoration: InputDecoration(
+                    labelText: 'Quantity',
+                    border: const OutlineInputBorder(),
+                    isDense: true,
+                    errorText: isOver ? 'Exceeds available stock' : null,
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: (isOver || newQty <= 0)
+                    ? null
+                    : () => Navigator.pop(ctx, true),
+                child: const Text('Add'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+    final newQty = int.tryParse(qtyCtrl.text.trim()) ?? 0;
+    if (newQty <= 0) return;
+
+    final newItem = BadOrderItem(
+      id: const Uuid().v4(),
+      badOrderId: widget.order.id,
+      productId: product.id,
+      unitType: unitType,
+      quantity: newQty,
+    );
+
+    await ref
+        .read(badOrderRepositoryProvider)
+        .addItem(
+          order: widget.order,
+          item: newItem,
+          piecesPerBox: piecesPerBox,
+        );
+    ref.invalidate(badOrdersListProvider);
+    ref.invalidate(inventoryListProvider);
+    await _loadData();
+    if (!mounted) return;
+    final idx = _items.indexWhere((i) => i.id == newItem.id);
+    if (idx != -1) _selectItem(idx);
+  }
+
   Future<void> _editItem(BadOrderItem item) async {
-    final product      = _productsById[item.productId];
+    final product = _productsById[item.productId];
     final piecesPerBox = product?.piecesPerBox ?? 1;
-    final oldPieces    = item.unitType == 'box'
+    final oldPieces = item.unitType == 'box'
         ? item.quantity * piecesPerBox
         : item.quantity;
 
@@ -824,29 +1148,30 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
       for (final other in _items) {
         if (other.id == item.id || other.productId != item.productId) continue;
         final ppb = _productsById[other.productId]?.piecesPerBox ?? 1;
-        otherCommitted +=
-            other.unitType == 'box' ? other.quantity * ppb : other.quantity;
+        otherCommitted += other.unitType == 'box'
+            ? other.quantity * ppb
+            : other.quantity;
       }
       final stock = _inventoryQty[item.productId] ?? 0;
-      final raw   = stock + oldPieces - otherCommitted;
-      maxPieces   = raw < 0 ? 0 : raw;
+      final raw = stock + oldPieces - otherCommitted;
+      maxPieces = raw < 0 ? 0 : raw;
     }
 
-    String unitType  = item.unitType;
-    final qtyCtrl    = TextEditingController(text: item.quantity.toString());
+    String unitType = item.unitType;
+    final qtyCtrl = TextEditingController(text: item.quantity.toString());
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlg) {
-          final newQty    = int.tryParse(qtyCtrl.text.trim()) ?? 0;
+          final newQty = int.tryParse(qtyCtrl.text.trim()) ?? 0;
           final newPieces = unitType == 'box' ? newQty * piecesPerBox : newQty;
-          final isOver    = maxPieces != null && newPieces > maxPieces;
+          final isOver = maxPieces != null && newPieces > maxPieces;
 
           String availLabel = '';
           if (maxPieces != null) {
             final availBoxes = maxPieces ~/ piecesPerBox;
-            final availPcs   = maxPieces % piecesPerBox;
+            final availPcs = maxPieces % piecesPerBox;
             availLabel = availBoxes > 0
                 ? '$availBoxes box(es)${availPcs > 0 ? ' + $availPcs pcs' : ''}'
                 : '$availPcs pcs';
@@ -876,8 +1201,7 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
                     ButtonSegment(value: 'piece', label: Text('Piece')),
                   ],
                   selected: {unitType},
-                  onSelectionChanged: (s) =>
-                      setDlg(() => unitType = s.first),
+                  onSelectionChanged: (s) => setDlg(() => unitType = s.first),
                 ),
                 const SizedBox(height: 16),
                 TextField(
@@ -895,11 +1219,13 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
             ),
             actions: [
               TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Cancel')),
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
               FilledButton(
-                  onPressed: isOver ? null : () => Navigator.pop(ctx, true),
-                  child: const Text('Save')),
+                onPressed: isOver ? null : () => Navigator.pop(ctx, true),
+                child: const Text('Save'),
+              ),
             ],
           );
         },
@@ -910,13 +1236,15 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
     final newQty = int.tryParse(qtyCtrl.text.trim()) ?? 0;
     if (newQty <= 0) return;
 
-    await ref.read(badOrderRepositoryProvider).updateItem(
-      order: widget.order,
-      oldItem: item,
-      newUnitType: unitType,
-      newQuantity: newQty,
-      piecesPerBox: product?.piecesPerBox ?? 1,
-    );
+    await ref
+        .read(badOrderRepositoryProvider)
+        .updateItem(
+          order: widget.order,
+          oldItem: item,
+          newUnitType: unitType,
+          newQuantity: newQty,
+          piecesPerBox: product?.piecesPerBox ?? 1,
+        );
     ref.invalidate(badOrdersListProvider);
     ref.invalidate(inventoryListProvider);
     await _loadData();
@@ -927,17 +1255,20 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
     final ok = await showConfirmDialog(
       context,
       title: 'Delete Item',
-      message: 'Remove "${product?.name ?? item.productId}" from this '
+      message:
+          'Remove "${product?.name ?? item.productId}" from this '
           '${widget.order.typeLabel}? The inventory will be adjusted.',
       confirmLabel: 'Delete',
     );
     if (!ok || !mounted) return;
 
-    await ref.read(badOrderRepositoryProvider).deleteItem(
-      order: widget.order,
-      item: item,
-      piecesPerBox: product?.piecesPerBox ?? 1,
-    );
+    await ref
+        .read(badOrderRepositoryProvider)
+        .deleteItem(
+          order: widget.order,
+          item: item,
+          piecesPerBox: product?.piecesPerBox ?? 1,
+        );
     ref.invalidate(badOrdersListProvider);
     ref.invalidate(inventoryListProvider);
 
@@ -980,19 +1311,21 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
                   widget.order.isReturn
                       ? Icons.undo
                       : widget.order.isStockRelease
-                          ? Icons.output
-                          : Icons.remove_shopping_cart,
+                      ? Icons.output
+                      : Icons.remove_shopping_cart,
                   color: widget.order.isReturn
                       ? Colors.green
                       : widget.order.isStockRelease
-                          ? Colors.red
-                          : Colors.orange,
+                      ? Colors.red
+                      : Colors.orange,
                 ),
                 const SizedBox(width: 8),
                 Text(
                   widget.order.typeLabel,
                   style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
@@ -1004,8 +1337,10 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _metaRow('Client',
-                    widget.client?.name ?? widget.order.clientId),
+                _metaRow(
+                  'Client',
+                  widget.client?.name ?? widget.order.clientId,
+                ),
                 _metaRow('Date', dateFmt.format(widget.order.date)),
                 if (widget.order.notes != null &&
                     widget.order.notes!.isNotEmpty)
@@ -1019,74 +1354,107 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
 
           const Divider(height: 20),
 
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: Text('Items',
-                style: TextStyle(fontWeight: FontWeight.bold)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                const Text(
+                  'Items',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const Spacer(),
+                TextButton.icon(
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add'),
+                  onPressed: (_loading || _pickingProduct) ? null : _addItem,
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 4),
 
           // Body
           if (_loading)
-            const Expanded(
-                child: Center(child: CircularProgressIndicator()))
+            const Expanded(child: Center(child: CircularProgressIndicator()))
           else if (_items.isEmpty)
-            const Expanded(
+            Expanded(
               child: Padding(
-                padding: EdgeInsets.all(16),
+                padding: const EdgeInsets.all(16),
                 child: Text('No items.'),
               ),
             )
           else ...[
             Expanded(
-              child: ListView.separated(
-                controller: scrollCtrl,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: _items.length,
-                separatorBuilder: (_, _) => const Divider(height: 1),
-                itemBuilder: (ctx, i) {
-                  final item    = _items[i];
-                  final product = _productsById[item.productId];
-                  final ppb     = product?.piecesPerBox ?? 1;
-                  String qtyLabel;
-                  if (item.unitType == 'box') {
-                    qtyLabel = '${item.quantity} box(es)';
-                  } else {
-                    final boxes = ppb > 0 ? item.quantity ~/ ppb : 0;
-                    final pcs   = ppb > 0 ? item.quantity % ppb : item.quantity;
-                    qtyLabel =
-                        boxes > 0 ? '$boxes box(es) + $pcs pcs' : '$pcs pcs';
-                  }
-                  final amount = _amounts[item.id] ?? 0.0;
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(product?.name ?? item.productId),
-                    subtitle: Text(qtyLabel,
-                        style: const TextStyle(fontSize: 12)),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          formatCurrency(amount),
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w500),
+              child: Focus(
+                focusNode: _listFocusNode,
+                autofocus: true,
+                onKeyEvent: _handleKey,
+                child: ListView.separated(
+                  controller: scrollCtrl,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: _items.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (ctx, i) {
+                    final item = _items[i];
+                    final product = _productsById[item.productId];
+                    final ppb = product?.piecesPerBox ?? 1;
+                    final isSelected = _selectedIndex == i;
+                    String qtyLabel;
+                    if (item.unitType == 'box') {
+                      qtyLabel = '${item.quantity} box(es)';
+                    } else {
+                      final boxes = ppb > 0 ? item.quantity ~/ ppb : 0;
+                      final pcs = ppb > 0 ? item.quantity % ppb : item.quantity;
+                      qtyLabel = boxes > 0
+                          ? '$boxes box(es) + $pcs pcs'
+                          : '$pcs pcs';
+                    }
+                    final amount = _amounts[item.id] ?? 0.0;
+                    return Container(
+                      key: i < _itemKeys.length ? _itemKeys[i] : null,
+                      color: isSelected
+                          ? Theme.of(
+                              context,
+                            ).colorScheme.primary.withValues(alpha: 0.1)
+                          : null,
+                      child: ListTile(
+                        selected: isSelected,
+                        onTap: () => _selectItem(i),
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(product?.name ?? item.productId),
+                        subtitle: Text(
+                          qtyLabel,
+                          style: const TextStyle(fontSize: 12),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.edit_outlined,
-                              size: 20),
-                          tooltip: 'Edit item',
-                          onPressed: () => _editItem(item),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              formatCurrency(amount),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.edit_outlined, size: 20),
+                              tooltip: 'Edit item',
+                              onPressed: () => _editItem(item),
+                            ),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.delete_outline,
+                                color: Colors.red,
+                                size: 20,
+                              ),
+                              tooltip: 'Delete item',
+                              onPressed: () => _deleteItem(item),
+                            ),
+                          ],
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline,
-                              color: Colors.red, size: 20),
-                          tooltip: 'Delete item',
-                          onPressed: () => _deleteItem(item),
-                        ),
-                      ],
-                    ),
-                  );
-                },
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
 
@@ -1094,19 +1462,21 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
             Container(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
               decoration: BoxDecoration(
-                border:
-                    Border(top: BorderSide(color: Colors.grey.shade300)),
+                border: Border(top: BorderSide(color: Colors.grey.shade300)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  const Text('Grand Total: ',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 15)),
+                  const Text(
+                    'Grand Total: ',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
                   Text(
                     formatCurrency(_grandTotal),
                     style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 15),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
                   ),
                 ],
               ),
@@ -1119,19 +1489,18 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
 }
 
 Widget _metaRow(String label, String value) => Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 64,
-            child: Text('$label:',
-                style: const TextStyle(color: Colors.grey, fontSize: 13)),
-          ),
-          Expanded(
-            child: Text(value,
-                style: const TextStyle(fontSize: 13)),
-          ),
-        ],
+  padding: const EdgeInsets.only(bottom: 4),
+  child: Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      SizedBox(
+        width: 64,
+        child: Text(
+          '$label:',
+          style: const TextStyle(color: Colors.grey, fontSize: 13),
+        ),
       ),
-    );
+      Expanded(child: Text(value, style: const TextStyle(fontSize: 13))),
+    ],
+  ),
+);

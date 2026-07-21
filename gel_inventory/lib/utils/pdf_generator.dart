@@ -456,24 +456,6 @@ Future<void> printInvoice({
     doc: built.doc, format: built.format, slot: PrinterSettingsService.invoice);
 }
 
-// ── Temporary: Save invoice PDF to Desktop ────────────────────────────────────
-// Requested as a quick stopgap alongside Print in New Invoice / Invoice Detail.
-Future<void> saveInvoicePdfToDesktop({
-  required Invoice invoice,
-  required Client client,
-  required List<InvoiceItem> items,
-  required Map<String, Product> productsById,
-}) async {
-  final built = await _buildInvoiceDoc(
-    invoice: invoice, client: client, items: items, productsById: productsById);
-  final bytes = await built.doc.save();
-  final home  = Platform.environment['USERPROFILE'] ??
-      Platform.environment['HOME'] ?? '.';
-  final safeNumber =
-      invoice.displayNumber.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-  await File('$home\\Desktop\\Invoice_$safeNumber.pdf').writeAsBytes(bytes);
-}
-
 // ── Invoice List PDF ─────────────────────────────────────────────────────────
 
 class InvoiceListItem {

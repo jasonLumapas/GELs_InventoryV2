@@ -579,29 +579,6 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     if (mounted) _goBack();
   }
 
-  // Temporary: save the invoice as a PDF to the Desktop instead of printing.
-  Future<void> _saveAndPdf() async {
-    setState(() => _saving = true);
-    final persisted = await _persistEdit();
-
-    final productsById = {
-      for (final li in _editItems) li.product.id: li.product
-    };
-    await saveInvoicePdfToDesktop(
-      invoice: persisted.invoice,
-      client: _selectedClient!,
-      items: persisted.items,
-      productsById: productsById,
-    );
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Invoice PDF saved to Desktop')),
-      );
-      _goBack();
-    }
-  }
-
   Future<void> _cancelInvoice() async {
     final ok = await showConfirmDialog(
       context,
@@ -1457,18 +1434,6 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                           label: const Text('Save'),
                           onPressed:
                               _canSave && !_saving ? _saveOnly : null,
-                        ),
-                        const SizedBox(width: 8),
-                        OutlinedButton.icon(
-                          icon: _saving
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2))
-                              : const Icon(Icons.picture_as_pdf_outlined),
-                          label: const Text('Save PDF'),
-                          onPressed:
-                              _canSave && !_saving ? _saveAndPdf : null,
                         ),
                         const SizedBox(width: 8),
                         FilledButton.icon(

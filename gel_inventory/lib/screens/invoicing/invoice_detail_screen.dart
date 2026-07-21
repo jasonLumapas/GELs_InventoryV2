@@ -14,6 +14,7 @@ import '../../models/product_price.dart';
 import '../../models/product_discount.dart';
 import '../../models/invoice_payment.dart';
 import '../../core/services/app_settings_service.dart';
+import '../../repositories/bad_order_repository.dart';
 import '../../repositories/client_repository.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_payment_repository.dart';
@@ -580,6 +581,23 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   }
 
   Future<void> _cancelInvoice() async {
+    final linked = await ref
+        .read(badOrderRepositoryProvider)
+        .getLinkedStockPulledOut(_invoice!.id);
+    if (linked.isNotEmpty) {
+      if (mounted) {
+        await showInfoDialog(
+          context,
+          title: 'Cannot Cancel Invoice',
+          message: 'This invoice has ${linked.length} linked "Stock Pulled '
+              'out" entr${linked.length == 1 ? 'y' : 'ies'} in Bad Orders & '
+              'Returns. Delete ${linked.length == 1 ? 'it' : 'them'} first '
+              'before cancelling this invoice.',
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
     final ok = await showConfirmDialog(
       context,
       title: 'Cancel Invoice',
@@ -618,6 +636,23 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   }
 
   Future<void> _permanentlyDeleteInvoice() async {
+    final linked = await ref
+        .read(badOrderRepositoryProvider)
+        .getLinkedStockPulledOut(_invoice!.id);
+    if (linked.isNotEmpty) {
+      if (mounted) {
+        await showInfoDialog(
+          context,
+          title: 'Cannot Delete Invoice',
+          message: 'This invoice has ${linked.length} linked "Stock Pulled '
+              'out" entr${linked.length == 1 ? 'y' : 'ies'} in Bad Orders & '
+              'Returns. Delete ${linked.length == 1 ? 'it' : 'them'} first '
+              'before deleting this invoice.',
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
     final ok = await showConfirmDialog(
       context,
       title: 'Delete Permanently',

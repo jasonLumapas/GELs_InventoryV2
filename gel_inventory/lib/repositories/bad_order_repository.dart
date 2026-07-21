@@ -60,6 +60,16 @@ class BadOrderRepository extends BaseRepository {
         .toList();
   }
 
+  /// Returns all "Stock Pulled out" bad orders linked to [invoiceId] — used
+  /// to block deleting/cancelling an invoice that still has linked entries,
+  /// since their totals would otherwise silently go stale.
+  Future<List<BadOrder>> getLinkedStockPulledOut(String invoiceId) async {
+    final all = await getAll();
+    return all
+        .where((o) => o.isStockPulledOut && o.invoiceId == invoiceId)
+        .toList();
+  }
+
   Future<List<BadOrderItem>> getItems(String badOrderId) async {
     if (isOnline) {
       final data = await Supabase.instance.client

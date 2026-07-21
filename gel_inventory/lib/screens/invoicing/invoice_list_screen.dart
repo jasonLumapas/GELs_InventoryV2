@@ -6,6 +6,7 @@ import '../../core/services/app_settings_service.dart';
 import '../../models/client.dart';
 import '../../models/invoice.dart';
 import '../../models/product.dart';
+import '../../repositories/bad_order_repository.dart';
 import '../../repositories/client_repository.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_repository.dart';
@@ -654,6 +655,25 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                                       color: Colors.red),
                                   tooltip: 'Cancel Invoice',
                                   onPressed: () async {
+                                    final linked = await ref
+                                        .read(badOrderRepositoryProvider)
+                                        .getLinkedStockPulledOut(inv.id);
+                                    if (linked.isNotEmpty) {
+                                      if (ctx.mounted) {
+                                        await showInfoDialog(
+                                          ctx,
+                                          title: 'Cannot Cancel Invoice',
+                                          message:
+                                              'This invoice has ${linked.length} linked '
+                                              '"Stock Pulled out" entr${linked.length == 1 ? 'y' : 'ies'} '
+                                              'in Bad Orders & Returns. Delete '
+                                              '${linked.length == 1 ? 'it' : 'them'} first before '
+                                              'cancelling this invoice.',
+                                        );
+                                      }
+                                      return;
+                                    }
+                                    if (!ctx.mounted) return;
                                     final ok = await showConfirmDialog(
                                       ctx,
                                       title: 'Cancel Invoice',

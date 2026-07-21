@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../models/invoice.dart';
 import '../../core/services/app_settings_service.dart';
+import '../../repositories/bad_order_repository.dart';
 import '../../repositories/client_repository.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_repository.dart';
@@ -77,6 +78,23 @@ class _CancelledInvoicesListScreenState
   }
 
   Future<void> _deletePermanently(Invoice inv) async {
+    final linked = await ref
+        .read(badOrderRepositoryProvider)
+        .getLinkedStockPulledOut(inv.id);
+    if (linked.isNotEmpty) {
+      if (mounted) {
+        await showInfoDialog(
+          context,
+          title: 'Cannot Delete Invoice',
+          message: 'This invoice has ${linked.length} linked "Stock Pulled '
+              'out" entr${linked.length == 1 ? 'y' : 'ies'} in Bad Orders & '
+              'Returns. Delete ${linked.length == 1 ? 'it' : 'them'} first '
+              'before deleting this invoice.',
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
     final ok = await showConfirmDialog(
       context,
       title: 'Delete Permanently',

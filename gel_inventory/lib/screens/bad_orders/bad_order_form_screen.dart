@@ -667,10 +667,6 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                                   value: 'Warehouse BO',
                                   child: Text('Warehouse BO'),
                                 ),
-                                DropdownMenuItem(
-                                  value: 'Swap Items',
-                                  child: Text('Swap Items'),
-                                ),
                               ],
                               onChanged: (v) {
                                 setState(() => _reason = v);

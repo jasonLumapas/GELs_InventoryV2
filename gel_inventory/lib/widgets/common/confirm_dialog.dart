@@ -28,6 +28,28 @@ Future<bool> showConfirmDialog(
   return result ?? false;
 }
 
+/// Shows a blocking, single-button informational dialog (e.g. to explain why
+/// an action can't proceed). Resolves once dismissed.
+Future<void> showInfoDialog(
+  BuildContext context, {
+  required String title,
+  required String message,
+}) {
+  return showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(title),
+      content: Text(message),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('OK'),
+        ),
+      ],
+    ),
+  );
+}
+
 /// Shows a three-way dialog. Returns `true` for the Yes button, `false` for
 /// the No button, and `null` for Cancel (or if dismissed).
 Future<bool?> showYesNoCancelDialog(

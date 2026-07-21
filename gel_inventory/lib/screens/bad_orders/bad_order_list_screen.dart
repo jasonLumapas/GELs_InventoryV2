@@ -415,7 +415,6 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
                       ('Missed delivery', 'Missed delivery'),
                       ('Give-aways', 'Give-aways'),
                       ('Warehouse BO', 'Warehouse BO'),
-                      ('Swap Items', 'Swap Items'),
                     ])
                       Padding(
                         padding: const EdgeInsets.only(right: 6),
@@ -651,6 +650,7 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
                                         .read(badOrderRepositoryProvider)
                                         .delete(o.id);
                                     ref.invalidate(badOrdersListProvider);
+                                    ref.invalidate(inventoryListProvider);
                                     if (o.isStockPulledOut &&
                                         o.invoiceId != null) {
                                       ref.invalidate(invoicesListProvider);

@@ -48,3 +48,15 @@ Future<String> resolveDbName() async {
 // the `header_title` entry in instance_config.txt.
 final headerTitleProvider = FutureProvider<String?>(
     (ref) async => (await _readConfig())['header_title']);
+
+// Identifies this installation so per-device settings (SharedPreferences)
+// don't leak across copies of the app running on the same machine, which
+// otherwise share the same OS-level settings storage regardless of which
+// folder they were launched from. Checked in order:
+//   1. `instance_id` entry in instance_config.txt
+//   2. `db_name` entry in instance_config.txt (already unique per copy)
+//   3. '' (single/default installation — unchanged legacy behavior)
+Future<String> resolveInstanceId() async {
+  final config = await _readConfig();
+  return config['instance_id'] ?? config['db_name'] ?? '';
+}

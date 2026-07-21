@@ -1,13 +1,27 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'instance_config_service.dart';
 
 /// Persists app-wide visibility toggles, gated behind a settings password.
+///
+/// Keys are namespaced by [resolveInstanceId] so that separate copies of the
+/// app running side by side on the same machine (see instance_config_service)
+/// don't share these settings — SharedPreferences storage is otherwise keyed
+/// by app identity alone, not by which folder the copy was launched from.
 class AppSettingsService {
   static const String settingsPassword = 'gels_g3l\$';
+
+  static String? _instanceIdCache;
+  static Future<String> _instanceKeyPrefix() async {
+    _instanceIdCache ??= await resolveInstanceId();
+    return _instanceIdCache!.isEmpty ? '' : 'inst_${_instanceIdCache}_';
+  }
 
   static const _keyShowCapitalProfit  = 'settings_show_capital_profit';
   static const _keyShowOffSiteLoading = 'settings_show_offsite_loading';
   static const _keyShowImportCsv      = 'settings_show_import_csv';
+  static const _keyShowPreOrderDrafts = 'settings_show_pre_order_drafts';
+  static const _keyShowVerifyPreOrder = 'settings_show_verify_pre_order';
   static const _keyInventoryReportShowSelling =
       'settings_inventory_report_show_selling';
   static const _keyAllowBadOrderNoClient =
@@ -20,12 +34,14 @@ class AppSettingsService {
 
   static Future<bool> _getFlag(String key, {bool defaultValue = true}) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(key) ?? defaultValue;
+    final prefixedKey = '${await _instanceKeyPrefix()}$key';
+    return prefs.getBool(prefixedKey) ?? defaultValue;
   }
 
   static Future<void> _setFlag(String key, bool value) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(key, value);
+    final prefixedKey = '${await _instanceKeyPrefix()}$key';
+    await prefs.setBool(prefixedKey, value);
   }
 
   static Future<bool> getShowCapitalProfit() => _getFlag(_keyShowCapitalProfit);
@@ -40,6 +56,16 @@ class AppSettingsService {
   static Future<bool> getShowImportCsv() => _getFlag(_keyShowImportCsv);
   static Future<void> setShowImportCsv(bool value) =>
       _setFlag(_keyShowImportCsv, value);
+
+  static Future<bool> getShowPreOrderDrafts() =>
+      _getFlag(_keyShowPreOrderDrafts);
+  static Future<void> setShowPreOrderDrafts(bool value) =>
+      _setFlag(_keyShowPreOrderDrafts, value);
+
+  static Future<bool> getShowVerifyPreOrder() =>
+      _getFlag(_keyShowVerifyPreOrder);
+  static Future<void> setShowVerifyPreOrder(bool value) =>
+      _setFlag(_keyShowVerifyPreOrder, value);
 
   /// When true, the inventory report's grand total shows the ending
   /// inventory's selling value instead of its capital (withdrawal) value.
@@ -85,6 +111,12 @@ final showOffSiteLoadingProvider =
 
 final showImportCsvProvider =
     FutureProvider<bool>((ref) => AppSettingsService.getShowImportCsv());
+
+final showPreOrderDraftsProvider = FutureProvider<bool>(
+    (ref) => AppSettingsService.getShowPreOrderDrafts());
+
+final showVerifyPreOrderProvider = FutureProvider<bool>(
+    (ref) => AppSettingsService.getShowVerifyPreOrder());
 
 final inventoryReportShowSellingProvider = FutureProvider<bool>(
     (ref) => AppSettingsService.getInventoryReportShowSelling());

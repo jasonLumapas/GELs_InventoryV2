@@ -66,6 +66,8 @@ class _AppSettingsScreenState extends ConsumerState<AppSettingsScreen> {
   bool _showCapitalProfit = true;
   bool _showOffSiteLoading = true;
   bool _showImportCsv = true;
+  bool _showPreOrderDrafts = true;
+  bool _showVerifyPreOrder = true;
   bool _inventoryReportShowSelling = false;
   bool _allowBadOrderNoClient = false;
   bool _inventoryAllowAddStock    = true;
@@ -93,6 +95,8 @@ class _AppSettingsScreenState extends ConsumerState<AppSettingsScreen> {
     _showCapitalProfit  = await AppSettingsService.getShowCapitalProfit();
     _showOffSiteLoading = await AppSettingsService.getShowOffSiteLoading();
     _showImportCsv      = await AppSettingsService.getShowImportCsv();
+    _showPreOrderDrafts = await AppSettingsService.getShowPreOrderDrafts();
+    _showVerifyPreOrder = await AppSettingsService.getShowVerifyPreOrder();
     _inventoryReportShowSelling =
         await AppSettingsService.getInventoryReportShowSelling();
     _allowBadOrderNoClient =
@@ -128,6 +132,18 @@ class _AppSettingsScreenState extends ConsumerState<AppSettingsScreen> {
     setState(() => _showImportCsv = value);
     await AppSettingsService.setShowImportCsv(value);
     ref.invalidate(showImportCsvProvider);
+  }
+
+  Future<void> _togglePreOrderDrafts(bool value) async {
+    setState(() => _showPreOrderDrafts = value);
+    await AppSettingsService.setShowPreOrderDrafts(value);
+    ref.invalidate(showPreOrderDraftsProvider);
+  }
+
+  Future<void> _toggleVerifyPreOrder(bool value) async {
+    setState(() => _showVerifyPreOrder = value);
+    await AppSettingsService.setShowVerifyPreOrder(value);
+    ref.invalidate(showVerifyPreOrderProvider);
   }
 
   Future<void> _toggleInventoryReportShowSelling(bool value) async {
@@ -197,6 +213,20 @@ class _AppSettingsScreenState extends ConsumerState<AppSettingsScreen> {
                           'Display the Import CSV entry in the navigation menu and dashboard'),
                       value: _showImportCsv,
                       onChanged: _toggleImportCsv,
+                    ),
+                    SwitchListTile(
+                      title: const Text('Show Pre-Order Drafts menu'),
+                      subtitle: const Text(
+                          'Display the Pre-Order Drafts entry in the navigation menu and dashboard'),
+                      value: _showPreOrderDrafts,
+                      onChanged: _togglePreOrderDrafts,
+                    ),
+                    SwitchListTile(
+                      title: const Text('Show Verify Pre-Order menu'),
+                      subtitle: const Text(
+                          'Display the Verify Pre-Order entry in the navigation menu and dashboard'),
+                      value: _showVerifyPreOrder,
+                      onChanged: _toggleVerifyPreOrder,
                     ),
                     SwitchListTile(
                       title: const Text('Inventory Report: Show Selling Value'),

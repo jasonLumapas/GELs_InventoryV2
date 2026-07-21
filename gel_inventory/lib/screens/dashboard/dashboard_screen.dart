@@ -13,6 +13,10 @@ class DashboardScreen extends ConsumerWidget {
         ref.watch(showOffSiteLoadingProvider).valueOrNull ?? true;
     final showImportCsv =
         ref.watch(showImportCsvProvider).valueOrNull ?? true;
+    final showPreOrderDrafts =
+        ref.watch(showPreOrderDraftsProvider).valueOrNull ?? true;
+    final showVerifyPreOrder =
+        ref.watch(showVerifyPreOrderProvider).valueOrNull ?? true;
 
     return AppScaffold(
       title: "GEL's Inventory",
@@ -58,16 +62,18 @@ class DashboardScreen extends ConsumerWidget {
             label: 'Invoices',
             route: '/invoices',
           ),
-          _NavCard(
-            icon: Icons.edit_note,
-            label: 'Pre-Order Drafts',
-            route: '/pre-orders',
-          ),
-          _NavCard(
-            icon: Icons.file_open,
-            label: 'Verify Pre-Order',
-            route: '/pre-order-import',
-          ),
+          if (showPreOrderDrafts)
+            _NavCard(
+              icon: Icons.edit_note,
+              label: 'Pre-Order Drafts',
+              route: '/pre-orders',
+            ),
+          if (showVerifyPreOrder)
+            _NavCard(
+              icon: Icons.file_open,
+              label: 'Verify Pre-Order',
+              route: '/pre-order-import',
+            ),
           _NavCard(
             icon: Icons.summarize,
             label: 'Layout',

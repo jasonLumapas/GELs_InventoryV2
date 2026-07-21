@@ -3148,6 +3148,28 @@ class $InvoicesTable extends Invoices with TableInfo<$InvoicesTable, Invoice> {
     type: DriftSqlType.double,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _stockPulledOutAmountMeta =
+      const VerificationMeta('stockPulledOutAmount');
+  @override
+  late final GeneratedColumn<double> stockPulledOutAmount =
+      GeneratedColumn<double>(
+        'stock_pulled_out_amount',
+        aliasedName,
+        true,
+        type: DriftSqlType.double,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _stockPulledOutCostMeta =
+      const VerificationMeta('stockPulledOutCost');
+  @override
+  late final GeneratedColumn<double> stockPulledOutCost =
+      GeneratedColumn<double>(
+        'stock_pulled_out_cost',
+        aliasedName,
+        true,
+        type: DriftSqlType.double,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _includeInLayoutMeta = const VerificationMeta(
     'includeInLayout',
   );
@@ -3184,6 +3206,8 @@ class $InvoicesTable extends Invoices with TableInfo<$InvoicesTable, Invoice> {
     notes,
     actualAmount,
     swapAmount,
+    stockPulledOutAmount,
+    stockPulledOutCost,
     includeInLayout,
   ];
   @override
@@ -3352,6 +3376,24 @@ class $InvoicesTable extends Invoices with TableInfo<$InvoicesTable, Invoice> {
         swapAmount.isAcceptableOrUnknown(data['swap_amount']!, _swapAmountMeta),
       );
     }
+    if (data.containsKey('stock_pulled_out_amount')) {
+      context.handle(
+        _stockPulledOutAmountMeta,
+        stockPulledOutAmount.isAcceptableOrUnknown(
+          data['stock_pulled_out_amount']!,
+          _stockPulledOutAmountMeta,
+        ),
+      );
+    }
+    if (data.containsKey('stock_pulled_out_cost')) {
+      context.handle(
+        _stockPulledOutCostMeta,
+        stockPulledOutCost.isAcceptableOrUnknown(
+          data['stock_pulled_out_cost']!,
+          _stockPulledOutCostMeta,
+        ),
+      );
+    }
     if (data.containsKey('include_in_layout')) {
       context.handle(
         _includeInLayoutMeta,
@@ -3446,6 +3488,14 @@ class $InvoicesTable extends Invoices with TableInfo<$InvoicesTable, Invoice> {
         DriftSqlType.double,
         data['${effectivePrefix}swap_amount'],
       ),
+      stockPulledOutAmount: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}stock_pulled_out_amount'],
+      ),
+      stockPulledOutCost: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}stock_pulled_out_cost'],
+      ),
       includeInLayout: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}include_in_layout'],
@@ -3479,6 +3529,8 @@ class Invoice extends DataClass implements Insertable<Invoice> {
   final String? notes;
   final double? actualAmount;
   final double? swapAmount;
+  final double? stockPulledOutAmount;
+  final double? stockPulledOutCost;
   final bool includeInLayout;
   const Invoice({
     required this.id,
@@ -3500,6 +3552,8 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     this.notes,
     this.actualAmount,
     this.swapAmount,
+    this.stockPulledOutAmount,
+    this.stockPulledOutCost,
     required this.includeInLayout,
   });
   @override
@@ -3545,6 +3599,12 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     }
     if (!nullToAbsent || swapAmount != null) {
       map['swap_amount'] = Variable<double>(swapAmount);
+    }
+    if (!nullToAbsent || stockPulledOutAmount != null) {
+      map['stock_pulled_out_amount'] = Variable<double>(stockPulledOutAmount);
+    }
+    if (!nullToAbsent || stockPulledOutCost != null) {
+      map['stock_pulled_out_cost'] = Variable<double>(stockPulledOutCost);
     }
     map['include_in_layout'] = Variable<bool>(includeInLayout);
     return map;
@@ -3593,6 +3653,12 @@ class Invoice extends DataClass implements Insertable<Invoice> {
       swapAmount: swapAmount == null && nullToAbsent
           ? const Value.absent()
           : Value(swapAmount),
+      stockPulledOutAmount: stockPulledOutAmount == null && nullToAbsent
+          ? const Value.absent()
+          : Value(stockPulledOutAmount),
+      stockPulledOutCost: stockPulledOutCost == null && nullToAbsent
+          ? const Value.absent()
+          : Value(stockPulledOutCost),
       includeInLayout: Value(includeInLayout),
     );
   }
@@ -3622,6 +3688,12 @@ class Invoice extends DataClass implements Insertable<Invoice> {
       notes: serializer.fromJson<String?>(json['notes']),
       actualAmount: serializer.fromJson<double?>(json['actualAmount']),
       swapAmount: serializer.fromJson<double?>(json['swapAmount']),
+      stockPulledOutAmount: serializer.fromJson<double?>(
+        json['stockPulledOutAmount'],
+      ),
+      stockPulledOutCost: serializer.fromJson<double?>(
+        json['stockPulledOutCost'],
+      ),
       includeInLayout: serializer.fromJson<bool>(json['includeInLayout']),
     );
   }
@@ -3648,6 +3720,8 @@ class Invoice extends DataClass implements Insertable<Invoice> {
       'notes': serializer.toJson<String?>(notes),
       'actualAmount': serializer.toJson<double?>(actualAmount),
       'swapAmount': serializer.toJson<double?>(swapAmount),
+      'stockPulledOutAmount': serializer.toJson<double?>(stockPulledOutAmount),
+      'stockPulledOutCost': serializer.toJson<double?>(stockPulledOutCost),
       'includeInLayout': serializer.toJson<bool>(includeInLayout),
     };
   }
@@ -3672,6 +3746,8 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     Value<String?> notes = const Value.absent(),
     Value<double?> actualAmount = const Value.absent(),
     Value<double?> swapAmount = const Value.absent(),
+    Value<double?> stockPulledOutAmount = const Value.absent(),
+    Value<double?> stockPulledOutCost = const Value.absent(),
     bool? includeInLayout,
   }) => Invoice(
     id: id ?? this.id,
@@ -3703,6 +3779,12 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     notes: notes.present ? notes.value : this.notes,
     actualAmount: actualAmount.present ? actualAmount.value : this.actualAmount,
     swapAmount: swapAmount.present ? swapAmount.value : this.swapAmount,
+    stockPulledOutAmount: stockPulledOutAmount.present
+        ? stockPulledOutAmount.value
+        : this.stockPulledOutAmount,
+    stockPulledOutCost: stockPulledOutCost.present
+        ? stockPulledOutCost.value
+        : this.stockPulledOutCost,
     includeInLayout: includeInLayout ?? this.includeInLayout,
   );
   Invoice copyWithCompanion(InvoicesCompanion data) {
@@ -3754,6 +3836,12 @@ class Invoice extends DataClass implements Insertable<Invoice> {
       swapAmount: data.swapAmount.present
           ? data.swapAmount.value
           : this.swapAmount,
+      stockPulledOutAmount: data.stockPulledOutAmount.present
+          ? data.stockPulledOutAmount.value
+          : this.stockPulledOutAmount,
+      stockPulledOutCost: data.stockPulledOutCost.present
+          ? data.stockPulledOutCost.value
+          : this.stockPulledOutCost,
       includeInLayout: data.includeInLayout.present
           ? data.includeInLayout.value
           : this.includeInLayout,
@@ -3782,13 +3870,15 @@ class Invoice extends DataClass implements Insertable<Invoice> {
           ..write('notes: $notes, ')
           ..write('actualAmount: $actualAmount, ')
           ..write('swapAmount: $swapAmount, ')
+          ..write('stockPulledOutAmount: $stockPulledOutAmount, ')
+          ..write('stockPulledOutCost: $stockPulledOutCost, ')
           ..write('includeInLayout: $includeInLayout')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     clientId,
     invoiceDate,
@@ -3808,8 +3898,10 @@ class Invoice extends DataClass implements Insertable<Invoice> {
     notes,
     actualAmount,
     swapAmount,
+    stockPulledOutAmount,
+    stockPulledOutCost,
     includeInLayout,
-  );
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -3833,6 +3925,8 @@ class Invoice extends DataClass implements Insertable<Invoice> {
           other.notes == this.notes &&
           other.actualAmount == this.actualAmount &&
           other.swapAmount == this.swapAmount &&
+          other.stockPulledOutAmount == this.stockPulledOutAmount &&
+          other.stockPulledOutCost == this.stockPulledOutCost &&
           other.includeInLayout == this.includeInLayout);
 }
 
@@ -3856,6 +3950,8 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
   final Value<String?> notes;
   final Value<double?> actualAmount;
   final Value<double?> swapAmount;
+  final Value<double?> stockPulledOutAmount;
+  final Value<double?> stockPulledOutCost;
   final Value<bool> includeInLayout;
   final Value<int> rowid;
   const InvoicesCompanion({
@@ -3878,6 +3974,8 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     this.notes = const Value.absent(),
     this.actualAmount = const Value.absent(),
     this.swapAmount = const Value.absent(),
+    this.stockPulledOutAmount = const Value.absent(),
+    this.stockPulledOutCost = const Value.absent(),
     this.includeInLayout = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -3901,6 +3999,8 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     this.notes = const Value.absent(),
     this.actualAmount = const Value.absent(),
     this.swapAmount = const Value.absent(),
+    this.stockPulledOutAmount = const Value.absent(),
+    this.stockPulledOutCost = const Value.absent(),
     this.includeInLayout = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
@@ -3925,6 +4025,8 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     Expression<String>? notes,
     Expression<double>? actualAmount,
     Expression<double>? swapAmount,
+    Expression<double>? stockPulledOutAmount,
+    Expression<double>? stockPulledOutCost,
     Expression<bool>? includeInLayout,
     Expression<int>? rowid,
   }) {
@@ -3948,6 +4050,10 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
       if (notes != null) 'notes': notes,
       if (actualAmount != null) 'actual_amount': actualAmount,
       if (swapAmount != null) 'swap_amount': swapAmount,
+      if (stockPulledOutAmount != null)
+        'stock_pulled_out_amount': stockPulledOutAmount,
+      if (stockPulledOutCost != null)
+        'stock_pulled_out_cost': stockPulledOutCost,
       if (includeInLayout != null) 'include_in_layout': includeInLayout,
       if (rowid != null) 'rowid': rowid,
     });
@@ -3973,6 +4079,8 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     Value<String?>? notes,
     Value<double?>? actualAmount,
     Value<double?>? swapAmount,
+    Value<double?>? stockPulledOutAmount,
+    Value<double?>? stockPulledOutCost,
     Value<bool>? includeInLayout,
     Value<int>? rowid,
   }) {
@@ -3996,6 +4104,8 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
       notes: notes ?? this.notes,
       actualAmount: actualAmount ?? this.actualAmount,
       swapAmount: swapAmount ?? this.swapAmount,
+      stockPulledOutAmount: stockPulledOutAmount ?? this.stockPulledOutAmount,
+      stockPulledOutCost: stockPulledOutCost ?? this.stockPulledOutCost,
       includeInLayout: includeInLayout ?? this.includeInLayout,
       rowid: rowid ?? this.rowid,
     );
@@ -4061,6 +4171,14 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
     if (swapAmount.present) {
       map['swap_amount'] = Variable<double>(swapAmount.value);
     }
+    if (stockPulledOutAmount.present) {
+      map['stock_pulled_out_amount'] = Variable<double>(
+        stockPulledOutAmount.value,
+      );
+    }
+    if (stockPulledOutCost.present) {
+      map['stock_pulled_out_cost'] = Variable<double>(stockPulledOutCost.value);
+    }
     if (includeInLayout.present) {
       map['include_in_layout'] = Variable<bool>(includeInLayout.value);
     }
@@ -4092,6 +4210,8 @@ class InvoicesCompanion extends UpdateCompanion<Invoice> {
           ..write('notes: $notes, ')
           ..write('actualAmount: $actualAmount, ')
           ..write('swapAmount: $swapAmount, ')
+          ..write('stockPulledOutAmount: $stockPulledOutAmount, ')
+          ..write('stockPulledOutCost: $stockPulledOutCost, ')
           ..write('includeInLayout: $includeInLayout, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -5310,6 +5430,17 @@ class $BadOrdersTable extends BadOrders
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _invoiceIdMeta = const VerificationMeta(
+    'invoiceId',
+  );
+  @override
+  late final GeneratedColumn<String> invoiceId = GeneratedColumn<String>(
+    'invoice_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -5318,6 +5449,7 @@ class $BadOrdersTable extends BadOrders
     type,
     notes,
     createdAt,
+    invoiceId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -5370,6 +5502,12 @@ class $BadOrdersTable extends BadOrders
         createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
       );
     }
+    if (data.containsKey('invoice_id')) {
+      context.handle(
+        _invoiceIdMeta,
+        invoiceId.isAcceptableOrUnknown(data['invoice_id']!, _invoiceIdMeta),
+      );
+    }
     return context;
   }
 
@@ -5403,6 +5541,10 @@ class $BadOrdersTable extends BadOrders
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      invoiceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}invoice_id'],
+      ),
     );
   }
 
@@ -5419,6 +5561,7 @@ class BadOrder extends DataClass implements Insertable<BadOrder> {
   final String type;
   final String? notes;
   final DateTime createdAt;
+  final String? invoiceId;
   const BadOrder({
     required this.id,
     required this.clientId,
@@ -5426,6 +5569,7 @@ class BadOrder extends DataClass implements Insertable<BadOrder> {
     required this.type,
     this.notes,
     required this.createdAt,
+    this.invoiceId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -5438,6 +5582,9 @@ class BadOrder extends DataClass implements Insertable<BadOrder> {
       map['notes'] = Variable<String>(notes);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || invoiceId != null) {
+      map['invoice_id'] = Variable<String>(invoiceId);
+    }
     return map;
   }
 
@@ -5451,6 +5598,9 @@ class BadOrder extends DataClass implements Insertable<BadOrder> {
           ? const Value.absent()
           : Value(notes),
       createdAt: Value(createdAt),
+      invoiceId: invoiceId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(invoiceId),
     );
   }
 
@@ -5466,6 +5616,7 @@ class BadOrder extends DataClass implements Insertable<BadOrder> {
       type: serializer.fromJson<String>(json['type']),
       notes: serializer.fromJson<String?>(json['notes']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      invoiceId: serializer.fromJson<String?>(json['invoiceId']),
     );
   }
   @override
@@ -5478,6 +5629,7 @@ class BadOrder extends DataClass implements Insertable<BadOrder> {
       'type': serializer.toJson<String>(type),
       'notes': serializer.toJson<String?>(notes),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'invoiceId': serializer.toJson<String?>(invoiceId),
     };
   }
 
@@ -5488,6 +5640,7 @@ class BadOrder extends DataClass implements Insertable<BadOrder> {
     String? type,
     Value<String?> notes = const Value.absent(),
     DateTime? createdAt,
+    Value<String?> invoiceId = const Value.absent(),
   }) => BadOrder(
     id: id ?? this.id,
     clientId: clientId ?? this.clientId,
@@ -5495,6 +5648,7 @@ class BadOrder extends DataClass implements Insertable<BadOrder> {
     type: type ?? this.type,
     notes: notes.present ? notes.value : this.notes,
     createdAt: createdAt ?? this.createdAt,
+    invoiceId: invoiceId.present ? invoiceId.value : this.invoiceId,
   );
   BadOrder copyWithCompanion(BadOrdersCompanion data) {
     return BadOrder(
@@ -5504,6 +5658,7 @@ class BadOrder extends DataClass implements Insertable<BadOrder> {
       type: data.type.present ? data.type.value : this.type,
       notes: data.notes.present ? data.notes.value : this.notes,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      invoiceId: data.invoiceId.present ? data.invoiceId.value : this.invoiceId,
     );
   }
 
@@ -5515,13 +5670,15 @@ class BadOrder extends DataClass implements Insertable<BadOrder> {
           ..write('date: $date, ')
           ..write('type: $type, ')
           ..write('notes: $notes, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('invoiceId: $invoiceId')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, clientId, date, type, notes, createdAt);
+  int get hashCode =>
+      Object.hash(id, clientId, date, type, notes, createdAt, invoiceId);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -5531,7 +5688,8 @@ class BadOrder extends DataClass implements Insertable<BadOrder> {
           other.date == this.date &&
           other.type == this.type &&
           other.notes == this.notes &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.invoiceId == this.invoiceId);
 }
 
 class BadOrdersCompanion extends UpdateCompanion<BadOrder> {
@@ -5541,6 +5699,7 @@ class BadOrdersCompanion extends UpdateCompanion<BadOrder> {
   final Value<String> type;
   final Value<String?> notes;
   final Value<DateTime> createdAt;
+  final Value<String?> invoiceId;
   final Value<int> rowid;
   const BadOrdersCompanion({
     this.id = const Value.absent(),
@@ -5549,6 +5708,7 @@ class BadOrdersCompanion extends UpdateCompanion<BadOrder> {
     this.type = const Value.absent(),
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.invoiceId = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   BadOrdersCompanion.insert({
@@ -5558,6 +5718,7 @@ class BadOrdersCompanion extends UpdateCompanion<BadOrder> {
     required String type,
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.invoiceId = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        clientId = Value(clientId),
@@ -5569,6 +5730,7 @@ class BadOrdersCompanion extends UpdateCompanion<BadOrder> {
     Expression<String>? type,
     Expression<String>? notes,
     Expression<DateTime>? createdAt,
+    Expression<String>? invoiceId,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -5578,6 +5740,7 @@ class BadOrdersCompanion extends UpdateCompanion<BadOrder> {
       if (type != null) 'type': type,
       if (notes != null) 'notes': notes,
       if (createdAt != null) 'created_at': createdAt,
+      if (invoiceId != null) 'invoice_id': invoiceId,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -5589,6 +5752,7 @@ class BadOrdersCompanion extends UpdateCompanion<BadOrder> {
     Value<String>? type,
     Value<String?>? notes,
     Value<DateTime>? createdAt,
+    Value<String?>? invoiceId,
     Value<int>? rowid,
   }) {
     return BadOrdersCompanion(
@@ -5598,6 +5762,7 @@ class BadOrdersCompanion extends UpdateCompanion<BadOrder> {
       type: type ?? this.type,
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
+      invoiceId: invoiceId ?? this.invoiceId,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -5623,6 +5788,9 @@ class BadOrdersCompanion extends UpdateCompanion<BadOrder> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (invoiceId.present) {
+      map['invoice_id'] = Variable<String>(invoiceId.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -5638,6 +5806,7 @@ class BadOrdersCompanion extends UpdateCompanion<BadOrder> {
           ..write('type: $type, ')
           ..write('notes: $notes, ')
           ..write('createdAt: $createdAt, ')
+          ..write('invoiceId: $invoiceId, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -15475,6 +15644,8 @@ typedef $$InvoicesTableCreateCompanionBuilder =
       Value<String?> notes,
       Value<double?> actualAmount,
       Value<double?> swapAmount,
+      Value<double?> stockPulledOutAmount,
+      Value<double?> stockPulledOutCost,
       Value<bool> includeInLayout,
       Value<int> rowid,
     });
@@ -15499,6 +15670,8 @@ typedef $$InvoicesTableUpdateCompanionBuilder =
       Value<String?> notes,
       Value<double?> actualAmount,
       Value<double?> swapAmount,
+      Value<double?> stockPulledOutAmount,
+      Value<double?> stockPulledOutCost,
       Value<bool> includeInLayout,
       Value<int> rowid,
     });
@@ -15690,6 +15863,16 @@ class $$InvoicesTableFilterComposer
 
   ColumnFilters<double> get swapAmount => $composableBuilder(
     column: $table.swapAmount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get stockPulledOutAmount => $composableBuilder(
+    column: $table.stockPulledOutAmount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get stockPulledOutCost => $composableBuilder(
+    column: $table.stockPulledOutCost,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -15896,6 +16079,16 @@ class $$InvoicesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<double> get stockPulledOutAmount => $composableBuilder(
+    column: $table.stockPulledOutAmount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get stockPulledOutCost => $composableBuilder(
+    column: $table.stockPulledOutCost,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get includeInLayout => $composableBuilder(
     column: $table.includeInLayout,
     builder: (column) => ColumnOrderings(column),
@@ -16013,6 +16206,16 @@ class $$InvoicesTableAnnotationComposer
 
   GeneratedColumn<double> get swapAmount => $composableBuilder(
     column: $table.swapAmount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get stockPulledOutAmount => $composableBuilder(
+    column: $table.stockPulledOutAmount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get stockPulledOutCost => $composableBuilder(
+    column: $table.stockPulledOutCost,
     builder: (column) => column,
   );
 
@@ -16173,6 +16376,8 @@ class $$InvoicesTableTableManager
                 Value<String?> notes = const Value.absent(),
                 Value<double?> actualAmount = const Value.absent(),
                 Value<double?> swapAmount = const Value.absent(),
+                Value<double?> stockPulledOutAmount = const Value.absent(),
+                Value<double?> stockPulledOutCost = const Value.absent(),
                 Value<bool> includeInLayout = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => InvoicesCompanion(
@@ -16195,6 +16400,8 @@ class $$InvoicesTableTableManager
                 notes: notes,
                 actualAmount: actualAmount,
                 swapAmount: swapAmount,
+                stockPulledOutAmount: stockPulledOutAmount,
+                stockPulledOutCost: stockPulledOutCost,
                 includeInLayout: includeInLayout,
                 rowid: rowid,
               ),
@@ -16219,6 +16426,8 @@ class $$InvoicesTableTableManager
                 Value<String?> notes = const Value.absent(),
                 Value<double?> actualAmount = const Value.absent(),
                 Value<double?> swapAmount = const Value.absent(),
+                Value<double?> stockPulledOutAmount = const Value.absent(),
+                Value<double?> stockPulledOutCost = const Value.absent(),
                 Value<bool> includeInLayout = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => InvoicesCompanion.insert(
@@ -16241,6 +16450,8 @@ class $$InvoicesTableTableManager
                 notes: notes,
                 actualAmount: actualAmount,
                 swapAmount: swapAmount,
+                stockPulledOutAmount: stockPulledOutAmount,
+                stockPulledOutCost: stockPulledOutCost,
                 includeInLayout: includeInLayout,
                 rowid: rowid,
               ),
@@ -17391,6 +17602,7 @@ typedef $$BadOrdersTableCreateCompanionBuilder =
       required String type,
       Value<String?> notes,
       Value<DateTime> createdAt,
+      Value<String?> invoiceId,
       Value<int> rowid,
     });
 typedef $$BadOrdersTableUpdateCompanionBuilder =
@@ -17401,6 +17613,7 @@ typedef $$BadOrdersTableUpdateCompanionBuilder =
       Value<String> type,
       Value<String?> notes,
       Value<DateTime> createdAt,
+      Value<String?> invoiceId,
       Value<int> rowid,
     });
 
@@ -17478,6 +17691,11 @@ class $$BadOrdersTableFilterComposer
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get invoiceId => $composableBuilder(
+    column: $table.invoiceId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -17564,6 +17782,11 @@ class $$BadOrdersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get invoiceId => $composableBuilder(
+    column: $table.invoiceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$ClientsTableOrderingComposer get clientId {
     final $$ClientsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -17611,6 +17834,9 @@ class $$BadOrdersTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get invoiceId =>
+      $composableBuilder(column: $table.invoiceId, builder: (column) => column);
 
   $$ClientsTableAnnotationComposer get clientId {
     final $$ClientsTableAnnotationComposer composer = $composerBuilder(
@@ -17695,6 +17921,7 @@ class $$BadOrdersTableTableManager
                 Value<String> type = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<String?> invoiceId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => BadOrdersCompanion(
                 id: id,
@@ -17703,6 +17930,7 @@ class $$BadOrdersTableTableManager
                 type: type,
                 notes: notes,
                 createdAt: createdAt,
+                invoiceId: invoiceId,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -17713,6 +17941,7 @@ class $$BadOrdersTableTableManager
                 required String type,
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<String?> invoiceId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => BadOrdersCompanion.insert(
                 id: id,
@@ -17721,6 +17950,7 @@ class $$BadOrdersTableTableManager
                 type: type,
                 notes: notes,
                 createdAt: createdAt,
+                invoiceId: invoiceId,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

@@ -8,6 +8,7 @@ import '../../models/bad_order.dart';
 import '../../models/bad_order_draft.dart';
 import '../../models/bad_order_item.dart';
 import '../../models/client.dart';
+import '../../models/invoice.dart';
 import '../../models/product.dart';
 import '../../repositories/bad_order_repository.dart';
 import '../../repositories/client_repository.dart';
@@ -266,10 +267,14 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
     final listAsync = ref.watch(badOrdersListProvider);
     final clientsAsync = ref.watch(clientsListProvider);
     final draftsAsync = ref.watch(badOrderDraftsProvider);
+    final invoicesAsync = ref.watch(invoicesListProvider);
     final dateFmt = DateFormat('MMM dd, yyyy');
 
     final clientsMap = <String, Client>{
       for (final c in clientsAsync.valueOrNull ?? []) c.id: c,
+    };
+    final invoicesById = <String, Invoice>{
+      for (final inv in invoicesAsync.valueOrNull ?? []) inv.id: inv,
     };
 
     return AppScaffold(
@@ -374,6 +379,7 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
                     ('bad_order', 'Bad Order'),
                     ('return', 'Return'),
                     ('stock_release', 'Stock Release'),
+                    ('stock_pulled_out', 'Stock Pulled Out'),
                   ])
                     Padding(
                       padding: const EdgeInsets.only(right: 6),
@@ -443,7 +449,13 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
             child: TabBarView(
               controller: _tabs,
               children: [
-                _buildListTab(listAsync, draftsAsync, clientsMap, dateFmt),
+                _buildListTab(
+                  listAsync,
+                  draftsAsync,
+                  clientsMap,
+                  dateFmt,
+                  invoicesById,
+                ),
                 listAsync.when(
                   loading: () =>
                       const Center(child: CircularProgressIndicator()),
@@ -466,6 +478,7 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
     AsyncValue<List<BadOrderDraft>> draftsAsync,
     Map<String, Client> clientsMap,
     DateFormat dateFmt,
+    Map<String, Invoice> invoicesById,
   ) {
     return Column(
       children: [
@@ -584,14 +597,19 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
                       itemBuilder: (ctx, i) {
                         final o = filtered[i];
                         final client = clientsMap[o.clientId];
+                        final linkedInvoice = o.invoiceId == null
+                            ? null
+                            : invoicesById[o.invoiceId];
                         return ListTile(
                           leading: Icon(
                             o.isReturn
                                 ? Icons.undo
                                 : o.isStockRelease
                                 ? Icons.output
+                                : o.isStockPulledOut
+                                ? Icons.move_down
                                 : Icons.remove_shopping_cart,
-                            color: o.isReturn
+                            color: o.restoresInventory
                                 ? Colors.green
                                 : o.isStockRelease
                                 ? Colors.red
@@ -601,7 +619,9 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
                             '${o.typeLabel} — ${client?.name ?? o.clientId}',
                           ),
                           subtitle: Text(
-                            '${dateFmt.format(o.date)}${o.notes != null ? ' • ${o.notes}' : ''}',
+                            '${dateFmt.format(o.date)}'
+                            '${o.notes != null ? ' • ${o.notes}' : ''}'
+                            '${linkedInvoice != null ? ' • Invoice ${linkedInvoice.displayNumber}' : ''}',
                           ),
                           onTap: () => _showDetail(context, ref, o, client),
                           trailing: Row(
@@ -631,6 +651,11 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
                                         .read(badOrderRepositoryProvider)
                                         .delete(o.id);
                                     ref.invalidate(badOrdersListProvider);
+                                    if (o.isStockPulledOut &&
+                                        o.invoiceId != null) {
+                                      ref.invalidate(invoicesListProvider);
+                                      ref.invalidate(filteredInvoicesProvider);
+                                    }
                                   }
                                 },
                               ),
@@ -873,6 +898,16 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
     return KeyEventResult.ignored;
   }
 
+  // Stock Pulled out entries recompute the linked invoice's totals as a
+  // side effect of item mutations — refresh Invoice screens so they pick
+  // it up immediately.
+  void _invalidateInvoiceIfLinked() {
+    if (widget.order.isStockPulledOut && widget.order.invoiceId != null) {
+      ref.invalidate(invoicesListProvider);
+      ref.invalidate(filteredInvoicesProvider);
+    }
+  }
+
   Future<void> _loadData() async {
     if (!mounted) return;
     setState(() => _loading = true);
@@ -972,7 +1007,8 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
     final showAll =
         widget.client == null ||
         widget.client!.id == ClientRepository.noClientId ||
-        widget.order.isStockRelease;
+        widget.order.isStockRelease ||
+        widget.order.isStockPulledOut;
     final orderedProductIds = showAll ? null : await _loadOrderedProductIds();
 
     if (!mounted) return;
@@ -1001,14 +1037,14 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
       return;
     }
 
-    final isReturn = widget.order.isReturn;
+    final restoresInventory = widget.order.restoresInventory;
     final product = await showSearchPicker<Product>(
       context: context,
       title: 'Select Product',
       items: candidates,
       labelOf: (p) => p.name,
       searchableOf: (p) => '${p.name} ${p.productCode ?? ''}',
-      subtitleOf: isReturn
+      subtitleOf: restoresInventory
           ? null
           : (p) {
               final qty = _inventoryQty[p.id] ?? 0;
@@ -1022,7 +1058,8 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
     if (product == null || !mounted) return;
 
     final piecesPerBox = product.piecesPerBox;
-    final maxPieces = isReturn ? null : (_inventoryQty[product.id] ?? 0);
+    final maxPieces =
+        restoresInventory ? null : (_inventoryQty[product.id] ?? 0);
 
     String unitType = 'piece';
     final qtyCtrl = TextEditingController();
@@ -1125,6 +1162,7 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
         );
     ref.invalidate(badOrdersListProvider);
     ref.invalidate(inventoryListProvider);
+    _invalidateInvoiceIfLinked();
     await _loadData();
     if (!mounted) return;
     final idx = _items.indexWhere((i) => i.id == newItem.id);
@@ -1141,9 +1179,9 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
     // For bad orders the old deduction is already in the DB, so effective
     // available = current stock + old pieces back − pieces held by other
     // lines for this same product.
-    // Returns have no stock constraint (they add stock back).
+    // Returns/stock-pulled-out have no stock constraint (they add stock back).
     int? maxPieces;
-    if (!widget.order.isReturn) {
+    if (!widget.order.restoresInventory) {
       int otherCommitted = 0;
       for (final other in _items) {
         if (other.id == item.id || other.productId != item.productId) continue;
@@ -1247,6 +1285,7 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
         );
     ref.invalidate(badOrdersListProvider);
     ref.invalidate(inventoryListProvider);
+    _invalidateInvoiceIfLinked();
     await _loadData();
   }
 
@@ -1271,6 +1310,7 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
         );
     ref.invalidate(badOrdersListProvider);
     ref.invalidate(inventoryListProvider);
+    _invalidateInvoiceIfLinked();
 
     await _loadData();
 
@@ -1312,8 +1352,10 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
                       ? Icons.undo
                       : widget.order.isStockRelease
                       ? Icons.output
+                      : widget.order.isStockPulledOut
+                      ? Icons.move_down
                       : Icons.remove_shopping_cart,
-                  color: widget.order.isReturn
+                  color: widget.order.restoresInventory
                       ? Colors.green
                       : widget.order.isStockRelease
                       ? Colors.red
@@ -1410,47 +1452,43 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
                           : '$pcs pcs';
                     }
                     final amount = _amounts[item.id] ?? 0.0;
-                    return Container(
+                    return ListTile(
                       key: i < _itemKeys.length ? _itemKeys[i] : null,
-                      color: isSelected
-                          ? Theme.of(
-                              context,
-                            ).colorScheme.primary.withValues(alpha: 0.1)
-                          : null,
-                      child: ListTile(
-                        selected: isSelected,
-                        onTap: () => _selectItem(i),
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(product?.name ?? item.productId),
-                        subtitle: Text(
-                          qtyLabel,
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              formatCurrency(amount),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w500,
-                              ),
+                      selected: isSelected,
+                      selectedTileColor: Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: 0.1),
+                      onTap: () => _selectItem(i),
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(product?.name ?? item.productId),
+                      subtitle: Text(
+                        qtyLabel,
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            formatCurrency(amount),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w500,
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.edit_outlined, size: 20),
-                              tooltip: 'Edit item',
-                              onPressed: () => _editItem(item),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined, size: 20),
+                            tooltip: 'Edit item',
+                            onPressed: () => _editItem(item),
+                          ),
+                          IconButton(
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.red,
+                              size: 20,
                             ),
-                            IconButton(
-                              icon: const Icon(
-                                Icons.delete_outline,
-                                color: Colors.red,
-                                size: 20,
-                              ),
-                              tooltip: 'Delete item',
-                              onPressed: () => _deleteItem(item),
-                            ),
-                          ],
-                        ),
+                            tooltip: 'Delete item',
+                            onPressed: () => _deleteItem(item),
+                          ),
+                        ],
                       ),
                     );
                   },

@@ -13,6 +13,7 @@ import '../../models/product.dart';
 import '../../models/product_price.dart';
 import '../../models/product_discount.dart';
 import '../../models/invoice_payment.dart';
+import '../../core/services/app_settings_service.dart';
 import '../../repositories/client_repository.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_payment_repository.dart';
@@ -458,6 +459,12 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   double get _netTotal =>
       (_total - (_swapAmount ?? 0)).clamp(0.0, double.infinity);
 
+  /// [_netTotal] further reduced by any linked "Stock Pulled out" amount —
+  /// display-only; never written back as `totalAmount` on save.
+  double get _displayTotal =>
+      (_netTotal - (_invoice?.stockPulledOutAmount ?? 0))
+          .clamp(0.0, double.infinity);
+
   bool get _canSave {
     if (_selectedClient == null || _editItems.isEmpty) return false;
     // Block saving while a fully-entered payment (amount + date) is still
@@ -651,6 +658,8 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final isCancelled = _invoice?.status == 'cancelled';
+    final allowDeleteCancelled =
+        ref.watch(allowDeleteCancelledInvoicesProvider).valueOrNull ?? true;
     final dateFmt = DateFormat('MMM dd, yyyy HH:mm');
 
     return AppScaffold(
@@ -675,11 +684,12 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
             tooltip: 'Restore Invoice',
             onPressed: _saving ? null : _restoreInvoice,
           ),
-          IconButton(
-            icon: const Icon(Icons.delete_forever, color: Colors.red),
-            tooltip: 'Delete Permanently',
-            onPressed: _saving ? null : _permanentlyDeleteInvoice,
-          ),
+          if (allowDeleteCancelled)
+            IconButton(
+              icon: const Icon(Icons.delete_forever, color: Colors.red),
+              tooltip: 'Delete Permanently',
+              onPressed: _saving ? null : _permanentlyDeleteInvoice,
+            ),
         ],
       ],
       body: _loading
@@ -1414,8 +1424,16 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                                       fontWeight: FontWeight.bold),
                                 ),
                               ],
+                              if ((_invoice?.stockPulledOutAmount ?? 0) > 0)
+                                Text(
+                                  'Stock Pulled Out: -${formatCurrency(_invoice!.stockPulledOutAmount!)}',
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.red,
+                                      fontWeight: FontWeight.bold),
+                                ),
                               Text(
-                                'Total: ${formatCurrency(_netTotal)}',
+                                'Total: ${formatCurrency(_displayTotal)}',
                                 style: const TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold),
@@ -1525,9 +1543,19 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                       fontWeight: FontWeight.bold)),
             ),
           ],
+          if ((_invoice?.stockPulledOutAmount ?? 0) > 0)
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                  'Stock Pulled Out: -${formatCurrency(_invoice!.stockPulledOutAmount!)}',
+                  style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.red,
+                      fontWeight: FontWeight.bold)),
+            ),
           Align(
             alignment: Alignment.centerRight,
-            child: Text('Total: ${formatCurrency(_netTotal)}',
+            child: Text('Total: ${formatCurrency(_displayTotal)}',
                 style: const TextStyle(
                     fontSize: 16, fontWeight: FontWeight.bold)),
           ),

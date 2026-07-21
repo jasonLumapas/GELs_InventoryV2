@@ -139,6 +139,11 @@ class Invoices extends Table {
   RealColumn get actualAmount => real().nullable()();
   // Optional: amount deducted from the invoice total for swapped items.
   RealColumn get swapAmount => real().nullable()();
+  // Repository-maintained: sum of the sale value / cost of all linked
+  // "Stock Pulled out" bad-order entries, recomputed from live current
+  // prices whenever a linked entry is created, edited, or deleted.
+  RealColumn get stockPulledOutAmount => real().nullable()();
+  RealColumn get stockPulledOutCost => real().nullable()();
   // Whether this invoice should be counted in the Layout (Order Summary)
   // screen for its invoice date. Only relevant for delivery invoices.
   BoolColumn get includeInLayout =>
@@ -189,11 +194,15 @@ class BadOrders extends Table {
   TextColumn get id => text()();
   TextColumn get clientId => text().references(Clients, #id)();
   DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
-  // type: 'bad_order' | 'return'
+  // type: 'bad_order' | 'return' | 'stock_release' | 'stock_pulled_out'
   TextColumn get type => text()();
   TextColumn get notes => text().nullable()();
   DateTimeColumn get createdAt =>
       dateTime().withDefault(currentDateAndTime)();
+  // 'stock_pulled_out' only: the invoice this entry is linked to. Not a
+  // constrained FK (nullable, unconstrained, like BadOrderDrafts.clientId)
+  // so a plain ALTER TABLE ADD COLUMN migration suffices.
+  TextColumn get invoiceId => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -437,7 +446,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 36;
+  int get schemaVersion => 37;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -605,6 +614,14 @@ class LocalDatabase extends _$LocalDatabase {
           if (from < 36) {
             await _addColumnIfMissing(
                 m.database, 'invoices', 'swap_amount', 'REAL');
+          }
+          if (from < 37) {
+            await _addColumnIfMissing(
+                m.database, 'bad_orders', 'invoice_id', 'TEXT');
+            await _addColumnIfMissing(
+                m.database, 'invoices', 'stock_pulled_out_amount', 'REAL');
+            await _addColumnIfMissing(
+                m.database, 'invoices', 'stock_pulled_out_cost', 'REAL');
           }
         },
       );

@@ -242,7 +242,9 @@ Future<({pw.Document doc, PdfPageFormat format})> _buildInvoiceDoc({
 
   // ── Total section ────────────────────────────────────────────────────────────
   final itemCountLabel = '${items.length} item${items.length == 1 ? '' : 's'}';
-  final hasAdjustment  = (invoice.swapAmount ?? 0) > 0;
+  final hasSwapAdjustment = (invoice.swapAmount ?? 0) > 0;
+  final hasStockPulledOut = (invoice.stockPulledOutAmount ?? 0) > 0;
+  final hasAdjustment  = hasSwapAdjustment || hasStockPulledOut;
   final subtotalAmt    = invoice.totalAmount + (invoice.swapAmount ?? 0);
   final totalSection = pw.Column(
     mainAxisSize: pw.MainAxisSize.min,
@@ -256,24 +258,34 @@ Future<({pw.Document doc, PdfPageFormat format})> _buildInvoiceDoc({
           pw.Text(
               hasAdjustment
                   ? "Subtotal = ${_n(subtotalAmt)}"
-                  : "Total = ${_n(invoice.totalAmount)}",
+                  : "Total = ${_n(invoice.netTotal)}",
               style: hasAdjustment
                   ? tsSmall
                   : pw.TextStyle(font: fontTahoma, fontSize: 12.0)),
         ],
       ),
       if (hasAdjustment) ...[
+        if (hasSwapAdjustment)
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.end,
+            children: [
+              pw.Text("Adjustment = -${_n(invoice.swapAmount!)}",
+                  style: pw.TextStyle(font: fontBold, fontSize: fs)),
+            ],
+          ),
+        if (hasStockPulledOut)
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.end,
+            children: [
+              pw.Text(
+                  "Stock Pulled Out = -${_n(invoice.stockPulledOutAmount!)}",
+                  style: pw.TextStyle(font: fontBold, fontSize: fs)),
+            ],
+          ),
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.end,
           children: [
-            pw.Text("Adjustment = -${_n(invoice.swapAmount!)}",
-                style: pw.TextStyle(font: fontBold, fontSize: fs)),
-          ],
-        ),
-        pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.end,
-          children: [
-            pw.Text("Total = ${_n(invoice.totalAmount)}",
+            pw.Text("Total = ${_n(invoice.netTotal)}",
                 style: pw.TextStyle(font: fontTahoma, fontSize: 12.0)),
           ],
         ),

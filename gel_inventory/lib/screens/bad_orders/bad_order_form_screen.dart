@@ -11,6 +11,7 @@ import '../../models/bad_order.dart';
 import '../../models/bad_order_draft.dart';
 import '../../models/bad_order_item.dart';
 import '../../models/client.dart';
+import '../../models/invoice.dart';
 import '../../models/product.dart';
 import '../../repositories/bad_order_repository.dart';
 import '../../repositories/client_repository.dart';
@@ -42,13 +43,16 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
   List<Client> _clients = [];
   List<Product> _products = [];
   Client? _selectedClient;
-  String _type = 'bad_order'; // 'bad_order' | 'return' | 'stock_release'
+  String _type = 'bad_order'; // 'bad_order' | 'return' | 'stock_release' | 'stock_pulled_out'
   DateTime _selectedDate = DateTime.now();
   final List<_BoItem> _items = [];
   Map<String, int> _inventoryQty = {};
   Map<String, double> _prices = {};
+  Map<String, double> _costPrices = {};
   Map<String, String> _suppliersById = {};
   String? _reason; // stock_release only; stored in notes column
+  List<Invoice> _invoices = [];
+  Invoice? _selectedInvoice; // stock_pulled_out only
   bool _loading = true;
   bool _saving = false;
   Set<String> _orderedProductIds = {};
@@ -77,11 +81,16 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
     final invFuture = ref.read(inventoryRepositoryProvider).getAll();
     final suppliersFuture = ref.read(supplierRepositoryProvider).getAll();
     final pricesFuture = ref.read(productRepositoryProvider).getAllCurrentPrices();
+    final costPricesFuture =
+        ref.read(productRepositoryProvider).getAllCurrentCostPrices();
+    final invoicesFuture = ref.read(invoiceRepositoryProvider).getAll();
     _clients = await clientsFuture;
     _products = await productsFuture;
     final invItems = await invFuture;
     final suppliers = await suppliersFuture;
     _prices = await pricesFuture;
+    _costPrices = await costPricesFuture;
+    _invoices = await invoicesFuture;
     _allowNoClient = await AppSettingsService.getAllowBadOrderNoClient();
     _inventoryQty = {for (final i in invItems) i.productId: i.quantityPieces};
     _suppliersById = {for (final s in suppliers) s.id: s.name};
@@ -142,19 +151,22 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
     _autoSaveTimer = Timer(const Duration(seconds: 2), _autoSaveDraft);
   }
 
+  bool get _clientOptional =>
+      _type == 'stock_release' || _type == 'stock_pulled_out';
+
   bool get _hasDraftContent =>
-      (_selectedClient != null || _noClient || _type == 'stock_release') &&
+      (_selectedClient != null || _noClient || _clientOptional) &&
       _items.isNotEmpty;
 
   BadOrderDraft _buildDraftPayload() => BadOrderDraft(
     id: _draftId,
     type: _type,
     clientId:
-        (_noClient || (_type == 'stock_release' && _selectedClient == null))
+        (_noClient || (_clientOptional && _selectedClient == null))
         ? null
         : _selectedClient?.id,
     noClient:
-        _noClient || (_type == 'stock_release' && _selectedClient == null),
+        _noClient || (_clientOptional && _selectedClient == null),
     date: _selectedDate,
     notes: _type == 'stock_release'
         ? _reason
@@ -184,6 +196,15 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
     (sum, item) => sum + item.quantityInPieces * (_prices[item.productId] ?? 0),
   );
 
+  double get _profitTotal => _items.fold(
+    0.0,
+    (sum, item) =>
+        sum +
+        item.quantityInPieces *
+            ((_prices[item.productId] ?? 0) -
+                (_costPrices[item.productId] ?? 0)),
+  );
+
   int _committedPieces(String productId, {int? excludeIndex}) {
     int total = 0;
     for (int i = 0; i < _items.length; i++) {
@@ -202,10 +223,11 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
 
   bool get _canSave {
     if (_saving) return false;
-    if (_selectedClient == null && !_noClient && _type != 'stock_release')
+    if (_selectedClient == null && !_noClient && !_clientOptional)
       return false;
     if (_type == 'stock_release' && (_reason == null || _reason!.isEmpty))
       return false;
+    if (_type == 'stock_pulled_out' && _selectedInvoice == null) return false;
     if (_items.isEmpty) return false;
     if (_type == 'bad_order' || _type == 'stock_release') {
       for (int i = 0; i < _items.length; i++) {
@@ -265,6 +287,24 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
     _scheduleAutoSave();
   }
 
+  Future<void> _pickInvoice() async {
+    final clientsById = {for (final c in _clients) c.id: c.name};
+    final dateFmt = DateFormat('MMM dd, yyyy');
+    final picked = await showSearchPicker<Invoice>(
+      context: context,
+      title: 'Select Invoice',
+      items: _invoices,
+      labelOf: (i) => i.displayNumber,
+      subtitleOf: (i) =>
+          '${clientsById[i.clientId] ?? 'Unknown client'}  •  ${dateFmt.format(i.invoiceDate)}',
+      searchableOf: (i) =>
+          '${i.displayNumber} ${i.invoiceNumber ?? ''} ${clientsById[i.clientId] ?? ''}',
+    );
+    if (picked == null) return;
+    setState(() => _selectedInvoice = picked);
+    _scheduleAutoSave();
+  }
+
   /// Loads the set of product IDs ordered by the selected client on or
   /// before the selected date — these are the only products returnable.
   Future<void> _loadOrderedProducts() async {
@@ -301,14 +341,14 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
   }
 
   Future<void> _pickProduct() async {
-    if (_selectedClient == null && !_noClient && _type != 'stock_release') {
+    if (_selectedClient == null && !_noClient && !_clientOptional) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Select a client first.')));
       return;
     }
     final already = _items.map((i) => i.productId).toSet();
-    final showAll = _noClient || _type == 'stock_release';
+    final showAll = _noClient || _clientOptional;
     final available = showAll
         ? _products.where((p) => !already.contains(p.id)).toList()
         : _products
@@ -406,15 +446,16 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
   }
 
   Future<void> _save() async {
-    if ((_selectedClient == null && !_noClient && _type != 'stock_release') ||
+    if ((_selectedClient == null && !_noClient && !_clientOptional) ||
         _items.isEmpty) {
       return;
     }
+    if (_type == 'stock_pulled_out' && _selectedInvoice == null) return;
     setState(() => _saving = true);
     _autoSaveTimer?.cancel();
     final now = DateTime.now();
     final clientId =
-        (_noClient || (_type == 'stock_release' && _selectedClient == null))
+        (_noClient || (_clientOptional && _selectedClient == null))
         ? (await ref
                   .read(clientRepositoryProvider)
                   .getOrCreateNoClientPlaceholder())
@@ -429,6 +470,7 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
           ? _reason
           : (_notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim()),
       createdAt: now,
+      invoiceId: _type == 'stock_pulled_out' ? _selectedInvoice!.id : null,
     );
     final items = _items
         .map(
@@ -453,6 +495,10 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
     ref.invalidate(badOrdersListProvider);
     ref.invalidate(inventoryListProvider);
     ref.invalidate(badOrderDraftsProvider);
+    if (order.invoiceId != null) {
+      ref.invalidate(invoicesListProvider);
+      ref.invalidate(filteredInvoicesProvider);
+    }
     if (mounted) context.go('/bad-orders');
   }
 
@@ -524,6 +570,11 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                             icon: Icon(Icons.output, size: 16),
                             label: Text('Stock Release'),
                           ),
+                          ButtonSegment(
+                            value: 'stock_pulled_out',
+                            icon: Icon(Icons.move_down, size: 16),
+                            label: Text('Stock Pulled out'),
+                          ),
                         ],
                         selected: {_type},
                         onSelectionChanged: (s) {
@@ -531,6 +582,9 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                             _type = s.first;
                             _items.clear();
                             if (s.first != 'stock_release') _reason = null;
+                            if (s.first != 'stock_pulled_out') {
+                              _selectedInvoice = null;
+                            }
                           });
                           _scheduleAutoSave();
                         },
@@ -557,6 +611,20 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                           ),
                           child: const Text(
                             'Stock releases will deduct the quantity from inventory (stock out).',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        )
+                      else if (_type == 'stock_pulled_out')
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade50,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'Stock pulled out will add the quantity back to inventory '
+                            '(it was never delivered) and reduce the linked invoice\'s '
+                            'total and profit.',
                             style: TextStyle(fontSize: 12),
                           ),
                         )
@@ -612,6 +680,31 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                           ),
                         ),
                       ],
+                      if (_type == 'stock_pulled_out') ...[
+                        const SizedBox(height: 8),
+                        InkWell(
+                          onTap: _pickInvoice,
+                          borderRadius: BorderRadius.circular(4),
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'Related Invoice *',
+                              border: OutlineInputBorder(),
+                              suffixIcon: Icon(Icons.search),
+                            ),
+                            child: Text(
+                              _selectedInvoice == null
+                                  ? 'Tap to search…'
+                                  : '${_selectedInvoice!.displayNumber} — '
+                                        '${formatCurrency(_selectedInvoice!.netTotal)}',
+                              style: TextStyle(
+                                color: _selectedInvoice == null
+                                    ? Theme.of(context).hintColor
+                                    : null,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       // Date
                       InkWell(
@@ -631,28 +724,28 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                       const SizedBox(height: 8),
                       // Client
                       InkWell(
-                        onTap: (_noClient && _type != 'stock_release')
+                        onTap: (_noClient && !_clientOptional)
                             ? null
                             : _pickClient,
                         borderRadius: BorderRadius.circular(4),
                         child: InputDecorator(
                           decoration: InputDecoration(
-                            labelText: _type == 'stock_release'
+                            labelText: _clientOptional
                                 ? 'Client (optional)'
                                 : 'Client',
                             border: const OutlineInputBorder(),
-                            suffixIcon: (_noClient && _type != 'stock_release')
+                            suffixIcon: (_noClient && !_clientOptional)
                                 ? null
                                 : const Icon(Icons.search),
-                            enabled: !_noClient || _type == 'stock_release',
+                            enabled: !_noClient || _clientOptional,
                           ),
                           child: Text(
-                            (_noClient && _type != 'stock_release')
+                            (_noClient && !_clientOptional)
                                 ? 'No Client Specified'
                                 : _selectedClient?.name ?? 'Tap to search…',
                             style: TextStyle(
                               color:
-                                  ((_noClient && _type != 'stock_release') ||
+                                  ((_noClient && !_clientOptional) ||
                                       _selectedClient == null)
                                   ? Theme.of(context).hintColor
                                   : null,
@@ -660,7 +753,7 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                           ),
                         ),
                       ),
-                      if (_allowNoClient && _type != 'stock_release')
+                      if (_allowNoClient && !_clientOptional)
                         CheckboxListTile(
                           contentPadding: EdgeInsets.zero,
                           controlAffinity: ListTileControlAffinity.leading,
@@ -718,7 +811,7 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                   child: _items.isEmpty
                       ? Center(
                           child: Text(
-                            (_noClient || _type == 'stock_release')
+                            (_noClient || _clientOptional)
                                 ? 'Add at least one product.'
                                 : _selectedClient == null
                                 ? 'Select a client, then add at least one product.'
@@ -742,8 +835,7 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                             ),
                             unitPrice: _prices[_items[i].productId] ?? 0,
                             isBadOrder:
-                                _type == 'bad_order' ||
-                                _type == 'stock_release',
+                                _type == 'bad_order' || _type == 'stock_release',
                             onRemove: () {
                               setState(() => _items.removeAt(i));
                               _scheduleAutoSave();
@@ -762,12 +854,28 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
                       vertical: 8,
                     ),
                     alignment: Alignment.centerRight,
-                    child: Text(
-                      'Grand Total: ${formatCurrency(_grandTotal)}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          'Grand Total: ${formatCurrency(_grandTotal)}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        if (_type == 'stock_pulled_out')
+                          Text(
+                            'Profit: ${formatCurrency(_profitTotal)}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                              color: _profitTotal >= 0
+                                  ? Colors.green.shade700
+                                  : Colors.red,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 // Save bar

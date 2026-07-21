@@ -19,6 +19,10 @@ class Invoice {
   final double?   actualAmount; // optional actual amount on referenced receipt
   final double?   swapAmount; // amount deducted from the invoice total for swapped items
   final bool      includeInLayout; // whether this invoice counts in the Layout screen
+  // Repository-maintained: sum of the sale value / cost of all linked
+  // "Stock Pulled out" bad-order entries. Never user-edited.
+  final double?   stockPulledOutAmount;
+  final double?   stockPulledOutCost;
 
   const Invoice({
     required this.id,
@@ -41,6 +45,8 @@ class Invoice {
     this.actualAmount,
     this.swapAmount,
     this.includeInLayout = true,
+    this.stockPulledOutAmount,
+    this.stockPulledOutCost,
   });
 
   factory Invoice.fromJson(Map<String, dynamic> j) => Invoice(
@@ -70,6 +76,8 @@ class Invoice {
         actualAmount: (j['actual_amount'] as num?)?.toDouble(),
         swapAmount: (j['swap_amount'] as num?)?.toDouble(),
         includeInLayout: (j['include_in_layout'] as bool?) ?? true,
+        stockPulledOutAmount: (j['stock_pulled_out_amount'] as num?)?.toDouble(),
+        stockPulledOutCost: (j['stock_pulled_out_cost'] as num?)?.toDouble(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -93,6 +101,8 @@ class Invoice {
         'actual_amount': actualAmount,
         'swap_amount': swapAmount,
         'include_in_layout': includeInLayout,
+        'stock_pulled_out_amount': stockPulledOutAmount,
+        'stock_pulled_out_cost': stockPulledOutCost,
       };
 
   String get displayNumber => sequenceNumber != null
@@ -100,6 +110,11 @@ class Invoice {
       : (invoiceNumber ?? 'INV-${id.substring(0, 8).toUpperCase()}');
 
   bool get isDelivery => invoiceType == 'delivery';
+
+  /// [totalAmount] minus any linked "Stock Pulled out" sale value — the
+  /// grand total that should be shown/summed as the invoice's true total.
+  double get netTotal =>
+      (totalAmount - (stockPulledOutAmount ?? 0)).clamp(0.0, double.infinity);
 
   String get paymentLabel {
     switch (paymentType) {
@@ -129,6 +144,8 @@ class Invoice {
     Object? actualAmount   = _sentinel,
     Object? swapAmount     = _sentinel,
     bool? includeInLayout,
+    Object? stockPulledOutAmount = _sentinel,
+    Object? stockPulledOutCost   = _sentinel,
   }) =>
       Invoice(
         id: id,
@@ -169,6 +186,12 @@ class Invoice {
             ? this.swapAmount
             : swapAmount as double?,
         includeInLayout: includeInLayout ?? this.includeInLayout,
+        stockPulledOutAmount: stockPulledOutAmount == _sentinel
+            ? this.stockPulledOutAmount
+            : stockPulledOutAmount as double?,
+        stockPulledOutCost: stockPulledOutCost == _sentinel
+            ? this.stockPulledOutCost
+            : stockPulledOutCost as double?,
       );
 }
 

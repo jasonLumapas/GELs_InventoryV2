@@ -71,6 +71,7 @@ class _AppSettingsScreenState extends ConsumerState<AppSettingsScreen> {
   bool _inventoryAllowAddStock    = true;
   bool _inventoryAllowRemoveStock = true;
   bool _inventoryShowHistory      = true;
+  bool _allowDeleteCancelledInvoices = true;
 
   @override
   void initState() {
@@ -102,6 +103,8 @@ class _AppSettingsScreenState extends ConsumerState<AppSettingsScreen> {
         await AppSettingsService.getInventoryAllowRemoveStock();
     _inventoryShowHistory =
         await AppSettingsService.getInventoryShowHistory();
+    _allowDeleteCancelledInvoices =
+        await AppSettingsService.getAllowDeleteCancelledInvoices();
     if (!mounted) return;
     setState(() {
       _unlocked = true;
@@ -155,6 +158,12 @@ class _AppSettingsScreenState extends ConsumerState<AppSettingsScreen> {
     setState(() => _inventoryShowHistory = value);
     await AppSettingsService.setInventoryShowHistory(value);
     ref.invalidate(inventoryShowHistoryProvider);
+  }
+
+  Future<void> _toggleAllowDeleteCancelledInvoices(bool value) async {
+    setState(() => _allowDeleteCancelledInvoices = value);
+    await AppSettingsService.setAllowDeleteCancelledInvoices(value);
+    ref.invalidate(allowDeleteCancelledInvoicesProvider);
   }
 
   @override
@@ -231,6 +240,21 @@ class _AppSettingsScreenState extends ConsumerState<AppSettingsScreen> {
                           'Show the Transaction History button on the Inventory page'),
                       value: _inventoryShowHistory,
                       onChanged: _toggleInventoryShowHistory,
+                    ),
+                    const Divider(),
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+                      child: Text('Invoices',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey)),
+                    ),
+                    SwitchListTile(
+                      title: const Text('Allow Permanently Deleting Cancelled Invoices'),
+                      subtitle: const Text(
+                          'Show the "Delete Permanently" action for cancelled invoices'),
+                      value: _allowDeleteCancelledInvoices,
+                      onChanged: _toggleAllowDeleteCancelledInvoices,
                     ),
                   ],
                 ),

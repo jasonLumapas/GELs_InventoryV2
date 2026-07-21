@@ -188,6 +188,8 @@ class InvoiceRepository extends BaseRepository {
               actualAmount: r.actualAmount,
               swapAmount: r.swapAmount,
               includeInLayout: r.includeInLayout,
+              stockPulledOutAmount: r.stockPulledOutAmount,
+              stockPulledOutCost: r.stockPulledOutCost,
             ))
         .toList();
   }
@@ -250,6 +252,8 @@ class InvoiceRepository extends BaseRepository {
       actualAmount: r.actualAmount,
       swapAmount: r.swapAmount,
       includeInLayout: r.includeInLayout,
+      stockPulledOutAmount: r.stockPulledOutAmount,
+      stockPulledOutCost: r.stockPulledOutCost,
     );
   }
 
@@ -671,6 +675,38 @@ class InvoiceRepository extends BaseRepository {
         .write(const InvoicesCompanion(status: drift.Value('printed')));
   }
 
+  /// Overwrites the repository-maintained "Stock Pulled out" totals cached
+  /// on an invoice. Called by [BadOrderRepository] whenever a linked Stock
+  /// Pulled out entry is created, edited, or deleted — never user-invoked.
+  Future<void> updateStockPulledOutTotals({
+    required String invoiceId,
+    required double amount,
+    required double cost,
+  }) async {
+    final updated = {
+      'stock_pulled_out_amount': amount,
+      'stock_pulled_out_cost': cost,
+    };
+    if (isOnline) {
+      await Supabase.instance.client
+          .from('invoices')
+          .update(updated)
+          .eq('id', invoiceId);
+    } else {
+      await syncService.enqueue(
+        tableName: 'invoices',
+        recordId: invoiceId,
+        operation: 'update',
+        payload: updated,
+      );
+    }
+    await (db.update(db.invoices)..where((t) => t.id.equals(invoiceId)))
+        .write(InvoicesCompanion(
+      stockPulledOutAmount: drift.Value(amount),
+      stockPulledOutCost: drift.Value(cost),
+    ));
+  }
+
   /// Returns all cancelled invoices, most recently dated first.
   Future<List<Invoice>> getCancelled() async {
     if (isOnline) {
@@ -710,6 +746,8 @@ class InvoiceRepository extends BaseRepository {
           actualAmount: drift.Value(inv.actualAmount),
           swapAmount: drift.Value(inv.swapAmount),
           includeInLayout: drift.Value(inv.includeInLayout),
+          stockPulledOutAmount: drift.Value(inv.stockPulledOutAmount),
+          stockPulledOutCost: drift.Value(inv.stockPulledOutCost),
         ));
   }
 

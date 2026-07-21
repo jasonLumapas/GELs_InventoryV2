@@ -15,6 +15,8 @@ class AppSettingsService {
   static const _keyInventoryAllowAddStock    = 'settings_inventory_allow_add_stock';
   static const _keyInventoryAllowRemoveStock = 'settings_inventory_allow_remove_stock';
   static const _keyInventoryShowHistory      = 'settings_inventory_show_history';
+  static const _keyAllowDeleteCancelledInvoices =
+      'settings_allow_delete_cancelled_invoices';
 
   static Future<bool> _getFlag(String key, {bool defaultValue = true}) async {
     final prefs = await SharedPreferences.getInstance();
@@ -67,6 +69,12 @@ class AppSettingsService {
       _getFlag(_keyInventoryShowHistory);
   static Future<void> setInventoryShowHistory(bool value) =>
       _setFlag(_keyInventoryShowHistory, value);
+
+  /// When true, cancelled invoices can be permanently deleted.
+  static Future<bool> getAllowDeleteCancelledInvoices() =>
+      _getFlag(_keyAllowDeleteCancelledInvoices);
+  static Future<void> setAllowDeleteCancelledInvoices(bool value) =>
+      _setFlag(_keyAllowDeleteCancelledInvoices, value);
 }
 
 final showCapitalProfitProvider =
@@ -92,3 +100,6 @@ final inventoryAllowRemoveStockProvider = FutureProvider<bool>(
 
 final inventoryShowHistoryProvider = FutureProvider<bool>(
     (ref) => AppSettingsService.getInventoryShowHistory());
+
+final allowDeleteCancelledInvoicesProvider = FutureProvider<bool>(
+    (ref) => AppSettingsService.getAllowDeleteCancelledInvoices());

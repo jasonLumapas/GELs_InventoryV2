@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../models/invoice.dart';
+import '../../core/services/app_settings_service.dart';
 import '../../repositories/client_repository.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_repository.dart';
@@ -93,6 +94,8 @@ class _CancelledInvoicesListScreenState
   Widget build(BuildContext context) {
     final cancelledAsync = ref.watch(cancelledInvoicesProvider);
     final clientsAsync = ref.watch(clientsListProvider);
+    final allowDeleteCancelled =
+        ref.watch(allowDeleteCancelledInvoicesProvider).valueOrNull ?? true;
     final dateFmt = DateFormat('MMM dd, yyyy');
 
     return AppScaffold(
@@ -259,12 +262,13 @@ class _CancelledInvoicesListScreenState
                                   tooltip: 'Restore',
                                   onPressed: () => _restore(inv),
                                 ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_forever,
-                                      color: Colors.red),
-                                  tooltip: 'Delete Permanently',
-                                  onPressed: () => _deletePermanently(inv),
-                                ),
+                                if (allowDeleteCancelled)
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_forever,
+                                        color: Colors.red),
+                                    tooltip: 'Delete Permanently',
+                                    onPressed: () => _deletePermanently(inv),
+                                  ),
                               ],
                             ),
                           );

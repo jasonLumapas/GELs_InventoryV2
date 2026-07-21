@@ -51,7 +51,7 @@ final _financialsProvider = FutureProvider.autoDispose
   double capital = 0;
   for (final inv in invoices) {
     if (inv.status == 'cancelled') continue;
-    grandTotal += inv.totalAmount;
+    grandTotal += inv.netTotal;
     final items = await invoiceRepo.getItems(inv.id);
     for (final item in items) {
       if (item.isFree) continue;
@@ -60,6 +60,7 @@ final _financialsProvider = FutureProvider.autoDispose
         capital += price.withdrawalPrice * item.quantity;
       }
     }
+    capital -= (inv.stockPulledOutCost ?? 0);
   }
   return _Financials(grandTotal, capital);
 });
@@ -572,7 +573,7 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
 
                 // Running total for the period
                 final periodTotal =
-                    invoices.fold(0.0, (s, i) => s + i.totalAmount);
+                    invoices.fold(0.0, (s, i) => s + i.netTotal);
                 final actualTotal = invoices.fold(
                     0.0, (s, i) => s + (i.actualAmount ?? 0));
                 final hasActual =
@@ -629,13 +630,21 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                                       fontSize: 12,
                                     ),
                                   ),
+                                if ((inv.stockPulledOutAmount ?? 0) > 0)
+                                  Text(
+                                    'Stock Pulled Out: -${formatCurrency(inv.stockPulledOutAmount!)}',
+                                    style: const TextStyle(
+                                      color: Colors.red,
+                                      fontSize: 12,
+                                    ),
+                                  ),
                               ],
                             ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
-                                  formatCurrency(inv.totalAmount),
+                                  formatCurrency(inv.netTotal),
                                   style: const TextStyle(
                                       fontWeight: FontWeight.bold),
                                 ),

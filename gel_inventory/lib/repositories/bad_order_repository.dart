@@ -14,6 +14,7 @@ import '../models/bad_order_item.dart';
 import '../models/stock_movement.dart';
 import 'base_repository.dart';
 import 'inventory_repository.dart';
+import 'invoice_repository.dart';
 import 'product_repository.dart';
 import 'stock_movement_repository.dart';
 
@@ -21,6 +22,7 @@ class BadOrderRepository extends BaseRepository {
   final InventoryRepository inventoryRepo;
   final StockMovementRepository stockMovementRepo;
   final ProductRepository productRepo;
+  final InvoiceRepository invoiceRepo;
 
   BadOrderRepository({
     required super.db,
@@ -29,6 +31,7 @@ class BadOrderRepository extends BaseRepository {
     required this.inventoryRepo,
     required this.stockMovementRepo,
     required this.productRepo,
+    required this.invoiceRepo,
   });
 
   Future<List<BadOrder>> getAll() async {
@@ -51,6 +54,7 @@ class BadOrderRepository extends BaseRepository {
             type: r.type,
             notes: r.notes,
             createdAt: r.createdAt,
+            invoiceId: r.invoiceId,
           ),
         )
         .toList();
@@ -140,6 +144,7 @@ class BadOrderRepository extends BaseRepository {
               type: drift.Value(order.type),
               notes: drift.Value(order.notes),
               createdAt: drift.Value(order.createdAt),
+              invoiceId: drift.Value(order.invoiceId),
             ),
           ),
     );
@@ -177,8 +182,8 @@ class BadOrderRepository extends BaseRepository {
           ? item.quantity * ppb
           : item.quantity;
 
-      if (order.isReturn) {
-        // Returns restore inventory.
+      if (order.restoresInventory) {
+        // Returns and stock-pulled-out restore inventory.
         await inventoryRepo.adjust(
           productId: item.productId,
           deltaPieces: pieces,
@@ -191,12 +196,12 @@ class BadOrderRepository extends BaseRepository {
             quantityPieces: pieces,
             referenceDate: order.date,
             invoiceNumber: 'BO-${order.id}',
-            comments: 'Return',
+            comments: order.typeLabel,
             createdAt: DateTime.now(),
           ),
         );
       } else {
-        // Bad orders deduct inventory (stock out).
+        // Bad orders and stock releases deduct inventory (stock out).
         await inventoryRepo.adjust(
           productId: item.productId,
           deltaPieces: -pieces,
@@ -209,12 +214,48 @@ class BadOrderRepository extends BaseRepository {
             quantityPieces: pieces,
             referenceDate: order.date,
             invoiceNumber: 'BO-${order.id}',
-            comments: 'Bad order',
+            comments: order.typeLabel,
             createdAt: DateTime.now(),
           ),
         );
       }
     }
+
+    if (order.isStockPulledOut && order.invoiceId != null) {
+      await _recomputeInvoiceStockPulledOut(order.invoiceId!);
+    }
+  }
+
+  /// Recomputes and stores the "Stock Pulled out" totals cached on
+  /// [invoiceId], by summing the live current-price value/cost of every
+  /// stock-pulled-out bad order linked to it. Called any time a linked
+  /// entry is created, edited, or deleted.
+  Future<void> _recomputeInvoiceStockPulledOut(String invoiceId) async {
+    final allOrders = await getAll();
+    final linked = allOrders.where(
+      (o) => o.isStockPulledOut && o.invoiceId == invoiceId,
+    );
+    final sellingPrices = await productRepo.getAllCurrentPrices();
+    final costPrices = await productRepo.getAllCurrentCostPrices();
+    final products = await productRepo.getAll();
+    final ppbMap = {for (final p in products) p.id: p.piecesPerBox};
+    double amount = 0;
+    double cost = 0;
+    for (final order in linked) {
+      final items = await getItems(order.id);
+      for (final item in items) {
+        final ppb = ppbMap[item.productId] ?? 1;
+        final pieces =
+            item.unitType == 'box' ? item.quantity * ppb : item.quantity;
+        amount += pieces * (sellingPrices[item.productId] ?? 0);
+        cost += pieces * (costPrices[item.productId] ?? 0);
+      }
+    }
+    await invoiceRepo.updateStockPulledOutTotals(
+      invoiceId: invoiceId,
+      amount: amount,
+      cost: cost,
+    );
   }
 
   /// Adds a new item to an existing bad order/return and applies its
@@ -227,18 +268,18 @@ class BadOrderRepository extends BaseRepository {
     final pieces = item.unitType == 'box'
         ? item.quantity * piecesPerBox
         : item.quantity;
-    final delta = order.isReturn ? pieces : -pieces;
+    final delta = order.restoresInventory ? pieces : -pieces;
     await inventoryRepo.adjust(productId: item.productId, deltaPieces: delta);
 
     await stockMovementRepo.save(
       StockMovement(
         id: const Uuid().v4(),
         productId: item.productId,
-        movementType: order.isReturn ? 'in' : 'out',
+        movementType: order.restoresInventory ? 'in' : 'out',
         quantityPieces: pieces,
         referenceDate: order.date,
         invoiceNumber: 'BO-${order.id}',
-        comments: order.isReturn ? 'Return' : 'Bad order',
+        comments: order.typeLabel,
         createdAt: DateTime.now(),
       ),
     );
@@ -267,6 +308,10 @@ class BadOrderRepository extends BaseRepository {
             ),
           ),
     );
+
+    if (order.isStockPulledOut && order.invoiceId != null) {
+      await _recomputeInvoiceStockPulledOut(order.invoiceId!);
+    }
   }
 
   /// Edits a single item's unit type / quantity and adjusts inventory accordingly.
@@ -285,7 +330,7 @@ class BadOrderRepository extends BaseRepository {
         : newQuantity;
 
     // Reverse old effect then apply new effect.
-    final reverseDelta = order.isReturn ? -oldPieces : oldPieces;
+    final reverseDelta = order.restoresInventory ? -oldPieces : oldPieces;
     await inventoryRepo.adjust(
       productId: oldItem.productId,
       deltaPieces: reverseDelta,
@@ -296,7 +341,7 @@ class BadOrderRepository extends BaseRepository {
       oldItem.productId,
     );
 
-    final newDelta = order.isReturn ? newPieces : -newPieces;
+    final newDelta = order.restoresInventory ? newPieces : -newPieces;
     await inventoryRepo.adjust(
       productId: oldItem.productId,
       deltaPieces: newDelta,
@@ -306,11 +351,11 @@ class BadOrderRepository extends BaseRepository {
       StockMovement(
         id: const Uuid().v4(),
         productId: oldItem.productId,
-        movementType: order.isReturn ? 'in' : 'out',
+        movementType: order.restoresInventory ? 'in' : 'out',
         quantityPieces: newPieces,
         referenceDate: order.date,
         invoiceNumber: 'BO-${order.id}',
-        comments: order.isReturn ? 'Return' : 'Bad order',
+        comments: order.typeLabel,
         createdAt: DateTime.now(),
       ),
     );
@@ -343,6 +388,10 @@ class BadOrderRepository extends BaseRepository {
         quantity: drift.Value(newQuantity),
       ),
     );
+
+    if (order.isStockPulledOut && order.invoiceId != null) {
+      await _recomputeInvoiceStockPulledOut(order.invoiceId!);
+    }
   }
 
   /// Deletes a single item from a bad order/return and reverses its inventory effect.
@@ -354,7 +403,7 @@ class BadOrderRepository extends BaseRepository {
     final pieces = item.unitType == 'box'
         ? item.quantity * piecesPerBox
         : item.quantity;
-    final reverseDelta = order.isReturn ? -pieces : pieces;
+    final reverseDelta = order.restoresInventory ? -pieces : pieces;
     await inventoryRepo.adjust(
       productId: item.productId,
       deltaPieces: reverseDelta,
@@ -379,13 +428,17 @@ class BadOrderRepository extends BaseRepository {
     await (db.delete(
       db.badOrderItems,
     )..where((t) => t.id.equals(item.id))).go();
+
+    if (order.isStockPulledOut && order.invoiceId != null) {
+      await _recomputeInvoiceStockPulledOut(order.invoiceId!);
+    }
   }
 
   /// Deletes the bad order/return and reverses its inventory effect.
   Future<void> delete(String id) async {
     final items = await getItems(id);
+    final order = (await getAll()).where((o) => o.id == id).firstOrNull;
     if (items.isNotEmpty) {
-      final order = (await getAll()).where((o) => o.id == id).firstOrNull;
       final products = await productRepo.getAll();
       final ppbMap = {for (final p in products) p.id: p.piecesPerBox};
       for (final item in items) {
@@ -393,9 +446,11 @@ class BadOrderRepository extends BaseRepository {
         final pieces = item.unitType == 'box'
             ? item.quantity * ppb
             : item.quantity;
-        // Reverse the original adjustment: returns added pieces back
-        // (subtract them now), bad orders removed pieces (add them back).
-        final reverseDelta = (order?.isReturn ?? false) ? -pieces : pieces;
+        // Reverse the original adjustment: returns/stock-pulled-out added
+        // pieces back (subtract them now), bad orders/stock releases
+        // removed pieces (add them back).
+        final reverseDelta =
+            (order?.restoresInventory ?? false) ? -pieces : pieces;
         await inventoryRepo.adjust(
           productId: item.productId,
           deltaPieces: reverseDelta,
@@ -422,6 +477,10 @@ class BadOrderRepository extends BaseRepository {
       db.badOrderItems,
     )..where((t) => t.badOrderId.equals(id))).go();
     await (db.delete(db.badOrders)..where((t) => t.id.equals(id))).go();
+
+    if ((order?.isStockPulledOut ?? false) && order?.invoiceId != null) {
+      await _recomputeInvoiceStockPulledOut(order!.invoiceId!);
+    }
   }
 
   // ── Drafts (auto-saved unfinished "New Bad Order / Return" forms) ───────
@@ -523,6 +582,7 @@ final badOrderRepositoryProvider = Provider<BadOrderRepository>((ref) {
     inventoryRepo: ref.watch(inventoryRepositoryProvider),
     stockMovementRepo: ref.watch(stockMovementRepositoryProvider),
     productRepo: ref.watch(productRepositoryProvider),
+    invoiceRepo: ref.watch(invoiceRepositoryProvider),
   );
 });
 

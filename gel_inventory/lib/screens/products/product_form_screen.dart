@@ -32,6 +32,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
   final _piecesCtrl = TextEditingController();
   final _withdrawalCtrl = TextEditingController();
   final _sellingCtrl = TextEditingController();
+  final _sellingOpCtrl = TextEditingController();
   final _reorderPointCtrl = TextEditingController();
   final _reorderQuantityCtrl = TextEditingController();
 
@@ -95,6 +96,8 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
               _priceHistory.first.withdrawalPrice.toStringAsFixed(2);
           _sellingCtrl.text =
               _priceHistory.first.sellingPrice.toStringAsFixed(2);
+          _sellingOpCtrl.text =
+              _priceHistory.first.sellingPriceOp?.toStringAsFixed(2) ?? '';
         }
         _existingSupplierPrice = await ref
             .read(productSupplierPriceRepositoryProvider)
@@ -147,6 +150,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
     _piecesCtrl.dispose();
     _withdrawalCtrl.dispose();
     _sellingCtrl.dispose();
+    _sellingOpCtrl.dispose();
     _reorderPointCtrl.dispose();
     _reorderQuantityCtrl.dispose();
     _percentMinQtyCtrl.dispose();
@@ -180,18 +184,21 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
     // Add price if entered
     final withdrawal = double.tryParse(_withdrawalCtrl.text);
     final selling = double.tryParse(_sellingCtrl.text);
+    final sellingOp = double.tryParse(_sellingOpCtrl.text);
     if (withdrawal != null && selling != null) {
       final currentPrice =
           isNew ? null : _priceHistory.firstOrNull;
       final needsNewPrice = currentPrice == null ||
           currentPrice.withdrawalPrice != withdrawal ||
-          currentPrice.sellingPrice != selling;
+          currentPrice.sellingPrice != selling ||
+          currentPrice.sellingPriceOp != sellingOp;
       if (needsNewPrice) {
         await ref.read(productRepositoryProvider).addPrice(ProductPrice(
               id: const Uuid().v4(),
               productId: product.id,
               withdrawalPrice: withdrawal,
               sellingPrice: selling,
+              sellingPriceOp: sellingOp,
               effectiveFrom: DateTime.now(),
             ));
       }
@@ -419,12 +426,28 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
                 Expanded(
                   child: TextFormField(
                     controller: _sellingCtrl,
-                    decoration:
-                        const InputDecoration(labelText: 'Selling Price/pc'),
+                    decoration: const InputDecoration(
+                        labelText: 'Selling Price/pc (GELs)'),
                     keyboardType: const TextInputType.numberWithOptions(
                         decimal: true),
                   ),
                 ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _sellingOpCtrl,
+                    decoration: const InputDecoration(
+                        labelText: 'Selling Price/pc (OP)'),
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(child: SizedBox.shrink()),
               ],
             ),
             const SizedBox(height: 24),
@@ -695,7 +718,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
               return ListTile(
                 leading: const Icon(Icons.history),
                 title: Text(
-                    'Sell: ${formatCurrency(p.sellingPrice)} | Withdraw: ${formatCurrency(p.withdrawalPrice)}'),
+                    'Sell: ${formatCurrency(p.sellingPrice)}'
+                    '${p.sellingPriceOp != null ? ' | OP: ${formatCurrency(p.sellingPriceOp!)}' : ''}'
+                    ' | Withdraw: ${formatCurrency(p.withdrawalPrice)}'),
                 subtitle: Text('Effective: ${dateFmt.format(p.effectiveFrom)}'),
                 trailing: i == 0
                     ? const Chip(label: Text('Current'))

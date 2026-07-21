@@ -143,6 +143,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   List<InvoicePayment> _payments = [];
   bool _loading = true;
   bool _saving = false;
+  bool _useOpSellingPrice = false;
 
   void _goBack() {
     if (context.canPop()) {
@@ -170,6 +171,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   }
 
   Future<void> _load() async {
+    _useOpSellingPrice = await ref.read(useOpSellingPriceProvider.future);
     _invoice = await ref.read(invoiceRepositoryProvider).getById(widget.invoiceId);
     if (_invoice == null) {
       if (mounted) _goBack();
@@ -434,11 +436,14 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
       }
       return;
     }
+    final effectivePrice = _useOpSellingPrice && price.sellingPriceOp != null
+        ? price.sellingPriceOp!
+        : price.sellingPrice;
     setState(() {
       _editItems.add(_EditItem(
         itemId: const Uuid().v4(),
         product: product,
-        pricePerPiece: price!.sellingPrice,
+        pricePerPiece: effectivePrice,
         inventory: inv,
         unitType: 'piece',
         quantity: 1,

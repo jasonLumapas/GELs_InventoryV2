@@ -74,6 +74,7 @@ class _AppSettingsScreenState extends ConsumerState<AppSettingsScreen> {
   bool _inventoryAllowRemoveStock = true;
   bool _inventoryShowHistory      = true;
   bool _allowDeleteCancelledInvoices = true;
+  bool _useOpSellingPrice = false;
 
   @override
   void initState() {
@@ -109,6 +110,7 @@ class _AppSettingsScreenState extends ConsumerState<AppSettingsScreen> {
         await AppSettingsService.getInventoryShowHistory();
     _allowDeleteCancelledInvoices =
         await AppSettingsService.getAllowDeleteCancelledInvoices();
+    _useOpSellingPrice = await AppSettingsService.getUseOpSellingPrice();
     if (!mounted) return;
     setState(() {
       _unlocked = true;
@@ -180,6 +182,12 @@ class _AppSettingsScreenState extends ConsumerState<AppSettingsScreen> {
     setState(() => _allowDeleteCancelledInvoices = value);
     await AppSettingsService.setAllowDeleteCancelledInvoices(value);
     ref.invalidate(allowDeleteCancelledInvoicesProvider);
+  }
+
+  Future<void> _toggleUseOpSellingPrice(bool value) async {
+    setState(() => _useOpSellingPrice = value);
+    await AppSettingsService.setUseOpSellingPrice(value);
+    ref.invalidate(useOpSellingPriceProvider);
   }
 
   @override
@@ -285,6 +293,15 @@ class _AppSettingsScreenState extends ConsumerState<AppSettingsScreen> {
                           'Show the "Delete Permanently" action for cancelled invoices'),
                       value: _allowDeleteCancelledInvoices,
                       onChanged: _toggleAllowDeleteCancelledInvoices,
+                    ),
+                    SwitchListTile(
+                      title: const Text('Use OP Selling Price on Invoices'),
+                      subtitle: const Text(
+                          'When creating an invoice, price line items using each product\'s '
+                          'Selling Price/pc (OP) instead of Selling Price/pc (GELs). Falls '
+                          'back to the GELs price for products without an OP price set.'),
+                      value: _useOpSellingPrice,
+                      onChanged: _toggleUseOpSellingPrice,
                     ),
                   ],
                 ),

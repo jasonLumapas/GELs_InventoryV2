@@ -100,6 +100,7 @@ class ProductRepository extends BaseRepository {
             productId: drift.Value(price.productId),
             withdrawalPrice: drift.Value(price.withdrawalPrice),
             sellingPrice: drift.Value(price.sellingPrice),
+            sellingPriceOp: drift.Value(price.sellingPriceOp),
             effectiveFrom: drift.Value(price.effectiveFrom),
           ),
         );
@@ -128,6 +129,7 @@ class ProductRepository extends BaseRepository {
       productId: r.productId,
       withdrawalPrice: r.withdrawalPrice,
       sellingPrice: r.sellingPrice,
+      sellingPriceOp: r.sellingPriceOp,
       effectiveFrom: r.effectiveFrom,
     );
   }
@@ -202,6 +204,7 @@ class ProductRepository extends BaseRepository {
               productId: r.productId,
               withdrawalPrice: r.withdrawalPrice,
               sellingPrice: r.sellingPrice,
+              sellingPriceOp: r.sellingPriceOp,
               effectiveFrom: r.effectiveFrom,
             ))
         .toList();

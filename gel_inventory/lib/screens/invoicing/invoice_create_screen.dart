@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
+import '../../core/services/app_settings_service.dart';
 import '../../models/client.dart';
 import '../../models/invoice.dart';
 import '../../models/invoice_item.dart';
@@ -31,6 +32,11 @@ class _LineItem {
   final ProductPrice price;
   final InventoryItem? inventory;
   final ProductDiscount? discount;
+  // Whether to price this line using the product's OP selling price
+  // (falling back to the GELs price when the product has none), per the
+  // "Use OP Selling Price on Invoices" setting in effect when this line
+  // was added.
+  final bool useOpPrice;
   String unitType = 'piece';
   int quantity = 0;
   bool isFree = false;
@@ -46,6 +52,7 @@ class _LineItem {
     required this.price,
     required this.inventory,
     required this.discount,
+    required this.useOpPrice,
   });
 
   int get quantityInPieces =>
@@ -55,7 +62,12 @@ class _LineItem {
       !isFree && discount != null &&
       quantityInPieces >= discount!.minQuantityPieces;
 
-  double get originalAmount => quantityInPieces * price.sellingPrice;
+  double get effectiveSellingPrice =>
+      useOpPrice && price.sellingPriceOp != null
+          ? price.sellingPriceOp!
+          : price.sellingPrice;
+
+  double get originalAmount => quantityInPieces * effectiveSellingPrice;
 
   double get discountAmount {
     if (!_thresholdMet) return 0;
@@ -124,6 +136,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
   final _swapAmountCtrl = TextEditingController();
   bool _loading = true;
   bool _saving = false;
+  bool _useOpSellingPrice = false;
 
   // ── Auto-save (draft) ────────────────────────────────────────────────────
   late final InvoiceRepository _invoiceRepo;
@@ -145,6 +158,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
   }
 
   Future<void> _loadData() async {
+    _useOpSellingPrice = await ref.read(useOpSellingPriceProvider.future);
     final clients   = await ref.read(clientRepositoryProvider).getAll();
     final products  = await ref.read(productRepositoryProvider).getAll();
     final suppliers = await ref.read(supplierRepositoryProvider).getAll();
@@ -246,6 +260,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
         price: price,
         inventory: inv,
         discount: disc,
+        useOpPrice: _useOpSellingPrice,
       )
         ..unitType = dItem.unitType
         ..quantity = dItem.unitType == 'box' && ppb > 0
@@ -314,7 +329,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
           productId: li.product.id,
           unitType: li.unitType,
           quantity: li.quantityInPieces,
-          pricePerPiece: li.price.sellingPrice,
+          pricePerPiece: li.effectiveSellingPrice,
           subtotal: li.subtotal,
           isFree: li.isFree,
           discountPercent: (li._thresholdMet && li.discount!.isPercent)
@@ -561,6 +576,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
         price: price!,
         inventory: inv,
         discount: disc,
+        useOpPrice: _useOpSellingPrice,
       ));
     });
     _scheduleAutoSave();
@@ -623,6 +639,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
             price: item.price,
             inventory: item.inventory,
             discount: item.discount,
+            useOpPrice: item.useOpPrice,
           )
             ..unitType = freeUnit == 'box' ? 'box' : 'piece'
             ..quantity = totalFreeQty
@@ -697,7 +714,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
         productId: li.product.id,
         unitType: li.unitType,
         quantity: li.quantityInPieces,
-        pricePerPiece: li.price.sellingPrice,
+        pricePerPiece: li.effectiveSellingPrice,
         subtotal: li.subtotal,
         isFree: li.isFree,
         discountPercent: (li._thresholdMet && li.discount!.isPercent)

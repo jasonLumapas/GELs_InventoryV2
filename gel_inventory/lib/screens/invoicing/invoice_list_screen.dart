@@ -22,8 +22,16 @@ enum _FilterType { day, week, month }
 class _Financials {
   final double grandTotal;
   final double capital;
-  double get profit => grandTotal - capital;
-  const _Financials(this.grandTotal, this.capital);
+  // Sum of each item's quantity × the product's current GELs selling price
+  // (Selling Price/pc (GELs)), regardless of which price (GELs or OP) was
+  // actually charged on the invoice. Lets the totals be compared against
+  // what would have been billed at the standard GELs price.
+  final double gelsTotal;
+  double get profit => gelsTotal - capital;
+  // How much of the actual total is attributable to OP pricing — the gap
+  // between what was actually charged and what it would total at GELs price.
+  double get opDifference => grandTotal - gelsTotal;
+  const _Financials(this.grandTotal, this.capital, this.gelsTotal);
 }
 
 /// Returns the set of invoice ids (within [range]) that contain at least one
@@ -50,6 +58,7 @@ final _financialsProvider = FutureProvider.autoDispose
   final productRepo = ref.read(productRepositoryProvider);
   double grandTotal = 0;
   double capital = 0;
+  double gelsTotal = 0;
   for (final inv in invoices) {
     if (inv.status == 'cancelled') continue;
     grandTotal += inv.netTotal;
@@ -59,11 +68,12 @@ final _financialsProvider = FutureProvider.autoDispose
       final price = await productRepo.getCurrentPrice(item.productId);
       if (price != null) {
         capital += price.withdrawalPrice * item.quantity;
+        gelsTotal += price.sellingPrice * item.quantity;
       }
     }
     capital -= (inv.stockPulledOutCost ?? 0);
   }
-  return _Financials(grandTotal, capital);
+  return _Financials(grandTotal, capital, gelsTotal);
 });
 
 class InvoiceListScreen extends ConsumerStatefulWidget {
@@ -714,31 +724,61 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                           .surfaceContainerHighest,
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 10),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text('${invoices.length} invoice(s)',
-                              style: const TextStyle(color: Colors.grey)),
-                          const Spacer(),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              if (hasActual)
-                                Text(
-                                  'Actual Total: ${formatCurrency(actualTotal)}',
-                                  style: TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.grey.shade700),
-                                ),
-                              () {
-                            final showCapitalProfit = ref
-                                    .watch(showCapitalProfitProvider)
-                                    .valueOrNull ??
-                                true;
-                            return ref
-                                .watch(_financialsProvider(
-                                    (_startDate, _endDate)))
-                                .when(
+                      child: Builder(builder: (context) {
+                        final showCapitalProfit = ref
+                                .watch(showCapitalProfitProvider)
+                                .valueOrNull ??
+                            true;
+                        final finAsync = ref.watch(
+                            _financialsProvider((_startDate, _endDate)));
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('${invoices.length} invoice(s)',
+                                    style:
+                                        const TextStyle(color: Colors.grey)),
+                                if (showCapitalProfit)
+                                  finAsync.maybeWhen(
+                                    data: (fin) => Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Capital: ${formatCurrency(fin.capital)}',
+                                          style: TextStyle(
+                                              fontSize: 13,
+                                              color: Colors.grey.shade700),
+                                        ),
+                                        Text(
+                                          'Profit: ${formatCurrency(fin.profit)}',
+                                          style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: fin.profit >= 0
+                                                  ? Colors.green.shade700
+                                                  : Colors.red),
+                                        ),
+                                      ],
+                                    ),
+                                    orElse: () => const SizedBox.shrink(),
+                                  ),
+                              ],
+                            ),
+                            const Spacer(),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                if (hasActual)
+                                  Text(
+                                    'Actual Total: ${formatCurrency(actualTotal)}',
+                                    style: TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.grey.shade700),
+                                  ),
+                                finAsync.when(
                                   loading: () => const SizedBox(
                                       width: 16,
                                       height: 16,
@@ -761,29 +801,26 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                                       ),
                                       if (showCapitalProfit) ...[
                                         Text(
-                                          'Capital: ${formatCurrency(fin.capital)}',
+                                          'GELs Total: ${formatCurrency(fin.gelsTotal)}',
                                           style: TextStyle(
                                               fontSize: 13,
                                               color: Colors.grey.shade700),
                                         ),
                                         Text(
-                                          'Profit: ${formatCurrency(fin.profit)}',
+                                          'OP: ${formatCurrency(fin.opDifference)}',
                                           style: TextStyle(
                                               fontSize: 13,
-                                              fontWeight: FontWeight.w600,
-                                              color: fin.profit >= 0
-                                                  ? Colors.green.shade700
-                                                  : Colors.red),
+                                              color: Colors.grey.shade700),
                                         ),
                                       ],
                                     ],
                                   ),
-                                );
-                              }(),
-                            ],
-                          ),
-                        ],
-                      ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        );
+                      }),
                     ),
                   ],
                 );

@@ -1407,6 +1407,17 @@ class $ProductPricesTable extends ProductPrices
     type: DriftSqlType.double,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _sellingPriceOpMeta = const VerificationMeta(
+    'sellingPriceOp',
+  );
+  @override
+  late final GeneratedColumn<double> sellingPriceOp = GeneratedColumn<double>(
+    'selling_price_op',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _effectiveFromMeta = const VerificationMeta(
     'effectiveFrom',
   );
@@ -1426,6 +1437,7 @@ class $ProductPricesTable extends ProductPrices
     productId,
     withdrawalPrice,
     sellingPrice,
+    sellingPriceOp,
     effectiveFrom,
   ];
   @override
@@ -1475,6 +1487,15 @@ class $ProductPricesTable extends ProductPrices
     } else if (isInserting) {
       context.missing(_sellingPriceMeta);
     }
+    if (data.containsKey('selling_price_op')) {
+      context.handle(
+        _sellingPriceOpMeta,
+        sellingPriceOp.isAcceptableOrUnknown(
+          data['selling_price_op']!,
+          _sellingPriceOpMeta,
+        ),
+      );
+    }
     if (data.containsKey('effective_from')) {
       context.handle(
         _effectiveFromMeta,
@@ -1509,6 +1530,10 @@ class $ProductPricesTable extends ProductPrices
         DriftSqlType.double,
         data['${effectivePrefix}selling_price'],
       )!,
+      sellingPriceOp: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}selling_price_op'],
+      ),
       effectiveFrom: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}effective_from'],
@@ -1527,12 +1552,14 @@ class ProductPrice extends DataClass implements Insertable<ProductPrice> {
   final String productId;
   final double withdrawalPrice;
   final double sellingPrice;
+  final double? sellingPriceOp;
   final DateTime effectiveFrom;
   const ProductPrice({
     required this.id,
     required this.productId,
     required this.withdrawalPrice,
     required this.sellingPrice,
+    this.sellingPriceOp,
     required this.effectiveFrom,
   });
   @override
@@ -1542,6 +1569,9 @@ class ProductPrice extends DataClass implements Insertable<ProductPrice> {
     map['product_id'] = Variable<String>(productId);
     map['withdrawal_price'] = Variable<double>(withdrawalPrice);
     map['selling_price'] = Variable<double>(sellingPrice);
+    if (!nullToAbsent || sellingPriceOp != null) {
+      map['selling_price_op'] = Variable<double>(sellingPriceOp);
+    }
     map['effective_from'] = Variable<DateTime>(effectiveFrom);
     return map;
   }
@@ -1552,6 +1582,9 @@ class ProductPrice extends DataClass implements Insertable<ProductPrice> {
       productId: Value(productId),
       withdrawalPrice: Value(withdrawalPrice),
       sellingPrice: Value(sellingPrice),
+      sellingPriceOp: sellingPriceOp == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sellingPriceOp),
       effectiveFrom: Value(effectiveFrom),
     );
   }
@@ -1566,6 +1599,7 @@ class ProductPrice extends DataClass implements Insertable<ProductPrice> {
       productId: serializer.fromJson<String>(json['productId']),
       withdrawalPrice: serializer.fromJson<double>(json['withdrawalPrice']),
       sellingPrice: serializer.fromJson<double>(json['sellingPrice']),
+      sellingPriceOp: serializer.fromJson<double?>(json['sellingPriceOp']),
       effectiveFrom: serializer.fromJson<DateTime>(json['effectiveFrom']),
     );
   }
@@ -1577,6 +1611,7 @@ class ProductPrice extends DataClass implements Insertable<ProductPrice> {
       'productId': serializer.toJson<String>(productId),
       'withdrawalPrice': serializer.toJson<double>(withdrawalPrice),
       'sellingPrice': serializer.toJson<double>(sellingPrice),
+      'sellingPriceOp': serializer.toJson<double?>(sellingPriceOp),
       'effectiveFrom': serializer.toJson<DateTime>(effectiveFrom),
     };
   }
@@ -1586,12 +1621,16 @@ class ProductPrice extends DataClass implements Insertable<ProductPrice> {
     String? productId,
     double? withdrawalPrice,
     double? sellingPrice,
+    Value<double?> sellingPriceOp = const Value.absent(),
     DateTime? effectiveFrom,
   }) => ProductPrice(
     id: id ?? this.id,
     productId: productId ?? this.productId,
     withdrawalPrice: withdrawalPrice ?? this.withdrawalPrice,
     sellingPrice: sellingPrice ?? this.sellingPrice,
+    sellingPriceOp: sellingPriceOp.present
+        ? sellingPriceOp.value
+        : this.sellingPriceOp,
     effectiveFrom: effectiveFrom ?? this.effectiveFrom,
   );
   ProductPrice copyWithCompanion(ProductPricesCompanion data) {
@@ -1604,6 +1643,9 @@ class ProductPrice extends DataClass implements Insertable<ProductPrice> {
       sellingPrice: data.sellingPrice.present
           ? data.sellingPrice.value
           : this.sellingPrice,
+      sellingPriceOp: data.sellingPriceOp.present
+          ? data.sellingPriceOp.value
+          : this.sellingPriceOp,
       effectiveFrom: data.effectiveFrom.present
           ? data.effectiveFrom.value
           : this.effectiveFrom,
@@ -1617,14 +1659,21 @@ class ProductPrice extends DataClass implements Insertable<ProductPrice> {
           ..write('productId: $productId, ')
           ..write('withdrawalPrice: $withdrawalPrice, ')
           ..write('sellingPrice: $sellingPrice, ')
+          ..write('sellingPriceOp: $sellingPriceOp, ')
           ..write('effectiveFrom: $effectiveFrom')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, productId, withdrawalPrice, sellingPrice, effectiveFrom);
+  int get hashCode => Object.hash(
+    id,
+    productId,
+    withdrawalPrice,
+    sellingPrice,
+    sellingPriceOp,
+    effectiveFrom,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1633,6 +1682,7 @@ class ProductPrice extends DataClass implements Insertable<ProductPrice> {
           other.productId == this.productId &&
           other.withdrawalPrice == this.withdrawalPrice &&
           other.sellingPrice == this.sellingPrice &&
+          other.sellingPriceOp == this.sellingPriceOp &&
           other.effectiveFrom == this.effectiveFrom);
 }
 
@@ -1641,6 +1691,7 @@ class ProductPricesCompanion extends UpdateCompanion<ProductPrice> {
   final Value<String> productId;
   final Value<double> withdrawalPrice;
   final Value<double> sellingPrice;
+  final Value<double?> sellingPriceOp;
   final Value<DateTime> effectiveFrom;
   final Value<int> rowid;
   const ProductPricesCompanion({
@@ -1648,6 +1699,7 @@ class ProductPricesCompanion extends UpdateCompanion<ProductPrice> {
     this.productId = const Value.absent(),
     this.withdrawalPrice = const Value.absent(),
     this.sellingPrice = const Value.absent(),
+    this.sellingPriceOp = const Value.absent(),
     this.effectiveFrom = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -1656,6 +1708,7 @@ class ProductPricesCompanion extends UpdateCompanion<ProductPrice> {
     required String productId,
     required double withdrawalPrice,
     required double sellingPrice,
+    this.sellingPriceOp = const Value.absent(),
     this.effectiveFrom = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
@@ -1667,6 +1720,7 @@ class ProductPricesCompanion extends UpdateCompanion<ProductPrice> {
     Expression<String>? productId,
     Expression<double>? withdrawalPrice,
     Expression<double>? sellingPrice,
+    Expression<double>? sellingPriceOp,
     Expression<DateTime>? effectiveFrom,
     Expression<int>? rowid,
   }) {
@@ -1675,6 +1729,7 @@ class ProductPricesCompanion extends UpdateCompanion<ProductPrice> {
       if (productId != null) 'product_id': productId,
       if (withdrawalPrice != null) 'withdrawal_price': withdrawalPrice,
       if (sellingPrice != null) 'selling_price': sellingPrice,
+      if (sellingPriceOp != null) 'selling_price_op': sellingPriceOp,
       if (effectiveFrom != null) 'effective_from': effectiveFrom,
       if (rowid != null) 'rowid': rowid,
     });
@@ -1685,6 +1740,7 @@ class ProductPricesCompanion extends UpdateCompanion<ProductPrice> {
     Value<String>? productId,
     Value<double>? withdrawalPrice,
     Value<double>? sellingPrice,
+    Value<double?>? sellingPriceOp,
     Value<DateTime>? effectiveFrom,
     Value<int>? rowid,
   }) {
@@ -1693,6 +1749,7 @@ class ProductPricesCompanion extends UpdateCompanion<ProductPrice> {
       productId: productId ?? this.productId,
       withdrawalPrice: withdrawalPrice ?? this.withdrawalPrice,
       sellingPrice: sellingPrice ?? this.sellingPrice,
+      sellingPriceOp: sellingPriceOp ?? this.sellingPriceOp,
       effectiveFrom: effectiveFrom ?? this.effectiveFrom,
       rowid: rowid ?? this.rowid,
     );
@@ -1713,6 +1770,9 @@ class ProductPricesCompanion extends UpdateCompanion<ProductPrice> {
     if (sellingPrice.present) {
       map['selling_price'] = Variable<double>(sellingPrice.value);
     }
+    if (sellingPriceOp.present) {
+      map['selling_price_op'] = Variable<double>(sellingPriceOp.value);
+    }
     if (effectiveFrom.present) {
       map['effective_from'] = Variable<DateTime>(effectiveFrom.value);
     }
@@ -1729,6 +1789,7 @@ class ProductPricesCompanion extends UpdateCompanion<ProductPrice> {
           ..write('productId: $productId, ')
           ..write('withdrawalPrice: $withdrawalPrice, ')
           ..write('sellingPrice: $sellingPrice, ')
+          ..write('sellingPriceOp: $sellingPriceOp, ')
           ..write('effectiveFrom: $effectiveFrom, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -16075,6 +16136,7 @@ typedef $$ProductPricesTableCreateCompanionBuilder =
       required String productId,
       required double withdrawalPrice,
       required double sellingPrice,
+      Value<double?> sellingPriceOp,
       Value<DateTime> effectiveFrom,
       Value<int> rowid,
     });
@@ -16084,6 +16146,7 @@ typedef $$ProductPricesTableUpdateCompanionBuilder =
       Value<String> productId,
       Value<double> withdrawalPrice,
       Value<double> sellingPrice,
+      Value<double?> sellingPriceOp,
       Value<DateTime> effectiveFrom,
       Value<int> rowid,
     });
@@ -16140,6 +16203,11 @@ class $$ProductPricesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<double> get sellingPriceOp => $composableBuilder(
+    column: $table.sellingPriceOp,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<DateTime> get effectiveFrom => $composableBuilder(
     column: $table.effectiveFrom,
     builder: (column) => ColumnFilters(column),
@@ -16193,6 +16261,11 @@ class $$ProductPricesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<double> get sellingPriceOp => $composableBuilder(
+    column: $table.sellingPriceOp,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get effectiveFrom => $composableBuilder(
     column: $table.effectiveFrom,
     builder: (column) => ColumnOrderings(column),
@@ -16241,6 +16314,11 @@ class $$ProductPricesTableAnnotationComposer
 
   GeneratedColumn<double> get sellingPrice => $composableBuilder(
     column: $table.sellingPrice,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get sellingPriceOp => $composableBuilder(
+    column: $table.sellingPriceOp,
     builder: (column) => column,
   );
 
@@ -16307,6 +16385,7 @@ class $$ProductPricesTableTableManager
                 Value<String> productId = const Value.absent(),
                 Value<double> withdrawalPrice = const Value.absent(),
                 Value<double> sellingPrice = const Value.absent(),
+                Value<double?> sellingPriceOp = const Value.absent(),
                 Value<DateTime> effectiveFrom = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProductPricesCompanion(
@@ -16314,6 +16393,7 @@ class $$ProductPricesTableTableManager
                 productId: productId,
                 withdrawalPrice: withdrawalPrice,
                 sellingPrice: sellingPrice,
+                sellingPriceOp: sellingPriceOp,
                 effectiveFrom: effectiveFrom,
                 rowid: rowid,
               ),
@@ -16323,6 +16403,7 @@ class $$ProductPricesTableTableManager
                 required String productId,
                 required double withdrawalPrice,
                 required double sellingPrice,
+                Value<double?> sellingPriceOp = const Value.absent(),
                 Value<DateTime> effectiveFrom = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProductPricesCompanion.insert(
@@ -16330,6 +16411,7 @@ class $$ProductPricesTableTableManager
                 productId: productId,
                 withdrawalPrice: withdrawalPrice,
                 sellingPrice: sellingPrice,
+                sellingPriceOp: sellingPriceOp,
                 effectiveFrom: effectiveFrom,
                 rowid: rowid,
               ),

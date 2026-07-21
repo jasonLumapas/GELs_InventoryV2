@@ -31,6 +31,7 @@ class AppSettingsService {
   static const _keyInventoryShowHistory      = 'settings_inventory_show_history';
   static const _keyAllowDeleteCancelledInvoices =
       'settings_allow_delete_cancelled_invoices';
+  static const _keyUseOpSellingPrice = 'settings_use_op_selling_price';
 
   static Future<bool> _getFlag(String key, {bool defaultValue = true}) async {
     final prefs = await SharedPreferences.getInstance();
@@ -101,6 +102,14 @@ class AppSettingsService {
       _getFlag(_keyAllowDeleteCancelledInvoices);
   static Future<void> setAllowDeleteCancelledInvoices(bool value) =>
       _setFlag(_keyAllowDeleteCancelledInvoices, value);
+
+  /// When true, invoice creation prices line items using each product's OP
+  /// selling price instead of its GELs selling price (falling back to the
+  /// GELs price when a product has no OP price set).
+  static Future<bool> getUseOpSellingPrice() =>
+      _getFlag(_keyUseOpSellingPrice, defaultValue: false);
+  static Future<void> setUseOpSellingPrice(bool value) =>
+      _setFlag(_keyUseOpSellingPrice, value);
 }
 
 final showCapitalProfitProvider =
@@ -135,3 +144,6 @@ final inventoryShowHistoryProvider = FutureProvider<bool>(
 
 final allowDeleteCancelledInvoicesProvider = FutureProvider<bool>(
     (ref) => AppSettingsService.getAllowDeleteCancelledInvoices());
+
+final useOpSellingPriceProvider = FutureProvider<bool>(
+    (ref) => AppSettingsService.getUseOpSellingPrice());

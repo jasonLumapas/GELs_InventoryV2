@@ -56,6 +56,7 @@ class ProductPrices extends Table {
   TextColumn get productId => text().references(Products, #id)();
   RealColumn get withdrawalPrice => real()();
   RealColumn get sellingPrice => real()();
+  RealColumn get sellingPriceOp => real().nullable()();
   DateTimeColumn get effectiveFrom =>
       dateTime().withDefault(currentDateAndTime)();
 
@@ -506,7 +507,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 37;
+  int get schemaVersion => 38;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -688,6 +689,10 @@ class LocalDatabase extends _$LocalDatabase {
                 m.database, 'invoices', 'stock_pulled_out_amount', 'REAL');
             await _addColumnIfMissing(
                 m.database, 'invoices', 'stock_pulled_out_cost', 'REAL');
+          }
+          if (from < 38) {
+            await _addColumnIfMissing(
+                m.database, 'product_prices', 'selling_price_op', 'REAL');
           }
         },
         beforeOpen: (details) async {

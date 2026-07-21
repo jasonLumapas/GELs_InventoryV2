@@ -690,6 +690,24 @@ class LocalDatabase extends _$LocalDatabase {
                 m.database, 'invoices', 'stock_pulled_out_cost', 'REAL');
           }
         },
+        beforeOpen: (details) async {
+          // Some installs reached a schema version past the point a table's
+          // `createTable` call was added to `onUpgrade` (added in the same
+          // release as a later, unrelated version bump), so their `from <
+          // N` block was skipped and the table was never created. Heal that
+          // by creating any table that's missing regardless of version.
+          final existing = await customSelect(
+            "SELECT name FROM sqlite_master WHERE type = 'table'",
+          ).get();
+          final existingNames =
+              existing.map((r) => r.read<String>('name')).toSet();
+          final migrator = createMigrator();
+          for (final table in allTables) {
+            if (!existingNames.contains(table.actualTableName)) {
+              await migrator.createTable(table);
+            }
+          }
+        },
       );
 
   static Future<void> _addColumnIfMissing(

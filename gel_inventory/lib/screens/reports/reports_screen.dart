@@ -542,6 +542,33 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
         _future = _loadData(_selectedDate, _selectedSupplierId);
       });
 
+  Widget _buildFilterToggle(
+      bool value, ValueChanged<bool> onChanged, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Switch(
+          value: value,
+          onChanged: onChanged,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        const SizedBox(width: 6),
+        Text(label, style: const TextStyle(fontSize: 13)),
+      ],
+    );
+  }
+
+  Widget _groupBox({required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade400),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: child,
+    );
+  }
+
   void _setDate(DateTime d) => setState(() {
         _selectedDate = d;
         _future = _loadData(d, _selectedSupplierId);
@@ -746,192 +773,187 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
 
     return Column(
       children: [
-        // ── Date navigation bar ───────────────────────────────────────
+        // ── Date navigation + supplier + search, all in one bar ─────────
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          padding: const EdgeInsets.fromLTRB(8, 6, 12, 4),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              IconButton(
-                icon: const Icon(Icons.chevron_left),
-                visualDensity: VisualDensity.compact,
-                onPressed: () => _setDate(
-                    _selectedDate.subtract(const Duration(days: 1))),
-              ),
-              Expanded(
-                child: GestureDetector(
-                  onTap: _pickDate,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.calendar_today,
-                          size: 16, color: Colors.grey),
-                      const SizedBox(width: 6),
-                      Text(
-                        dateFmt.format(_selectedDate),
-                        style: const TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.chevron_right),
-                visualDensity: VisualDensity.compact,
-                onPressed: () =>
-                    _setDate(_selectedDate.add(const Duration(days: 1))),
-              ),
-              TextButton(
-                onPressed: () => _setDate(DateTime.now()),
-                style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact),
-                child: const Text('Today'),
-              ),
-              IconButton(
-                icon: const Icon(Icons.print),
-                tooltip: 'Print inventory report',
-                visualDensity: VisualDensity.compact,
-                onPressed: () async {
-                  final data = await _future;
-                  if (mounted) await _print(data);
-                },
-              ),
-              IconButton(
-                icon: const Icon(Icons.table_chart),
-                tooltip: 'Download inventory report as Excel (Desktop)',
-                visualDensity: VisualDensity.compact,
-                onPressed: () async {
-                  final data = await _future;
-                  if (mounted) await _exportExcel(data);
-                },
-              ),
-              IconButton(
-                icon: const Icon(Icons.file_download),
-                tooltip: 'Export Bulk Clear to CSV (Desktop)',
-                visualDensity: VisualDensity.compact,
-                onPressed: () async {
-                  final data = await _future;
-                  if (mounted) await _exportBulkClearCsv(data);
-                },
-              ),
-            ],
-          ),
-        ),
-        // ── Supplier filter ───────────────────────────────────────────
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          child: ref.watch(suppliersListProvider).maybeWhen(
-                data: (suppliers) => Row(
+              _groupBox(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text('Supplier:',
-                        style: TextStyle(fontSize: 13, color: Colors.grey)),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: DropdownButton<String?>(
-                        value: _selectedSupplierId,
-                        isDense: true,
-                        isExpanded: true,
-                        items: [
-                          const DropdownMenuItem(
-                              value: null, child: Text('All Suppliers')),
-                          ...suppliers.map((s) => DropdownMenuItem(
-                              value: s.id, child: Text(s.name))),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_left),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _setDate(_selectedDate
+                          .subtract(const Duration(days: 1))),
+                    ),
+                    GestureDetector(
+                      onTap: _pickDate,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.calendar_today,
+                              size: 16, color: Colors.grey),
+                          const SizedBox(width: 6),
+                          Text(
+                            dateFmt.format(_selectedDate),
+                            style: const TextStyle(
+                                fontSize: 15, fontWeight: FontWeight.w600),
+                          ),
                         ],
-                        onChanged: (v) {
-                          _selectedSupplierId = v;
-                          _reload();
-                        },
                       ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _setDate(
+                          _selectedDate.add(const Duration(days: 1))),
+                    ),
+                    TextButton(
+                      onPressed: () => _setDate(DateTime.now()),
+                      style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact),
+                      child: const Text('Today'),
                     ),
                   ],
                 ),
-                orElse: () => const SizedBox.shrink(),
               ),
-        ),
-        // ── Product search filter ─────────────────────────────────────
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-          child: TextField(
-            controller: _searchCtrl,
-            decoration: InputDecoration(
-              hintText: 'Search product…',
-              prefixIcon: const Icon(Icons.search, size: 20),
-              isDense: true,
-              border: const OutlineInputBorder(),
-              suffixIcon: _searchQuery.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear, size: 18),
-                      onPressed: () => setState(() {
-                        _searchCtrl.clear();
-                        _searchQuery = '';
-                      }),
-                    )
-                  : null,
-            ),
-            onChanged: (v) => setState(() => _searchQuery = v.trim()),
-          ),
-        ),
-        // ── With-ending-only toggle ───────────────────────────────────
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-          child: Row(
-            children: [
-              Switch(
-                value: _showOnlyWithEnding,
-                onChanged: (v) => setState(() => _showOnlyWithEnding = v),
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: _groupBox(
+                  child: ref.watch(suppliersListProvider).maybeWhen(
+                        data: (suppliers) => Row(
+                          children: [
+                            const Text('Supplier:',
+                                style: TextStyle(
+                                    fontSize: 13, color: Colors.grey)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: DropdownButton<String?>(
+                                value: _selectedSupplierId,
+                                isDense: true,
+                                isExpanded: true,
+                                underline: const SizedBox.shrink(),
+                                items: [
+                                  const DropdownMenuItem(
+                                      value: null,
+                                      child: Text('All Suppliers')),
+                                  ...suppliers.map((s) => DropdownMenuItem(
+                                      value: s.id, child: Text(s.name))),
+                                ],
+                                onChanged: (v) {
+                                  _selectedSupplierId = v;
+                                  _reload();
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                        orElse: () => const SizedBox.shrink(),
+                      ),
+                ),
               ),
-              const SizedBox(width: 6),
-              const Text('Show only rows with ending inventory',
-                  style: TextStyle(fontSize: 13)),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 3,
+                child: SizedBox(
+                  height: 36,
+                  child: TextField(
+                    controller: _searchCtrl,
+                    style: const TextStyle(fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: 'Search product…',
+                      prefixIcon: const Icon(Icons.search, size: 18),
+                      isDense: true,
+                      contentPadding:
+                          const EdgeInsets.symmetric(vertical: 8),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, size: 18),
+                              onPressed: () => setState(() {
+                                _searchCtrl.clear();
+                                _searchQuery = '';
+                              }),
+                            )
+                          : null,
+                    ),
+                    onChanged: (v) =>
+                        setState(() => _searchQuery = v.trim()),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              _groupBox(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.print),
+                      tooltip: 'Print inventory report',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () async {
+                        final data = await _future;
+                        if (mounted) await _print(data);
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.table_chart),
+                      tooltip:
+                          'Download inventory report as Excel (Desktop)',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () async {
+                        final data = await _future;
+                        if (mounted) await _exportExcel(data);
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.file_download),
+                      tooltip: 'Export Bulk Clear to CSV (Desktop)',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () async {
+                        final data = await _future;
+                        if (mounted) await _exportBulkClearCsv(data);
+                      },
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
-        // ── With-bulk-clear-only toggle ───────────────────────────────
+        // ── Row filter toggles ──────────────────────────────────────────
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-          child: Row(
+          child: Wrap(
+            spacing: 16,
+            runSpacing: 0,
             children: [
-              Switch(
-                value: _showOnlyWithBulkClear,
-                onChanged: (v) => setState(() => _showOnlyWithBulkClear = v),
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              _buildFilterToggle(
+                _showOnlyWithEnding,
+                (v) => setState(() => _showOnlyWithEnding = v),
+                'Show only rows with ending inventory',
               ),
-              const SizedBox(width: 6),
-              const Text('Show only rows with Stock Out - Bulk Clear',
-                  style: TextStyle(fontSize: 13)),
-            ],
-          ),
-        ),
-        // ── With-BO-only toggle ────────────────────────────────────────
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-          child: Row(
-            children: [
-              Switch(
-                value: _showOnlyWithBO,
-                onChanged: (v) => setState(() => _showOnlyWithBO = v),
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              _buildFilterToggle(
+                _showOnlyWithBulkClear,
+                (v) => setState(() => _showOnlyWithBulkClear = v),
+                'Show only rows with Stock Out - Bulk Clear',
               ),
-              const SizedBox(width: 6),
-              const Text('Show only rows with BOs',
-                  style: TextStyle(fontSize: 13)),
-            ],
-          ),
-        ),
-        // ── Zero-ending-only toggle ────────────────────────────────────
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-          child: Row(
-            children: [
-              Switch(
-                value: _showOnlyZeroEnding,
-                onChanged: (v) => setState(() => _showOnlyZeroEnding = v),
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              _buildFilterToggle(
+                _showOnlyWithBO,
+                (v) => setState(() => _showOnlyWithBO = v),
+                'Show only rows with BOs',
               ),
-              const SizedBox(width: 6),
-              const Text('Show only rows with 0 ending inventory',
-                  style: TextStyle(fontSize: 13)),
+              _buildFilterToggle(
+                _showOnlyZeroEnding,
+                (v) => setState(() => _showOnlyZeroEnding = v),
+                'Show only rows with 0 ending inventory',
+              ),
             ],
           ),
         ),

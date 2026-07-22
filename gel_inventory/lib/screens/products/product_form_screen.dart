@@ -30,7 +30,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
   final _nameCtrl = TextEditingController();
   final _productCodeCtrl = TextEditingController();
   final _piecesCtrl = TextEditingController();
-  final _withdrawalCtrl = TextEditingController();
+  final _withdrawalBoxCtrl = TextEditingController();
   final _sellingCtrl = TextEditingController();
   final _sellingOpCtrl = TextEditingController();
   final _reorderPointCtrl = TextEditingController();
@@ -92,8 +92,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
             .read(productRepositoryProvider)
             .getPriceHistory(_existing!.id);
         if (_priceHistory.isNotEmpty) {
-          _withdrawalCtrl.text =
-              _priceHistory.first.withdrawalPrice.toStringAsFixed(2);
+          _withdrawalBoxCtrl.text = (_priceHistory.first.withdrawalPrice *
+                  _existing!.piecesPerBox)
+              .toStringAsFixed(2);
           _sellingCtrl.text =
               _priceHistory.first.sellingPrice.toStringAsFixed(2);
           _sellingOpCtrl.text =
@@ -148,7 +149,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
     _nameCtrl.dispose();
     _productCodeCtrl.dispose();
     _piecesCtrl.dispose();
-    _withdrawalCtrl.dispose();
+    _withdrawalBoxCtrl.dispose();
     _sellingCtrl.dispose();
     _sellingOpCtrl.dispose();
     _reorderPointCtrl.dispose();
@@ -181,8 +182,14 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
     );
     await ref.read(productRepositoryProvider).upsertProduct(product);
 
-    // Add price if entered
-    final withdrawal = double.tryParse(_withdrawalCtrl.text);
+    // Add price if entered. Withdrawal price is entered per box and divided
+    // down to per-piece at full precision, so re-multiplying by
+    // piecesPerBox elsewhere (e.g. supplier deliveries) reproduces the
+    // box price exactly instead of drifting from 2-decimal rounding.
+    final withdrawalBox = double.tryParse(_withdrawalBoxCtrl.text);
+    final withdrawal = withdrawalBox != null && product.piecesPerBox > 0
+        ? withdrawalBox / product.piecesPerBox
+        : null;
     final selling = double.tryParse(_sellingCtrl.text);
     final sellingOp = double.tryParse(_sellingOpCtrl.text);
     if (withdrawal != null && selling != null) {
@@ -294,6 +301,12 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
     }
   }
 
+  double? get _withdrawalPerPiece {
+    final ppb = int.tryParse(_piecesCtrl.text) ?? _existing?.piecesPerBox ?? 1;
+    final box = double.tryParse(_withdrawalBoxCtrl.text);
+    return box != null && ppb > 0 ? box / ppb : null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return AppScaffold(
@@ -366,6 +379,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
               decoration: const InputDecoration(labelText: 'Pieces per Box *'),
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              onChanged: (_) => setState(() {}),
               validator: (v) {
                 if (v == null || v.isEmpty) return 'Required';
                 if (int.tryParse(v) == null || int.parse(v) < 1) {
@@ -410,26 +424,33 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
             const SizedBox(height: 16),
             const Text('Pricing',
                 style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Text(
+              'Withdrawal price per piece is computed automatically from '
+              'price per box.',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+            ),
             const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
                   child: TextFormField(
-                    controller: _withdrawalCtrl,
-                    decoration:
-                        const InputDecoration(labelText: 'Withdrawal Price/pc'),
+                    controller: _withdrawalBoxCtrl,
+                    decoration: const InputDecoration(
+                        labelText: 'Withdrawal Price (Box)'),
                     keyboardType: const TextInputType.numberWithOptions(
                         decimal: true),
+                    onChanged: (_) => setState(() {}),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: TextFormField(
-                    controller: _sellingCtrl,
+                  child: InputDecorator(
                     decoration: const InputDecoration(
-                        labelText: 'Selling Price/pc (GELs)'),
-                    keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true),
+                        labelText: 'Withdrawal Price/pc (computed)'),
+                    child: Text(_withdrawalPerPiece != null
+                        ? '₱ ${_withdrawalPerPiece!.toStringAsFixed(2)}'
+                        : '—'),
                   ),
                 ),
               ],
@@ -439,6 +460,16 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
               children: [
                 Expanded(
                   child: TextFormField(
+                    controller: _sellingCtrl,
+                    decoration: const InputDecoration(
+                        labelText: 'Selling Price/pc (GELs)'),
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextFormField(
                     controller: _sellingOpCtrl,
                     decoration: const InputDecoration(
                         labelText: 'Selling Price/pc (OP)'),
@@ -446,8 +477,6 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
                         decimal: true),
                   ),
                 ),
-                const SizedBox(width: 12),
-                const Expanded(child: SizedBox.shrink()),
               ],
             ),
             const SizedBox(height: 24),
@@ -868,7 +897,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
             decoration: const InputDecoration(
               labelText: 'Net Value (Box)',
             ),
-            child: Text(
+            child: SelectableText(
               netValueBox != null ? '₱ ${netValueBox.toStringAsFixed(2)}' : '—',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
@@ -878,7 +907,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
             decoration: const InputDecoration(
               labelText: 'Net Value (Piece)',
             ),
-            child: Text(
+            child: SelectableText(
               netValuePerPiece != null
                   ? '₱ ${netValuePerPiece.toStringAsFixed(2)}'
                   : '—',

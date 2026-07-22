@@ -56,7 +56,8 @@ class _EditItem {
       unitType == 'box' ? quantity * product.piecesPerBox : quantity;
 
   bool get _thresholdMet =>
-      !isFree && discount != null &&
+      !isFree &&
+      discount != null &&
       quantityInPieces >= discount!.minQuantityPieces;
 
   double get originalAmount => quantityInPieces * pricePerPiece;
@@ -90,18 +91,18 @@ class _EditItem {
       isFree || quantityInPieces <= effectiveAvailable(currentInvPieces);
 
   InvoiceItem toInvoiceItem(String invoiceId) => InvoiceItem(
-        id: itemId,
-        invoiceId: invoiceId,
-        productId: product.id,
-        unitType: unitType,
-        quantity: quantityInPieces,
-        pricePerPiece: pricePerPiece,
-        subtotal: subtotal,
-        isFree: isFree,
-        discountPercent: (_thresholdMet && discount!.isPercent)
-            ? discount!.discountValue
-            : 0,
-      );
+    id: itemId,
+    invoiceId: invoiceId,
+    productId: product.id,
+    unitType: unitType,
+    quantity: quantityInPieces,
+    pricePerPiece: pricePerPiece,
+    subtotal: subtotal,
+    isFree: isFree,
+    discountPercent: (_thresholdMet && discount!.isPercent)
+        ? discount!.discountValue
+        : 0,
+  );
 }
 
 // ── Screen ────────────────────────────────────────────────────────────────────
@@ -132,11 +133,11 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   bool _includeInLayout = true;
   String _paymentType = 'cash';
   final _partialAmountCtrl = TextEditingController();
-  final _checkRefCtrl      = TextEditingController();
-  final _checkAmountCtrl   = TextEditingController();
-  final _notesCtrl         = TextEditingController();
-  final _actualAmountCtrl  = TextEditingController();
-  final _swapAmountCtrl    = TextEditingController();
+  final _checkRefCtrl = TextEditingController();
+  final _checkAmountCtrl = TextEditingController();
+  final _notesCtrl = TextEditingController();
+  final _actualAmountCtrl = TextEditingController();
+  final _swapAmountCtrl = TextEditingController();
   DateTime? _checkIssuedDate;
   DateTime? _checkDueDate;
   DateTime? _partialDate;
@@ -151,6 +152,17 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     } else {
       context.go('/invoices');
     }
+  }
+
+  Widget _groupBox({required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade400),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: child,
+    );
   }
 
   @override
@@ -172,14 +184,17 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
 
   Future<void> _load() async {
     _useOpSellingPrice = await ref.read(useOpSellingPriceProvider.future);
-    _invoice = await ref.read(invoiceRepositoryProvider).getById(widget.invoiceId);
+    _invoice = await ref
+        .read(invoiceRepositoryProvider)
+        .getById(widget.invoiceId);
     if (_invoice == null) {
       if (mounted) _goBack();
       return;
     }
 
-    _originalItems =
-        await ref.read(invoiceRepositoryProvider).getItems(widget.invoiceId);
+    _originalItems = await ref
+        .read(invoiceRepositoryProvider)
+        .getItems(widget.invoiceId);
     _deletedItems = await ref
         .read(invoiceRepositoryProvider)
         .getDeletedItems(widget.invoiceId);
@@ -189,17 +204,17 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
         .getPendingCheckCreditClientIds();
     _products = await ref.read(productRepositoryProvider).getAll();
     _productsById = {for (final p in _products) p.id: p};
-    _selectedClient =
-        _clients.where((c) => c.id == _invoice!.clientId).firstOrNull;
+    _selectedClient = _clients
+        .where((c) => c.id == _invoice!.clientId)
+        .firstOrNull;
     _invoiceDate = _invoice!.invoiceDate;
     _includeInLayout = _invoice!.includeInLayout;
     _paymentType = _invoice!.paymentType;
     if (_invoice!.partialAmount != null) {
-      _partialAmountCtrl.text =
-          _invoice!.partialAmount!.toStringAsFixed(2);
+      _partialAmountCtrl.text = _invoice!.partialAmount!.toStringAsFixed(2);
     }
     _partialDate = _invoice!.partialDate;
-    _checkRefCtrl.text    = _invoice!.checkReference ?? '';
+    _checkRefCtrl.text = _invoice!.checkReference ?? '';
     _checkAmountCtrl.text = _invoice!.checkAmount != null
         ? _invoice!.checkAmount!.toStringAsFixed(2)
         : '';
@@ -310,7 +325,8 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
       final result = await showYesNoCancelDialog(
         context,
         title: 'Move Invoice Date',
-        message: 'This invoice will be included in the Layout for '
+        message:
+            'This invoice will be included in the Layout for '
             '${DateFormat('MMMM dd, yyyy').format(newDate)}.',
       );
       if (result == null) return; // Cancel — leave date unchanged
@@ -345,21 +361,22 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
         ];
         return parts.isEmpty ? null : parts.join('  •  ');
       },
-      subtitleStyleOf: (c) => _isClientFlagged(c)
-          ? TextStyle(color: Colors.red.shade700)
-          : null,
+      subtitleStyleOf: (c) =>
+          _isClientFlagged(c) ? TextStyle(color: Colors.red.shade700) : null,
     );
     if (picked != null) setState(() => _selectedClient = picked);
   }
 
   Future<void> _pickProduct() async {
     final alreadyAdded = _editItems.map((li) => li.product.id).toSet();
-    final available =
-        _products.where((p) => !alreadyAdded.contains(p.id)).toList();
+    final available = _products
+        .where((p) => !alreadyAdded.contains(p.id))
+        .toList();
     if (available.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('All products already added.')));
+          const SnackBar(content: Text('All products already added.')),
+        );
       }
       return;
     }
@@ -380,8 +397,10 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
       items: available,
       labelOf: (p) => '${p.name} x ${p.piecesPerBox}',
       searchableOf: (p) => '${p.name} ${p.productCode ?? ''}',
-      leadingOf: (p) => _stockIndicator(_inventoryCache[p.id]?.quantityPieces ?? 0),
-      subtitleOf: (p) => _stockLabel(p, _inventoryCache[p.id]?.quantityPieces ?? 0),
+      leadingOf: (p) =>
+          _stockIndicator(_inventoryCache[p.id]?.quantityPieces ?? 0),
+      subtitleOf: (p) =>
+          _stockLabel(p, _inventoryCache[p.id]?.quantityPieces ?? 0),
       subtitleStyleOf: (p) {
         final qty = _inventoryCache[p.id]?.quantityPieces ?? 0;
         return TextStyle(color: qty > 0 ? Colors.green.shade700 : Colors.red);
@@ -392,10 +411,10 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   }
 
   Widget _stockIndicator(int qty) => Icon(
-        qty > 0 ? Icons.check_circle : Icons.cancel,
-        color: qty > 0 ? Colors.green : Colors.red,
-        size: 20,
-      );
+    qty > 0 ? Icons.check_circle : Icons.cancel,
+    color: qty > 0 ? Colors.green : Colors.red,
+    size: 20,
+  );
 
   String _stockLabel(Product p, int qty) {
     if (qty <= 0) return 'No stock';
@@ -440,27 +459,26 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
         ? price.sellingPriceOp!
         : price.sellingPrice;
     setState(() {
-      _editItems.add(_EditItem(
-        itemId: const Uuid().v4(),
-        product: product,
-        pricePerPiece: effectivePrice,
-        inventory: inv,
-        unitType: 'piece',
-        quantity: 1,
-        originalPieces: 0,
-        discount: disc,
-      ));
+      _editItems.add(
+        _EditItem(
+          itemId: const Uuid().v4(),
+          product: product,
+          pricePerPiece: effectivePrice,
+          inventory: inv,
+          unitType: 'piece',
+          quantity: 1,
+          originalPieces: 0,
+          discount: disc,
+        ),
+      );
     });
   }
 
-  double get _total =>
-      _editItems.fold(0.0, (sum, item) => sum + item.subtotal);
+  double get _total => _editItems.fold(0.0, (sum, item) => sum + item.subtotal);
 
-  double? get _actualAmount =>
-      double.tryParse(_actualAmountCtrl.text.trim());
+  double? get _actualAmount => double.tryParse(_actualAmountCtrl.text.trim());
 
-  double? get _swapAmount =>
-      double.tryParse(_swapAmountCtrl.text.trim());
+  double? get _swapAmount => double.tryParse(_swapAmountCtrl.text.trim());
 
   double get _netTotal =>
       (_total - (_swapAmount ?? 0)).clamp(0.0, double.infinity);
@@ -468,8 +486,10 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   /// [_netTotal] further reduced by any linked "Stock Pulled out" amount —
   /// display-only; never written back as `totalAmount` on save.
   double get _displayTotal =>
-      (_netTotal - (_invoice?.stockPulledOutAmount ?? 0))
-          .clamp(0.0, double.infinity);
+      (_netTotal - (_invoice?.stockPulledOutAmount ?? 0)).clamp(
+        0.0,
+        double.infinity,
+      );
 
   bool get _canSave {
     if (_selectedClient == null || _editItems.isEmpty) return false;
@@ -493,12 +513,12 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
       totalAmount: _netTotal,
       paymentType: _paymentType,
       includeInLayout: _includeInLayout,
-      partialAmount: partial
-          ? double.tryParse(_partialAmountCtrl.text)
-          : null,
+      partialAmount: partial ? double.tryParse(_partialAmountCtrl.text) : null,
       partialDate: partial ? _partialDate : null,
       checkReference: _paymentType == 'check'
-          ? (_checkRefCtrl.text.trim().isEmpty ? null : _checkRefCtrl.text.trim())
+          ? (_checkRefCtrl.text.trim().isEmpty
+                ? null
+                : _checkRefCtrl.text.trim())
           : null,
       checkAmount: _paymentType == 'check'
           ? double.tryParse(_checkAmountCtrl.text)
@@ -513,7 +533,9 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
         .map((li) => li.toInvoiceItem(widget.invoiceId))
         .toList();
 
-    await ref.read(invoiceRepositoryProvider).editInvoice(
+    await ref
+        .read(invoiceRepositoryProvider)
+        .editInvoice(
           invoice: updatedInvoice,
           newItems: newItems,
           oldItems: _originalItems,
@@ -535,12 +557,12 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
       status: 'printed',
       paymentType: _paymentType,
       includeInLayout: _includeInLayout,
-      partialAmount: partial
-          ? double.tryParse(_partialAmountCtrl.text)
-          : null,
+      partialAmount: partial ? double.tryParse(_partialAmountCtrl.text) : null,
       partialDate: partial ? _partialDate : null,
       checkReference: _paymentType == 'check'
-          ? (_checkRefCtrl.text.trim().isEmpty ? null : _checkRefCtrl.text.trim())
+          ? (_checkRefCtrl.text.trim().isEmpty
+                ? null
+                : _checkRefCtrl.text.trim())
           : null,
       checkAmount: _paymentType == 'check'
           ? double.tryParse(_checkAmountCtrl.text)
@@ -555,7 +577,9 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
         .map((li) => li.toInvoiceItem(widget.invoiceId))
         .toList();
 
-    await ref.read(invoiceRepositoryProvider).editInvoice(
+    await ref
+        .read(invoiceRepositoryProvider)
+        .editInvoice(
           invoice: updatedInvoice,
           newItems: newItems,
           oldItems: _originalItems,
@@ -573,7 +597,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     final persisted = await _persistEdit();
 
     final productsById = {
-      for (final li in _editItems) li.product.id: li.product
+      for (final li in _editItems) li.product.id: li.product,
     };
     await printInvoice(
       invoice: persisted.invoice,
@@ -594,7 +618,8 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
         await showInfoDialog(
           context,
           title: 'Cannot Cancel Invoice',
-          message: 'This invoice has ${linked.length} linked "Stock Pulled '
+          message:
+              'This invoice has ${linked.length} linked "Stock Pulled '
               'out" entr${linked.length == 1 ? 'y' : 'ies'} in Bad Orders & '
               'Returns. Delete ${linked.length == 1 ? 'it' : 'them'} first '
               'before cancelling this invoice.',
@@ -606,7 +631,8 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     final ok = await showConfirmDialog(
       context,
       title: 'Cancel Invoice',
-      message: 'Cancel this invoice?\n\n'
+      message:
+          'Cancel this invoice?\n\n'
           'Ordered stock will be restored to inventory. The invoice moves '
           'to Cancelled Invoices, where it can be restored or permanently '
           'deleted.',
@@ -626,7 +652,8 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     final ok = await showConfirmDialog(
       context,
       title: 'Restore Invoice',
-      message: 'Restore this invoice? It will be marked as printed again '
+      message:
+          'Restore this invoice? It will be marked as printed again '
           'and its ordered stock will be re-deducted from inventory.',
       confirmLabel: 'Restore',
     );
@@ -649,7 +676,8 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
         await showInfoDialog(
           context,
           title: 'Cannot Delete Invoice',
-          message: 'This invoice has ${linked.length} linked "Stock Pulled '
+          message:
+              'This invoice has ${linked.length} linked "Stock Pulled '
               'out" entr${linked.length == 1 ? 'y' : 'ies'} in Bad Orders & '
               'Returns. Delete ${linked.length == 1 ? 'it' : 'them'} first '
               'before deleting this invoice.',
@@ -661,7 +689,8 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     final ok = await showConfirmDialog(
       context,
       title: 'Delete Permanently',
-      message: 'Permanently delete this cancelled invoice? '
+      message:
+          'Permanently delete this cancelled invoice? '
           'This cannot be undone.',
       confirmLabel: 'Delete Permanently',
     );
@@ -711,793 +740,1059 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
       ],
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                // Invoice header chip row
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: Row(
-                    children: [
-                      Text(
-                        'Invoice ${_invoice!.displayNumber}',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(width: 8),
-                      if (!isCancelled)
-                        InkWell(
-                          onTap: _pickInvoiceDate,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(dateFmt.format(_invoiceDate),
-                                  style: const TextStyle(
-                                      color: Colors.grey, fontSize: 12)),
-                              const SizedBox(width: 4),
-                              const Icon(Icons.edit_calendar,
-                                  size: 14, color: Colors.grey),
-                            ],
-                          ),
-                        )
-                      else
-                        Text(dateFmt.format(_invoiceDate),
-                            style: const TextStyle(
-                                color: Colors.grey, fontSize: 12)),
-                      const Spacer(),
-                      Chip(
-                        label: Text(_invoice!.invoiceType == 'delivery'
-                            ? 'Delivery'
-                            : 'Walk-in'),
-                        backgroundColor: _invoice!.isDelivery
-                            ? Colors.blue.shade100
-                            : Colors.purple.shade100,
-                        padding: EdgeInsets.zero,
-                        labelPadding:
-                            const EdgeInsets.symmetric(horizontal: 8),
-                      ),
-                      const SizedBox(width: 4),
-                      DropdownButton<String>(
-                        value: _paymentType,
-                        isDense: true,
-                        underline: const SizedBox(),
-                        items: const [
-                          DropdownMenuItem(value: 'cash',    child: Text('Cash')),
-                          DropdownMenuItem(value: 'check',   child: Text('Check')),
-                          DropdownMenuItem(value: 'credit',  child: Text('Credit')),
-                          DropdownMenuItem(value: 'partial', child: Text('Partial')),
-                        ],
-                        onChanged: !isCancelled
-                            ? (v) => setState(() => _paymentType = v!)
-                            : null,
-                      ),
-                      const SizedBox(width: 4),
-                      Chip(
-                        label: Text(_invoice!.status.toUpperCase()),
-                        backgroundColor: isCancelled
-                            ? Colors.red.shade100
-                            : Colors.green.shade100,
-                        padding: EdgeInsets.zero,
-                        labelPadding:
-                            const EdgeInsets.symmetric(horizontal: 8),
-                      ),
-                    ],
-                  ),
-                ),
-
-                if (!isCancelled && _invoice!.isDelivery)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
-                    child: Row(
-                      children: [
-                        Switch(
-                          value: _includeInLayout,
-                          onChanged: (v) =>
-                              setState(() => _includeInLayout = v),
-                        ),
-                        const Text('Include in Layout',
-                            style: TextStyle(
-                                fontSize: 13, fontWeight: FontWeight.w500)),
-                      ],
-                    ),
-                  ),
-
-                if (!isCancelled) ...[
-                  Expanded(child: SingleChildScrollView(child: Column(children: [
-                  // Check fields
-                  if (_paymentType == 'check') ...[
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _checkAmountCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Check Amount',
-                                prefixText: '₱ ',
-                                border: OutlineInputBorder(),
-                                isDense: true,
-                              ),
-                              keyboardType: const TextInputType
-                                  .numberWithOptions(decimal: true),
-                              readOnly: isCancelled,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: InkWell(
-                              onTap: isCancelled ? null : () async {
-                                final picked = await showDatePicker(
-                                  context: context,
-                                  initialDate:
-                                      _checkIssuedDate ?? DateTime.now(),
-                                  firstDate: DateTime(2020),
-                                  lastDate: DateTime(2100),
-                                );
-                                if (picked != null) {
-                                  setState(() => _checkIssuedDate = picked);
-                                }
-                              },
-                              child: InputDecorator(
-                                decoration: const InputDecoration(
-                                  labelText: 'Issued Date',
-                                  suffixIcon: Icon(
-                                      Icons.calendar_today, size: 18),
-                                  border: OutlineInputBorder(),
-                                  isDense: true,
-                                ),
-                                child: Text(
-                                  _checkIssuedDate == null
-                                      ? 'Select date'
-                                      : '${_checkIssuedDate!.year}-'
-                                        '${_checkIssuedDate!.month.toString().padLeft(2, '0')}-'
-                                        '${_checkIssuedDate!.day.toString().padLeft(2, '0')}',
-                                  style: TextStyle(
-                                    color: _checkIssuedDate == null
-                                        ? Theme.of(context).hintColor
-                                        : null,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: InkWell(
-                              onTap: isCancelled ? null : () async {
-                                final picked = await showDatePicker(
-                                  context: context,
-                                  initialDate:
-                                      _checkDueDate ?? DateTime.now(),
-                                  firstDate: DateTime(2020),
-                                  lastDate: DateTime(2100),
-                                );
-                                if (picked != null) {
-                                  setState(() => _checkDueDate = picked);
-                                }
-                              },
-                              child: InputDecorator(
-                                decoration: const InputDecoration(
-                                  labelText: 'Due Date',
-                                  suffixIcon: Icon(
-                                      Icons.calendar_today, size: 18),
-                                  border: OutlineInputBorder(),
-                                  isDense: true,
-                                ),
-                                child: Text(
-                                  _checkDueDate == null
-                                      ? 'Select date'
-                                      : '${_checkDueDate!.year}-'
-                                        '${_checkDueDate!.month.toString().padLeft(2, '0')}-'
-                                        '${_checkDueDate!.day.toString().padLeft(2, '0')}',
-                                  style: TextStyle(
-                                    color: _checkDueDate == null
-                                        ? Theme.of(context).hintColor
-                                        : null,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                      child: TextField(
-                        controller: _checkRefCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Check Reference No.',
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                        ),
-                        readOnly: isCancelled,
-                      ),
-                    ),
-
-                    // Add cash payment row
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _partialAmountCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Add Payment',
-                                prefixText: '₱ ',
-                                border: OutlineInputBorder(),
-                                isDense: true,
-                              ),
-                              keyboardType: const TextInputType
-                                  .numberWithOptions(decimal: true),
-                              readOnly: isCancelled,
-                              onChanged: (_) => setState(() {}),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: InkWell(
-                              onTap: isCancelled ? null : () async {
-                                final picked = await showDatePicker(
-                                  context: context,
-                                  initialDate:
-                                      _partialDate ?? DateTime.now(),
-                                  firstDate: DateTime(2020),
-                                  lastDate: DateTime(2100),
-                                );
-                                if (picked != null) {
-                                  setState(() => _partialDate = picked);
-                                }
-                              },
-                              child: InputDecorator(
-                                decoration: const InputDecoration(
-                                  labelText: 'Date',
-                                  suffixIcon: Icon(
-                                      Icons.calendar_today, size: 18),
-                                  border: OutlineInputBorder(),
-                                  isDense: true,
-                                ),
-                                child: Text(
-                                  _partialDate == null
-                                      ? 'Select date'
-                                      : DateFormat('MMM dd, yyyy')
-                                          .format(_partialDate!),
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: _partialDate == null
-                                        ? Theme.of(context).hintColor
-                                        : null,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          FilledButton(
-                            onPressed: (isCancelled || !_canAddPayment)
-                                ? null
-                                : _addPayment,
-                            style: FilledButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12)),
-                            child: const Text('Add'),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // Payment history
-                    if (_payments.isNotEmpty) ...[
-                      const Padding(
-                        padding: EdgeInsets.fromLTRB(12, 4, 12, 2),
-                        child: Text('Payment History',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13)),
-                      ),
-                      ..._payments.map((p) => ListTile(
-                            dense: true,
-                            contentPadding:
-                                const EdgeInsets.symmetric(horizontal: 12),
-                            title: Text(formatCurrency(p.amount),
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w500)),
-                            subtitle: p.paymentDate == null
-                                ? null
-                                : Text(DateFormat('MMM dd, yyyy')
-                                    .format(p.paymentDate!)),
-                            trailing: isCancelled
-                                ? null
-                                : IconButton(
-                                    icon: const Icon(
-                                        Icons.delete_outline,
-                                        color: Colors.red,
-                                        size: 18),
-                                    onPressed: () =>
-                                        _deletePayment(p.id),
-                                  ),
-                          )),
-                    ],
-
-                    // Balance summary
-                    Builder(builder: (_) {
-                      final checkAmt =
-                          double.tryParse(_checkAmountCtrl.text) ?? 0.0;
-                      final cashPaid =
-                          _payments.fold(0.0, (s, p) => s + p.amount);
-                      final balance =
-                          (_netTotal - checkAmt - cashPaid)
-                              .clamp(0.0, double.infinity);
-                      return Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
-                        child: Column(
-                          children: [
-                            const Divider(height: 8),
-                            Row(children: [
-                              const Text('Check Amount:',
-                                  style: TextStyle(fontSize: 13)),
-                              const SizedBox(width: 8),
-                              Text(formatCurrency(checkAmt),
-                                  style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500)),
-                            ]),
-                            if (cashPaid > 0) ...[
-                              const SizedBox(height: 2),
-                              Row(children: [
-                                const Text('Cash Payments:',
-                                    style: TextStyle(fontSize: 13)),
-                                const SizedBox(width: 8),
-                                Text(formatCurrency(cashPaid),
-                                    style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w500)),
-                              ]),
-                            ],
-                            const SizedBox(height: 2),
-                            Row(children: [
-                              const Text('Balance:',
-                                  style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600)),
-                              const SizedBox(width: 8),
-                              Text(
-                                formatCurrency(balance),
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: balance > 0.01
-                                      ? Colors.red.shade700
-                                      : Colors.green.shade700,
-                                ),
-                              ),
-                            ]),
-                          ],
-                        ),
-                      );
-                    }),
-                  ],
-
-                  // Partial payment — add form + history
-                  if (_paymentType == 'partial') ...[
-                    // Add payment row
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _partialAmountCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Amount',
-                                prefixText: '₱ ',
-                                border: OutlineInputBorder(),
-                                isDense: true,
-                              ),
-                              keyboardType: const TextInputType
-                                  .numberWithOptions(decimal: true),
-                              readOnly: isCancelled,
-                              onChanged: (_) => setState(() {}),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: InkWell(
-                              onTap: isCancelled ? null : () async {
-                                final picked = await showDatePicker(
-                                  context: context,
-                                  initialDate:
-                                      _partialDate ?? DateTime.now(),
-                                  firstDate: DateTime(2020),
-                                  lastDate: DateTime(2100),
-                                );
-                                if (picked != null) {
-                                  setState(() => _partialDate = picked);
-                                }
-                              },
-                              child: InputDecorator(
-                                decoration: const InputDecoration(
-                                  labelText: 'Date',
-                                  suffixIcon: Icon(
-                                      Icons.calendar_today, size: 18),
-                                  border: OutlineInputBorder(),
-                                  isDense: true,
-                                ),
-                                child: Text(
-                                  _partialDate == null
-                                      ? 'Select date'
-                                      : DateFormat('MMM dd, yyyy')
-                                          .format(_partialDate!),
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: _partialDate == null
-                                        ? Theme.of(context).hintColor
-                                        : null,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          FilledButton(
-                            onPressed: (isCancelled || !_canAddPayment)
-                                ? null
-                                : _addPayment,
-                            style: FilledButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12)),
-                            child: const Text('Add'),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // Payment history
-                    if (_payments.isNotEmpty) ...[
-                      const Padding(
-                        padding: EdgeInsets.fromLTRB(12, 4, 12, 2),
-                        child: Text('Payment History',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13)),
-                      ),
-                      ..._payments.map((p) => ListTile(
-                            dense: true,
-                            contentPadding:
-                                const EdgeInsets.symmetric(horizontal: 12),
-                            title: Text(formatCurrency(p.amount),
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w500)),
-                            subtitle: p.paymentDate == null
-                                ? null
-                                : Text(DateFormat('MMM dd, yyyy')
-                                    .format(p.paymentDate!)),
-                            trailing: isCancelled
-                                ? null
-                                : IconButton(
-                                    icon: const Icon(Icons.delete_outline,
-                                        color: Colors.red, size: 18),
-                                    onPressed: () => _deletePayment(p.id),
-                                  ),
-                          )),
-                    ],
-
-                    // Totals
-                    Builder(builder: (_) {
-                      final totalPaid =
-                          _payments.fold(0.0, (s, p) => s + p.amount);
-                      final balance = (_netTotal - totalPaid)
-                          .clamp(0.0, double.infinity);
-                      return Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-                        child: Column(
-                          children: [
-                            const Divider(height: 8),
-                            Row(children: [
-                              const Text('Total Paid:',
-                                  style: TextStyle(fontSize: 13)),
-                              const SizedBox(width: 8),
-                              Text(formatCurrency(totalPaid),
-                                  style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500)),
-                            ]),
-                            const SizedBox(height: 2),
-                            Row(children: [
-                              const Text('Balance:',
-                                  style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600)),
-                              const SizedBox(width: 8),
-                              Text(
-                                formatCurrency(balance),
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: balance > 0.01
-                                      ? Colors.red.shade700
-                                      : Colors.green.shade700,
-                                ),
-                              ),
-                            ]),
-                          ],
-                        ),
-                      );
-                    }),
-                  ],
-
-                  // Client selector
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 20, 12, 0),
-                    child: InkWell(
-                      onTap: _pickClient,
-                      borderRadius: BorderRadius.circular(4),
-                      child: InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: 'Client / Store',
-                          border: OutlineInputBorder(),
-                          suffixIcon: Icon(Icons.search),
-                        ),
-                        child: Text(
-                          _selectedClient?.name ?? 'Tap to search…',
-                          style: TextStyle(
-                            color: _selectedClient == null
-                                ? Theme.of(context).hintColor
-                                : (_isClientFlagged(_selectedClient!)
-                                    ? Colors.red
-                                    : null),
-                            fontWeight: _selectedClient != null &&
-                                    _isClientFlagged(_selectedClient!)
-                                ? FontWeight.bold
-                                : null,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  if (_selectedClient?.address != null &&
-                      _selectedClient!.address!.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          _selectedClient!.address!,
-                          style: TextStyle(
-                              fontSize: 12, color: Theme.of(context).hintColor),
-                        ),
-                      ),
-                    ),
-                  const SizedBox(height: 8),
-
-                  // Notes + actual amount
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _notesCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Notes (not included when printing)',
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                            maxLines: 1,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextField(
-                            controller: _actualAmountCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Actual Amount (referenced receipt, optional)',
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                            keyboardType:
-                                const TextInputType.numberWithOptions(decimal: true),
-                            inputFormatters: [
-                              FilteringTextInputFormatter.allow(
-                                  RegExp(r'^\d*\.?\d{0,2}')),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextField(
-                            controller: _swapAmountCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Adjustment Amount (deducted from total, optional)',
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                            keyboardType:
-                                const TextInputType.numberWithOptions(decimal: true),
-                            inputFormatters: [
-                              FilteringTextInputFormatter.allow(
-                                  RegExp(r'^\d*\.?\d{0,2}')),
-                            ],
-                            onChanged: (_) => setState(() {}),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-
-                  // Items header + add button
+          : Theme(
+              data: _compactTheme(context),
+              child: Column(
+                children: [
+                  // Invoice header chip row
                   Padding(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 4),
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     child: Row(
                       children: [
                         Text(
-                          'Items (${_editItems.length})',
+                          'Invoice ${_invoice!.displayNumber}',
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
-                        const Spacer(),
-                        TextButton.icon(
-                          icon: const Icon(Icons.add),
-                          label: const Text('Add Product'),
-                          onPressed: _pickProduct,
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // Editable items list
-                  if (_editItems.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 24),
-                      child: Center(
-                          child: Text('No items. Tap "Add Product".')),
-                    )
-                  else
-                    ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: _editItems.length,
-                      itemBuilder: (ctx, i) {
-                        final item = _editItems[i];
-                        final currentInv =
-                            item.inventory?.quantityPieces ?? 0;
-                        return _EditItemTile(
-                          item: item,
-                          currentInventoryPieces: currentInv,
-                          onRemove: () =>
-                              setState(() => _editItems.removeAt(i)),
-                          onChanged: () => setState(() {}),
-                        );
-                      },
-                    ),
-
-                  // Deleted items history (read-only audit trail)
-                  if (_deletedItems.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: ExpansionTile(
-                        title: Text(
-                          'Deleted Items (${_deletedItems.length})',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 14),
-                        ),
-                        leading: const Icon(Icons.history, color: Colors.grey),
-                        children: _deletedItems.map((d) {
-                          final product = _productsById[d.productId];
-                          final ppb = product?.piecesPerBox ?? 1;
-                          final boxes = ppb > 0 ? d.quantity ~/ ppb : 0;
-                          final pcs = ppb > 0 ? d.quantity % ppb : d.quantity;
-                          final qtyLabel = boxes > 0
-                              ? '$boxes box(es) + $pcs pcs'
-                              : '$pcs pcs';
-                          return ListTile(
-                            dense: true,
-                            leading: const Icon(Icons.remove_circle_outline,
-                                color: Colors.red, size: 20),
-                            title: Text(product?.name ?? d.productId),
-                            subtitle: Text(
-                              '$qtyLabel'
-                              '${d.isFree ? '  •  FREE' : '  •  ${formatCurrency(d.subtotal)}'}'
-                              '  •  ${dateFmt.format(d.deletedAt)}',
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  ]))),  // end Column / SingleChildScrollView / Expanded
-
-                  // Total + actions bar (pinned outside the scroll view)
-                  Container(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .surfaceContainerHighest,
-                    padding: const EdgeInsets.all(12),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                '${_editItems.length} item${_editItems.length == 1 ? '' : 's'}',
-                                style: const TextStyle(
-                                    fontSize: 12, color: Colors.grey),
-                              ),
-                              if ((_swapAmount ?? 0) > 0) ...[
+                        const SizedBox(width: 8),
+                        if (!isCancelled)
+                          InkWell(
+                            onTap: _pickInvoiceDate,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
                                 Text(
-                                  'Subtotal: ${formatCurrency(_total)}',
+                                  dateFmt.format(_invoiceDate),
                                   style: const TextStyle(
-                                      fontSize: 12, color: Colors.grey),
+                                    color: Colors.grey,
+                                    fontSize: 12,
+                                  ),
                                 ),
-                                Text(
-                                  'Adjustment: -${formatCurrency(_swapAmount!)}',
-                                  style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.red,
-                                      fontWeight: FontWeight.bold),
+                                const SizedBox(width: 4),
+                                const Icon(
+                                  Icons.edit_calendar,
+                                  size: 14,
+                                  color: Colors.grey,
                                 ),
                               ],
-                              if ((_invoice?.stockPulledOutAmount ?? 0) > 0)
-                                Text(
-                                  'Stock Pulled Out: -${formatCurrency(_invoice!.stockPulledOutAmount!)}',
-                                  style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.red,
-                                      fontWeight: FontWeight.bold),
+                            ),
+                          )
+                        else
+                          Text(
+                            dateFmt.format(_invoiceDate),
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 12,
+                            ),
+                          ),
+                        if (_invoice!.isDelivery) ...[
+                          const SizedBox(width: 12),
+                          _groupBox(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Switch(
+                                  value: _includeInLayout,
+                                  onChanged: (v) =>
+                                      setState(() => _includeInLayout = v),
                                 ),
-                              Text(
-                                'Total: ${formatCurrency(_displayTotal)}',
-                                style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                            ],
+                                const Text(
+                                  'Include in Layout',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        const Spacer(),
+                        Chip(
+                          label: Text(
+                            _invoice!.invoiceType == 'delivery'
+                                ? 'Delivery'
+                                : 'Walk-in',
+                          ),
+                          backgroundColor: _invoice!.isDelivery
+                              ? Colors.blue.shade100
+                              : Colors.purple.shade100,
+                          padding: EdgeInsets.zero,
+                          labelPadding: const EdgeInsets.symmetric(
+                            horizontal: 8,
                           ),
                         ),
-                        OutlinedButton(
-                          onPressed: () => _goBack(),
-                          child: const Text('Back'),
+                        const SizedBox(width: 4),
+                        DropdownButton<String>(
+                          value: _paymentType,
+                          isDense: true,
+                          underline: const SizedBox(),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'cash',
+                              child: Text('Cash'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'check',
+                              child: Text('Check'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'credit',
+                              child: Text('Credit'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'partial',
+                              child: Text('Partial'),
+                            ),
+                          ],
+                          onChanged: !isCancelled
+                              ? (v) => setState(() => _paymentType = v!)
+                              : null,
                         ),
-                        const SizedBox(width: 8),
-                        OutlinedButton.icon(
-                          icon: _saving
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2))
-                              : const Icon(Icons.save_outlined),
-                          label: const Text('Save'),
-                          onPressed:
-                              _canSave && !_saving ? _saveOnly : null,
-                        ),
-                        const SizedBox(width: 8),
-                        FilledButton.icon(
-                          icon: _saving
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white))
-                              : const Icon(Icons.print),
-                          label: const Text('Save & Print'),
-                          onPressed:
-                              _canSave && !_saving ? _saveAndPrint : null,
+                        const SizedBox(width: 4),
+                        Chip(
+                          label: Text(_invoice!.status.toUpperCase()),
+                          backgroundColor: isCancelled
+                              ? Colors.red.shade100
+                              : Colors.green.shade100,
+                          padding: EdgeInsets.zero,
+                          labelPadding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                          ),
                         ),
                       ],
                     ),
                   ),
-                ] else ...[
-                  // Read-only view for cancelled invoices
-                  Expanded(child: _buildCancelledView()),
+
+                  if (!isCancelled) ...[
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          children: [
+                            // Check fields
+                            if (_paymentType == 'check') ...[
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  12,
+                                  8,
+                                  12,
+                                  0,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextField(
+                                        controller: _checkAmountCtrl,
+                                        decoration: const InputDecoration(
+                                          labelText: 'Check Amount',
+                                          prefixText: '₱ ',
+                                          border: OutlineInputBorder(),
+                                          isDense: true,
+                                        ),
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                              decimal: true,
+                                            ),
+                                        readOnly: isCancelled,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: InkWell(
+                                        onTap: isCancelled
+                                            ? null
+                                            : () async {
+                                                final picked =
+                                                    await showDatePicker(
+                                                      context: context,
+                                                      initialDate:
+                                                          _checkIssuedDate ??
+                                                          DateTime.now(),
+                                                      firstDate: DateTime(2020),
+                                                      lastDate: DateTime(2100),
+                                                    );
+                                                if (picked != null) {
+                                                  setState(
+                                                    () => _checkIssuedDate =
+                                                        picked,
+                                                  );
+                                                }
+                                              },
+                                        child: InputDecorator(
+                                          decoration: const InputDecoration(
+                                            labelText: 'Issued Date',
+                                            suffixIcon: Icon(
+                                              Icons.calendar_today,
+                                              size: 18,
+                                            ),
+                                            border: OutlineInputBorder(),
+                                            isDense: true,
+                                          ),
+                                          child: Text(
+                                            _checkIssuedDate == null
+                                                ? 'Select date'
+                                                : '${_checkIssuedDate!.year}-'
+                                                      '${_checkIssuedDate!.month.toString().padLeft(2, '0')}-'
+                                                      '${_checkIssuedDate!.day.toString().padLeft(2, '0')}',
+                                            style: TextStyle(
+                                              color: _checkIssuedDate == null
+                                                  ? Theme.of(context).hintColor
+                                                  : null,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: InkWell(
+                                        onTap: isCancelled
+                                            ? null
+                                            : () async {
+                                                final picked =
+                                                    await showDatePicker(
+                                                      context: context,
+                                                      initialDate:
+                                                          _checkDueDate ??
+                                                          DateTime.now(),
+                                                      firstDate: DateTime(2020),
+                                                      lastDate: DateTime(2100),
+                                                    );
+                                                if (picked != null) {
+                                                  setState(
+                                                    () =>
+                                                        _checkDueDate = picked,
+                                                  );
+                                                }
+                                              },
+                                        child: InputDecorator(
+                                          decoration: const InputDecoration(
+                                            labelText: 'Due Date',
+                                            suffixIcon: Icon(
+                                              Icons.calendar_today,
+                                              size: 18,
+                                            ),
+                                            border: OutlineInputBorder(),
+                                            isDense: true,
+                                          ),
+                                          child: Text(
+                                            _checkDueDate == null
+                                                ? 'Select date'
+                                                : '${_checkDueDate!.year}-'
+                                                      '${_checkDueDate!.month.toString().padLeft(2, '0')}-'
+                                                      '${_checkDueDate!.day.toString().padLeft(2, '0')}',
+                                            style: TextStyle(
+                                              color: _checkDueDate == null
+                                                  ? Theme.of(context).hintColor
+                                                  : null,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: TextField(
+                                        controller: _checkRefCtrl,
+                                        decoration: const InputDecoration(
+                                          labelText: 'Check Reference No.',
+                                          border: OutlineInputBorder(),
+                                          isDense: true,
+                                        ),
+                                        readOnly: isCancelled,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              // Add cash payment row
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  12,
+                                  8,
+                                  12,
+                                  4,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextField(
+                                        controller: _partialAmountCtrl,
+                                        decoration: const InputDecoration(
+                                          labelText: 'Add Payment',
+                                          prefixText: '₱ ',
+                                          border: OutlineInputBorder(),
+                                          isDense: true,
+                                        ),
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                              decimal: true,
+                                            ),
+                                        readOnly: isCancelled,
+                                        onChanged: (_) => setState(() {}),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: InkWell(
+                                        onTap: isCancelled
+                                            ? null
+                                            : () async {
+                                                final picked =
+                                                    await showDatePicker(
+                                                      context: context,
+                                                      initialDate:
+                                                          _partialDate ??
+                                                          DateTime.now(),
+                                                      firstDate: DateTime(2020),
+                                                      lastDate: DateTime(2100),
+                                                    );
+                                                if (picked != null) {
+                                                  setState(
+                                                    () => _partialDate = picked,
+                                                  );
+                                                }
+                                              },
+                                        child: InputDecorator(
+                                          decoration: const InputDecoration(
+                                            labelText: 'Date',
+                                            suffixIcon: Icon(
+                                              Icons.calendar_today,
+                                              size: 18,
+                                            ),
+                                            border: OutlineInputBorder(),
+                                            isDense: true,
+                                          ),
+                                          child: Text(
+                                            _partialDate == null
+                                                ? 'Select date'
+                                                : DateFormat(
+                                                    'MMM dd, yyyy',
+                                                  ).format(_partialDate!),
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              color: _partialDate == null
+                                                  ? Theme.of(context).hintColor
+                                                  : null,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    FilledButton(
+                                      onPressed:
+                                          (isCancelled || !_canAddPayment)
+                                          ? null
+                                          : _addPayment,
+                                      style: FilledButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                        ),
+                                      ),
+                                      child: const Text('Add'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              // Payment history
+                              if (_payments.isNotEmpty) ...[
+                                const Padding(
+                                  padding: EdgeInsets.fromLTRB(12, 4, 12, 2),
+                                  child: Text(
+                                    'Payment History',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                                ..._payments.map(
+                                  (p) => ListTile(
+                                    dense: true,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                    ),
+                                    title: Text(
+                                      formatCurrency(p.amount),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    subtitle: p.paymentDate == null
+                                        ? null
+                                        : Text(
+                                            DateFormat(
+                                              'MMM dd, yyyy',
+                                            ).format(p.paymentDate!),
+                                          ),
+                                    trailing: isCancelled
+                                        ? null
+                                        : IconButton(
+                                            icon: const Icon(
+                                              Icons.delete_outline,
+                                              color: Colors.red,
+                                              size: 18,
+                                            ),
+                                            onPressed: () =>
+                                                _deletePayment(p.id),
+                                          ),
+                                  ),
+                                ),
+                              ],
+
+                              // Balance summary
+                              Builder(
+                                builder: (_) {
+                                  final checkAmt =
+                                      double.tryParse(_checkAmountCtrl.text) ??
+                                      0.0;
+                                  final cashPaid = _payments.fold(
+                                    0.0,
+                                    (s, p) => s + p.amount,
+                                  );
+                                  final balance =
+                                      (_netTotal - checkAmt - cashPaid).clamp(
+                                        0.0,
+                                        double.infinity,
+                                      );
+                                  return Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      12,
+                                      6,
+                                      12,
+                                      8,
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        const Divider(height: 8),
+                                        Row(
+                                          children: [
+                                            const Text(
+                                              'Check Amount:',
+                                              style: TextStyle(fontSize: 13),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              formatCurrency(checkAmt),
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        if (cashPaid > 0) ...[
+                                          const SizedBox(height: 2),
+                                          Row(
+                                            children: [
+                                              const Text(
+                                                'Cash Payments:',
+                                                style: TextStyle(fontSize: 13),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                formatCurrency(cashPaid),
+                                                style: const TextStyle(
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                        const SizedBox(height: 2),
+                                        Row(
+                                          children: [
+                                            const Text(
+                                              'Balance:',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              formatCurrency(balance),
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.bold,
+                                                color: balance > 0.01
+                                                    ? Colors.red.shade700
+                                                    : Colors.green.shade700,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+
+                            // Partial payment — add form + history
+                            if (_paymentType == 'partial') ...[
+                              // Add payment row
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  12,
+                                  8,
+                                  12,
+                                  4,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextField(
+                                        controller: _partialAmountCtrl,
+                                        decoration: const InputDecoration(
+                                          labelText: 'Amount',
+                                          prefixText: '₱ ',
+                                          border: OutlineInputBorder(),
+                                          isDense: true,
+                                        ),
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                              decimal: true,
+                                            ),
+                                        readOnly: isCancelled,
+                                        onChanged: (_) => setState(() {}),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: InkWell(
+                                        onTap: isCancelled
+                                            ? null
+                                            : () async {
+                                                final picked =
+                                                    await showDatePicker(
+                                                      context: context,
+                                                      initialDate:
+                                                          _partialDate ??
+                                                          DateTime.now(),
+                                                      firstDate: DateTime(2020),
+                                                      lastDate: DateTime(2100),
+                                                    );
+                                                if (picked != null) {
+                                                  setState(
+                                                    () => _partialDate = picked,
+                                                  );
+                                                }
+                                              },
+                                        child: InputDecorator(
+                                          decoration: const InputDecoration(
+                                            labelText: 'Date',
+                                            suffixIcon: Icon(
+                                              Icons.calendar_today,
+                                              size: 18,
+                                            ),
+                                            border: OutlineInputBorder(),
+                                            isDense: true,
+                                          ),
+                                          child: Text(
+                                            _partialDate == null
+                                                ? 'Select date'
+                                                : DateFormat(
+                                                    'MMM dd, yyyy',
+                                                  ).format(_partialDate!),
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              color: _partialDate == null
+                                                  ? Theme.of(context).hintColor
+                                                  : null,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    FilledButton(
+                                      onPressed:
+                                          (isCancelled || !_canAddPayment)
+                                          ? null
+                                          : _addPayment,
+                                      style: FilledButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                        ),
+                                      ),
+                                      child: const Text('Add'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              // Payment history
+                              if (_payments.isNotEmpty) ...[
+                                const Padding(
+                                  padding: EdgeInsets.fromLTRB(12, 4, 12, 2),
+                                  child: Text(
+                                    'Payment History',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                                ..._payments.map(
+                                  (p) => ListTile(
+                                    dense: true,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                    ),
+                                    title: Text(
+                                      formatCurrency(p.amount),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    subtitle: p.paymentDate == null
+                                        ? null
+                                        : Text(
+                                            DateFormat(
+                                              'MMM dd, yyyy',
+                                            ).format(p.paymentDate!),
+                                          ),
+                                    trailing: isCancelled
+                                        ? null
+                                        : IconButton(
+                                            icon: const Icon(
+                                              Icons.delete_outline,
+                                              color: Colors.red,
+                                              size: 18,
+                                            ),
+                                            onPressed: () =>
+                                                _deletePayment(p.id),
+                                          ),
+                                  ),
+                                ),
+                              ],
+
+                              // Totals
+                              Builder(
+                                builder: (_) {
+                                  final totalPaid = _payments.fold(
+                                    0.0,
+                                    (s, p) => s + p.amount,
+                                  );
+                                  final balance = (_netTotal - totalPaid).clamp(
+                                    0.0,
+                                    double.infinity,
+                                  );
+                                  return Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      12,
+                                      4,
+                                      12,
+                                      8,
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        const Divider(height: 8),
+                                        Row(
+                                          children: [
+                                            const Text(
+                                              'Total Paid:',
+                                              style: TextStyle(fontSize: 13),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              formatCurrency(totalPaid),
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Row(
+                                          children: [
+                                            const Text(
+                                              'Balance:',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              formatCurrency(balance),
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.bold,
+                                                color: balance > 0.01
+                                                    ? Colors.red.shade700
+                                                    : Colors.green.shade700,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+
+                            // Client selector + address
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(12, 20, 12, 0),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Expanded(
+                                    flex: 2,
+                                    child: InkWell(
+                                      onTap: _pickClient,
+                                      borderRadius: BorderRadius.circular(4),
+                                      child: InputDecorator(
+                                        decoration: const InputDecoration(
+                                          labelText: 'Client / Store',
+                                          border: OutlineInputBorder(),
+                                          isDense: true,
+                                          suffixIcon: Icon(Icons.search),
+                                        ),
+                                        child: Text(
+                                          _selectedClient?.name ??
+                                              'Tap to search…',
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: _selectedClient == null
+                                                ? Theme.of(context).hintColor
+                                                : (_isClientFlagged(
+                                                        _selectedClient!,
+                                                      )
+                                                      ? Colors.red
+                                                      : null),
+                                            fontWeight:
+                                                _selectedClient != null &&
+                                                    _isClientFlagged(
+                                                      _selectedClient!,
+                                                    )
+                                                ? FontWeight.bold
+                                                : null,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  if (_selectedClient?.address != null &&
+                                      _selectedClient!.address!.isNotEmpty) ...[
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      flex: 2,
+                                      child: _groupBox(
+                                        child: Text(
+                                          _selectedClient!.address!,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Theme.of(context).hintColor,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+
+                            // Notes + actual amount
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _notesCtrl,
+                                      decoration: const InputDecoration(
+                                        labelText:
+                                            'Notes (not included when printing)',
+                                        border: OutlineInputBorder(),
+                                        isDense: true,
+                                      ),
+                                      maxLines: 1,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _actualAmountCtrl,
+                                      decoration: const InputDecoration(
+                                        labelText:
+                                            'Actual Amount (referenced receipt, optional)',
+                                        border: OutlineInputBorder(),
+                                        isDense: true,
+                                      ),
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.allow(
+                                          RegExp(r'^\d*\.?\d{0,2}'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _swapAmountCtrl,
+                                      decoration: const InputDecoration(
+                                        labelText:
+                                            'Adjustment Amount (deducted from total, optional)',
+                                        border: OutlineInputBorder(),
+                                        isDense: true,
+                                      ),
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.allow(
+                                          RegExp(r'^\d*\.?\d{0,2}'),
+                                        ),
+                                      ],
+                                      onChanged: (_) => setState(() {}),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+
+                            // Items header + add button
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 4,
+                              ),
+                              child: Row(
+                                children: [
+                                  Text(
+                                    'Items (${_editItems.length})',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  TextButton.icon(
+                                    icon: const Icon(Icons.add),
+                                    label: const Text('Add Product'),
+                                    onPressed: _pickProduct,
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            // Editable items list
+                            if (_editItems.isEmpty)
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 24),
+                                child: Center(
+                                  child: Text('No items. Tap "Add Product".'),
+                                ),
+                              )
+                            else
+                              ListView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: _editItems.length,
+                                itemBuilder: (ctx, i) {
+                                  final item = _editItems[i];
+                                  final currentInv =
+                                      item.inventory?.quantityPieces ?? 0;
+                                  return _EditItemTile(
+                                    item: item,
+                                    currentInventoryPieces: currentInv,
+                                    onRemove: () =>
+                                        setState(() => _editItems.removeAt(i)),
+                                    onChanged: () => setState(() {}),
+                                  );
+                                },
+                              ),
+
+                            // Deleted items history (read-only audit trail)
+                            if (_deletedItems.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                ),
+                                child: ExpansionTile(
+                                  title: Text(
+                                    'Deleted Items (${_deletedItems.length})',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  leading: const Icon(
+                                    Icons.history,
+                                    color: Colors.grey,
+                                  ),
+                                  children: _deletedItems.map((d) {
+                                    final product = _productsById[d.productId];
+                                    final ppb = product?.piecesPerBox ?? 1;
+                                    final boxes = ppb > 0
+                                        ? d.quantity ~/ ppb
+                                        : 0;
+                                    final pcs = ppb > 0
+                                        ? d.quantity % ppb
+                                        : d.quantity;
+                                    final qtyLabel = boxes > 0
+                                        ? '$boxes box(es) + $pcs pcs'
+                                        : '$pcs pcs';
+                                    return ListTile(
+                                      dense: true,
+                                      leading: const Icon(
+                                        Icons.remove_circle_outline,
+                                        color: Colors.red,
+                                        size: 20,
+                                      ),
+                                      title: Text(product?.name ?? d.productId),
+                                      subtitle: Text(
+                                        '$qtyLabel'
+                                        '${d.isFree ? '  •  FREE' : '  •  ${formatCurrency(d.subtotal)}'}'
+                                        '  •  ${dateFmt.format(d.deletedAt)}',
+                                      ),
+                                    );
+                                  }).toList(),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ), // end Column / SingleChildScrollView / Expanded
+                    // Total + actions bar (pinned outside the scroll view)
+                    Container(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '${_editItems.length} item${_editItems.length == 1 ? '' : 's'}',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                                if ((_swapAmount ?? 0) > 0) ...[
+                                  Text(
+                                    'Subtotal: ${formatCurrency(_total)}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Adjustment: -${formatCurrency(_swapAmount!)}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.red,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                                if ((_invoice?.stockPulledOutAmount ?? 0) > 0)
+                                  Text(
+                                    'Stock Pulled Out: -${formatCurrency(_invoice!.stockPulledOutAmount!)}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.red,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                Text(
+                                  'Total: ${formatCurrency(_displayTotal)}',
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          OutlinedButton(
+                            onPressed: () => _goBack(),
+                            child: const Text('Back'),
+                          ),
+                          const SizedBox(width: 8),
+                          OutlinedButton.icon(
+                            icon: _saving
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.save_outlined),
+                            label: const Text('Save'),
+                            onPressed: _canSave && !_saving ? _saveOnly : null,
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton.icon(
+                            icon: _saving
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.print),
+                            label: const Text('Save & Print'),
+                            onPressed: _canSave && !_saving
+                                ? _saveAndPrint
+                                : null,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ] else ...[
+                    // Read-only view for cancelled invoices
+                    Expanded(child: _buildCancelledView()),
+                  ],
                 ],
-              ],
+              ),
             ),
+    );
+  }
+
+  ThemeData _compactTheme(BuildContext context) {
+    final base = Theme.of(context);
+    return base.copyWith(
+      visualDensity: VisualDensity.compact,
+      textTheme: base.textTheme.apply(fontSizeFactor: 0.9),
+      inputDecorationTheme: base.inputDecorationTheme.copyWith(
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        labelStyle: const TextStyle(fontSize: 13),
+        hintStyle: const TextStyle(fontSize: 13),
+      ),
+      chipTheme: base.chipTheme.copyWith(
+        labelStyle: const TextStyle(fontSize: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+      ),
     );
   }
 
@@ -1508,8 +1803,10 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (_selectedClient != null) ...[
-            Text('Client: ${_selectedClient!.name}',
-                style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text(
+              'Client: ${_selectedClient!.name}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
             if (_selectedClient!.address != null)
               Text(_selectedClient!.address!),
             const SizedBox(height: 12),
@@ -1524,45 +1821,55 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
             },
             children: [
               _headerRow(['Product', 'Unit', 'Qty', 'Subtotal']),
-              ..._editItems.map((item) => _dataRow([
-                    '${item.product.name} x ${item.product.piecesPerBox}',
-                    item.unitType,
-                    '${item.quantity}',
-                    formatCurrency(item.subtotal),
-                  ])),
+              ..._editItems.map(
+                (item) => _dataRow([
+                  '${item.product.name} x ${item.product.piecesPerBox}',
+                  item.unitType,
+                  '${item.quantity}',
+                  formatCurrency(item.subtotal),
+                ]),
+              ),
             ],
           ),
           const SizedBox(height: 12),
           if ((_swapAmount ?? 0) > 0) ...[
             Align(
               alignment: Alignment.centerRight,
-              child: Text('Subtotal: ${formatCurrency(_total)}',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              child: Text(
+                'Subtotal: ${formatCurrency(_total)}',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
             ),
             Align(
               alignment: Alignment.centerRight,
-              child: Text('Adjustment: -${formatCurrency(_swapAmount!)}',
-                  style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.red,
-                      fontWeight: FontWeight.bold)),
+              child: Text(
+                'Adjustment: -${formatCurrency(_swapAmount!)}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.red,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ],
           if ((_invoice?.stockPulledOutAmount ?? 0) > 0)
             Align(
               alignment: Alignment.centerRight,
               child: Text(
-                  'Stock Pulled Out: -${formatCurrency(_invoice!.stockPulledOutAmount!)}',
-                  style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.red,
-                      fontWeight: FontWeight.bold)),
+                'Stock Pulled Out: -${formatCurrency(_invoice!.stockPulledOutAmount!)}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.red,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           Align(
             alignment: Alignment.centerRight,
-            child: Text('Total: ${formatCurrency(_displayTotal)}',
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.bold)),
+            child: Text(
+              'Total: ${formatCurrency(_displayTotal)}',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
           ),
           if (_invoice?.notes != null && _invoice!.notes!.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -1575,25 +1882,22 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   }
 
   TableRow _headerRow(List<String> cells) => TableRow(
-        decoration: BoxDecoration(color: Colors.grey.shade200),
-        children: cells
-            .map((c) => Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Text(c,
-                      style:
-                          const TextStyle(fontWeight: FontWeight.bold)),
-                ))
-            .toList(),
-      );
+    decoration: BoxDecoration(color: Colors.grey.shade200),
+    children: cells
+        .map(
+          (c) => Padding(
+            padding: const EdgeInsets.all(8),
+            child: Text(c, style: const TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        )
+        .toList(),
+  );
 
   TableRow _dataRow(List<String> cells) => TableRow(
-        children: cells
-            .map((c) => Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Text(c),
-                ))
-            .toList(),
-      );
+    children: cells
+        .map((c) => Padding(padding: const EdgeInsets.all(8), child: Text(c)))
+        .toList(),
+  );
 }
 
 // ── Editable item tile ────────────────────────────────────────────────────────
@@ -1621,8 +1925,7 @@ class _EditItemTileState extends State<_EditItemTile> {
   @override
   void initState() {
     super.initState();
-    _qtyCtrl =
-        TextEditingController(text: widget.item.quantity.toString());
+    _qtyCtrl = TextEditingController(text: widget.item.quantity.toString());
   }
 
   @override
@@ -1646,8 +1949,9 @@ class _EditItemTileState extends State<_EditItemTile> {
   Widget build(BuildContext context) {
     final item = widget.item;
     final stockOk = item.hasEnoughStock(widget.currentInventoryPieces);
-    final effectiveAvail =
-        item.effectiveAvailable(widget.currentInventoryPieces);
+    final effectiveAvail = item.effectiveAvailable(
+      widget.currentInventoryPieces,
+    );
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -1660,21 +1964,24 @@ class _EditItemTileState extends State<_EditItemTile> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('${item.product.name} x ${item.product.piecesPerBox}',
-                      style:
-                          const TextStyle(fontWeight: FontWeight.bold)),
+                  Text(
+                    '${item.product.name} x ${item.product.piecesPerBox}',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
                   if (!stockOk)
                     Text(
                       'Only $effectiveAvail pcs available',
-                      style: const TextStyle(
-                          color: Colors.red, fontSize: 12),
+                      style: const TextStyle(color: Colors.red, fontSize: 12),
                     ),
                   if (item.isFree)
-                    Text('FREE',
-                        style: TextStyle(
-                            color: Colors.green.shade700,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12))
+                    Text(
+                      'FREE',
+                      style: TextStyle(
+                        color: Colors.green.shade700,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    )
                   else if (item.discountAmount > 0) ...[
                     Text(
                       'Original:  ${formatCurrency(item.originalAmount)}',
@@ -1683,12 +1990,16 @@ class _EditItemTileState extends State<_EditItemTile> {
                     Text(
                       '${item.discountLabel}:  -${formatCurrency(item.discountAmount)}',
                       style: TextStyle(
-                          color: Colors.green.shade700, fontSize: 12),
+                        color: Colors.green.shade700,
+                        fontSize: 12,
+                      ),
                     ),
                     Text(
                       'Subtotal:  ${formatCurrency(item.subtotal)}',
                       style: const TextStyle(
-                          fontSize: 12, fontWeight: FontWeight.bold),
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ] else
                     Text(
@@ -1707,8 +2018,7 @@ class _EditItemTileState extends State<_EditItemTile> {
                 color: item.isFree ? Colors.green : Colors.grey,
                 size: 20,
               ),
-              tooltip:
-                  item.isFree ? 'Remove free' : 'Mark as free',
+              tooltip: item.isFree ? 'Remove free' : 'Mark as free',
               onPressed: () {
                 setState(() => item.isFree = !item.isFree);
                 widget.onChanged();
@@ -1725,9 +2035,10 @@ class _EditItemTileState extends State<_EditItemTile> {
                 setState(() {
                   item.unitType = s.first;
                   item.quantity = item.unitType == 'box'
-                      ? (pieces / item.product.piecesPerBox)
-                          .round()
-                          .clamp(1, 9999)
+                      ? (pieces / item.product.piecesPerBox).round().clamp(
+                          1,
+                          9999,
+                        )
                       : pieces;
                   _qtyCtrl.text = item.quantity.toString();
                 });
@@ -1740,11 +2051,11 @@ class _EditItemTileState extends State<_EditItemTile> {
               child: TextField(
                 controller: _qtyCtrl,
                 decoration: const InputDecoration(
-                    labelText: 'Qty', isDense: true),
+                  labelText: 'Qty',
+                  isDense: true,
+                ),
                 keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly
-                ],
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 onChanged: (v) {
                   item.quantity = int.tryParse(v) ?? 1;
                   if (item.quantity < 1) item.quantity = 1;

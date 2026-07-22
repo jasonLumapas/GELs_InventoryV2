@@ -288,6 +288,17 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
     }
   }
 
+  Widget _groupBox({required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade400),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: child,
+    );
+  }
+
   // Debounce auto-saving the invoice as a draft so rapid edits don't trigger
   // a DB write on every keystroke.
   void _scheduleAutoSave() {
@@ -809,13 +820,14 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // Invoice ID header
+                // Invoice # + type + date + client + payment type, all in one row
                 Container(
                   width: double.infinity,
                   color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 10),
+                      horizontal: 12, vertical: 8),
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Text(
                         'Invoice #: ${_displaySequenceNumber != null ? _displaySequenceNumber!.toString().padLeft(8, '0') : '...'}',
@@ -825,75 +837,29 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
-                      const Spacer(),
-                      if (_autoSaving)
-                        Text(
-                          'Saving draft…',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: Theme.of(context).colorScheme.onSurfaceVariant),
-                        )
-                      else if (_lastAutoSaved != null)
-                        Text(
-                          'Draft saved at ${DateFormat('HH:mm').format(_lastAutoSaved!)}',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      const SizedBox(width: 12),
+                      _groupBox(
+                        child: SegmentedButton<String>(
+                          segments: const [
+                            ButtonSegment(
+                                value: 'delivery',
+                                icon: Icon(Icons.local_shipping, size: 16),
+                                label: Text('Delivery')),
+                            ButtonSegment(
+                                value: 'walk_in',
+                                icon: Icon(Icons.storefront, size: 16),
+                                label: Text('Walk-in')),
+                          ],
+                          selected: {_invoiceType},
+                          onSelectionChanged: (s) {
+                            setState(() => _invoiceType = s.first);
+                            _scheduleAutoSave();
+                          },
                         ),
-                    ],
-                  ),
-                ),
-
-                // Invoice type + payment type
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: Row(
-                    children: [
-                      SegmentedButton<String>(
-                        segments: const [
-                          ButtonSegment(
-                              value: 'delivery',
-                              icon: Icon(Icons.local_shipping, size: 16),
-                              label: Text('Delivery')),
-                          ButtonSegment(
-                              value: 'walk_in',
-                              icon: Icon(Icons.storefront, size: 16),
-                              label: Text('Walk-in')),
-                        ],
-                        selected: {_invoiceType},
-                        onSelectionChanged: (s) {
-                          setState(() => _invoiceType = s.first);
-                          _scheduleAutoSave();
-                        },
                       ),
-                      const Spacer(),
-                      DropdownButton<String>(
-                        value: _paymentType,
-                        isDense: true,
-                        underline: const SizedBox(),
-                        items: const [
-                          DropdownMenuItem(value: 'cash',    child: Text('Cash')),
-                          DropdownMenuItem(value: 'check',   child: Text('Check')),
-                          DropdownMenuItem(value: 'credit',  child: Text('Credit')),
-                          DropdownMenuItem(value: 'partial', child: Text('Partial')),
-                        ],
-                        onChanged: (v) {
-                          setState(() => _paymentType = v!);
-                          _scheduleAutoSave();
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Date + client selectors
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+                      const SizedBox(width: 8),
                       Expanded(
+                        flex: 2,
                         child: InkWell(
                           onTap: _pickDate,
                           borderRadius: BorderRadius.circular(4),
@@ -901,6 +867,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                             decoration: const InputDecoration(
                               labelText: 'Invoice Date',
                               border: OutlineInputBorder(),
+                              isDense: true,
                               suffixIcon: Icon(Icons.calendar_today, size: 18),
                             ),
                             child: Text(
@@ -911,6 +878,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                       ),
                       const SizedBox(width: 8),
                       Expanded(
+                        flex: 3,
                         child: InkWell(
                           onTap: _pickClient,
                           borderRadius: BorderRadius.circular(4),
@@ -918,6 +886,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                             decoration: const InputDecoration(
                               labelText: 'Client / Store',
                               border: OutlineInputBorder(),
+                              isDense: true,
                               suffixIcon: Icon(Icons.search),
                             ),
                             child: Text(
@@ -938,6 +907,45 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                           ),
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      _groupBox(
+                        child: DropdownButton<String>(
+                          value: _paymentType,
+                          isDense: true,
+                          underline: const SizedBox(),
+                          items: const [
+                            DropdownMenuItem(value: 'cash',    child: Text('Cash')),
+                            DropdownMenuItem(value: 'check',   child: Text('Check')),
+                            DropdownMenuItem(value: 'credit',  child: Text('Credit')),
+                            DropdownMenuItem(value: 'partial', child: Text('Partial')),
+                          ],
+                          onChanged: (v) {
+                            setState(() => _paymentType = v!);
+                            _scheduleAutoSave();
+                          },
+                        ),
+                      ),
+                      if (_autoSaving) ...[
+                        const SizedBox(width: 12),
+                        Text(
+                          'Saving draft…',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant),
+                        ),
+                      ] else if (_lastAutoSaved != null) ...[
+                        const SizedBox(width: 12),
+                        Text(
+                          'Saved at ${DateFormat('HH:mm').format(_lastAutoSaved!)}',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant),
+                        ),
+                      ],
                     ],
                   ),
                 ),

@@ -25,13 +25,12 @@ import '../../widgets/common/search_picker.dart';
 
 class _VanLineItem {
   final Product product;
-  String unitType = 'box';
-  int quantity = 0;
+  int boxes = 0;
+  int looseUnits = 0;
 
   _VanLineItem(this.product);
 
-  int get pieces =>
-      unitType == 'box' ? quantity * product.piecesPerBox : quantity;
+  int get pieces => boxes * product.piecesPerBox + looseUnits;
 }
 
 class _ReportRow {
@@ -121,6 +120,18 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
 
   @override
   void dispose() {
+    if (_pendingEdits.isNotEmpty) {
+      final repo    = ref.read(vanStockRepositoryProvider);
+      final edits   = Map<String, int>.from(_pendingEdits);
+      final items   = List<VanStock>.from(_outItems);
+      unawaited(() async {
+        for (final entry in edits.entries) {
+          final tx = items.where((t) => t.id == entry.key).firstOrNull;
+          if (tx == null || entry.value == tx.quantityPieces) continue;
+          await repo.updateRecord(tx, entry.value);
+        }
+      }());
+    }
     _tabs.removeListener(_onTabChange);
     _tabs.dispose();
     _outSearchCtrl.dispose();
@@ -166,14 +177,11 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
     if (_tabs.index == 2) _loadReport();
   }
 
-  Future<void> _loadOutItems() async {
-    setState(() { _outLoading = true; _pendingEdits.clear(); });
-    final all = await ref.read(vanStockRepositoryProvider).getAll(date: _outDate);
-    _outItems = all.where((t) => t.type == 'out').toList();
-    setState(() => _outLoading = false);
-  }
-
-  Future<void> _savePendingEdits() async {
+  // Persists any inline-edited quantities before the Out list is reloaded,
+  // so switching tabs, adding new products, or leaving the screen never
+  // silently discards an unsaved edit.
+  Future<void> _persistPendingEdits() async {
+    if (_pendingEdits.isEmpty) return;
     final repo = ref.read(vanStockRepositoryProvider);
     for (final entry in List.of(_pendingEdits.entries)) {
       final tx = _outItems.where((t) => t.id == entry.key).firstOrNull;
@@ -182,6 +190,17 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
     }
     _pendingEdits.clear();
     ref.invalidate(inventoryListProvider);
+  }
+
+  Future<void> _loadOutItems() async {
+    await _persistPendingEdits();
+    setState(() => _outLoading = true);
+    final all = await ref.read(vanStockRepositoryProvider).getAll(date: _outDate);
+    _outItems = all.where((t) => t.type == 'out').toList();
+    setState(() => _outLoading = false);
+  }
+
+  Future<void> _savePendingEdits() async {
     await _loadOutItems();
   }
 
@@ -336,8 +355,8 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
         final product = productsById[it.productId];
         if (product == null) continue;
         lineItems.add(_VanLineItem(product)
-          ..unitType = it.unitType
-          ..quantity = it.quantity);
+          ..boxes = it.boxes
+          ..looseUnits = it.pieces);
       }
     }
     var loadedQty   = <String, int>{};
@@ -359,8 +378,8 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
             items: lineItems
                 .map((li) => VanStockDraftItem(
                       productId: li.product.id,
-                      unitType: li.unitType,
-                      quantity: li.quantity,
+                      boxes: li.boxes,
+                      pieces: li.looseUnits,
                     ))
                 .toList(),
             createdAt: draftCreatedAt,
@@ -387,7 +406,7 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
             if (isOut && _areas.isNotEmpty && selectedAreaId == null) return false;
             if (lineItems.isEmpty) return false;
             return lineItems
-                .every((li) => li.quantity > 0 && li.pieces <= availFor(li));
+                .every((li) => li.pieces > 0 && li.pieces <= availFor(li));
           }
 
           Future<void> pickProducts() async {
@@ -576,7 +595,7 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
                                 item: li,
                                 availPieces: avail,
                                 isOut: isOut,
-                                stockOk: li.quantity == 0 ||
+                                stockOk: li.pieces == 0 ||
                                     li.pieces <= avail,
                                 onRemove: () {
                                   setD(() => lineItems.removeAt(i));
@@ -1483,19 +1502,24 @@ class _VanLineItemCard extends StatefulWidget {
 }
 
 class _VanLineItemCardState extends State<_VanLineItemCard> {
-  late final TextEditingController _ctrl;
+  late final TextEditingController _boxesCtrl;
+  late final TextEditingController _piecesCtrl;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = TextEditingController(
-      text: widget.item.quantity > 0 ? '${widget.item.quantity}' : '',
+    _boxesCtrl = TextEditingController(
+      text: widget.item.boxes > 0 ? '${widget.item.boxes}' : '',
+    );
+    _piecesCtrl = TextEditingController(
+      text: widget.item.looseUnits > 0 ? '${widget.item.looseUnits}' : '',
     );
   }
 
   @override
   void dispose() {
-    _ctrl.dispose();
+    _boxesCtrl.dispose();
+    _piecesCtrl.dispose();
     super.dispose();
   }
 
@@ -1550,33 +1574,33 @@ class _VanLineItemCardState extends State<_VanLineItemCard> {
                 ],
               ),
             ),
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'piece', label: Text('Pcs')),
-                ButtonSegment(value: 'box',   label: Text('Box')),
-              ],
-              selected: {item.unitType},
-              onSelectionChanged: (s) {
-                setState(() => item.unitType = s.first);
-                widget.onChanged();
-              },
-              style: const ButtonStyle(
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                visualDensity: VisualDensity.compact,
+            SizedBox(
+              width: 70,
+              child: TextField(
+                controller: _boxesCtrl,
+                enabled: avail > 0,
+                decoration:
+                    const InputDecoration(labelText: 'Box(es)', isDense: true),
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                onChanged: (v) {
+                  item.boxes = int.tryParse(v) ?? 0;
+                  widget.onChanged();
+                },
               ),
             ),
             const SizedBox(width: 8),
             SizedBox(
               width: 70,
               child: TextField(
-                controller: _ctrl,
+                controller: _piecesCtrl,
                 enabled: avail > 0,
                 decoration:
-                    const InputDecoration(labelText: 'Qty', isDense: true),
+                    const InputDecoration(labelText: 'Pcs', isDense: true),
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 onChanged: (v) {
-                  item.quantity = int.tryParse(v) ?? 0;
+                  item.looseUnits = int.tryParse(v) ?? 0;
                   widget.onChanged();
                 },
               ),

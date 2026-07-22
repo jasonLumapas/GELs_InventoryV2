@@ -2,26 +2,37 @@ import 'dart:convert';
 
 class VanStockDraftItem {
   final String productId;
-  final String unitType; // 'box' | 'piece'
-  final int quantity;
+  final int boxes;
+  final int pieces;
 
   const VanStockDraftItem({
     required this.productId,
-    required this.unitType,
-    required this.quantity,
+    required this.boxes,
+    required this.pieces,
   });
 
-  factory VanStockDraftItem.fromJson(Map<String, dynamic> j) =>
-      VanStockDraftItem(
+  factory VanStockDraftItem.fromJson(Map<String, dynamic> j) {
+    if (j.containsKey('boxes') || j.containsKey('pieces')) {
+      return VanStockDraftItem(
         productId: j['product_id'] as String,
-        unitType: j['unit_type'] as String,
-        quantity: (j['quantity'] as num).toInt(),
+        boxes: (j['boxes'] as num?)?.toInt() ?? 0,
+        pieces: (j['pieces'] as num?)?.toInt() ?? 0,
       );
+    }
+    // Legacy drafts saved before boxes+pieces could be entered together.
+    final legacyUnitType = j['unit_type'] as String? ?? 'box';
+    final legacyQuantity = (j['quantity'] as num?)?.toInt() ?? 0;
+    return VanStockDraftItem(
+      productId: j['product_id'] as String,
+      boxes: legacyUnitType == 'box' ? legacyQuantity : 0,
+      pieces: legacyUnitType == 'piece' ? legacyQuantity : 0,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
         'product_id': productId,
-        'unit_type': unitType,
-        'quantity': quantity,
+        'boxes': boxes,
+        'pieces': pieces,
       };
 }
 

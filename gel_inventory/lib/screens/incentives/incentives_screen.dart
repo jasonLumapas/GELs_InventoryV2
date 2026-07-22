@@ -160,11 +160,16 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen>
     };
 
     final additionalSet = {for (final c in additional) c.id};
-    final needItems = ramId != null || additionalSet.isNotEmpty;
 
     final days = List.generate(daysInMonth, (i) => _DayData(i + 1));
 
     // ── Invoices ──────────────────────────────────────────────────────────────
+    // Every total below is priced at each product's current GELs selling
+    // price (Selling Price/pc (GELs)), not whatever price (GELs or OP) was
+    // actually charged on the invoice — so incentive targets stay stable
+    // regardless of the "Use OP Selling Price on Invoices" setting.
+    final gelsPrices =
+        await ref.read(productRepositoryProvider).getAllCurrentPrices();
     final invoices = await ref
         .read(invoiceRepositoryProvider)
         .getAll(startDate: monthStart, endDate: monthEnd);
@@ -172,21 +177,21 @@ class _IncentivesScreenState extends ConsumerState<IncentivesScreen>
     for (final inv in invoices) {
       final d = inv.invoiceDate.day - 1;
       if (d < 0 || d >= daysInMonth) continue;
-      days[d].grandTotal += inv.totalAmount;
 
-      if (needItems) {
-        final items = await ref
-            .read(invoiceRepositoryProvider)
-            .getItems(inv.id);
-        for (final item in items) {
-          final sid = productSupplier[item.productId];
-          if (sid == null) continue;
-          if (sid == ramId) {
-            days[d].ramSales += item.subtotal;
-          } else if (additionalSet.contains(sid)) {
-            days[d].additionalSales[sid] =
-                (days[d].additionalSales[sid] ?? 0.0) + item.subtotal;
-          }
+      final items =
+          await ref.read(invoiceRepositoryProvider).getItems(inv.id);
+      for (final item in items) {
+        if (item.isFree) continue;
+        final gelsAmount = item.quantity * (gelsPrices[item.productId] ?? 0.0);
+        days[d].grandTotal += gelsAmount;
+
+        final sid = productSupplier[item.productId];
+        if (sid == null) continue;
+        if (sid == ramId) {
+          days[d].ramSales += gelsAmount;
+        } else if (additionalSet.contains(sid)) {
+          days[d].additionalSales[sid] =
+              (days[d].additionalSales[sid] ?? 0.0) + gelsAmount;
         }
       }
     }
@@ -1719,6 +1724,10 @@ class _PerSupplierIncentivesTabState
       final productSupplier = <String, String>{
         for (final p in products) p.id: p.supplierId,
       };
+      // Priced at each product's current GELs selling price, not whatever
+      // price (GELs or OP) was actually charged on the invoice.
+      final gelsPrices =
+          await ref.read(productRepositoryProvider).getAllCurrentPrices();
       final invoices = await ref
           .read(invoiceRepositoryProvider)
           .getAll(startDate: monthStart, endDate: monthEnd);
@@ -1727,9 +1736,11 @@ class _PerSupplierIncentivesTabState
             .read(invoiceRepositoryProvider)
             .getItems(inv.id);
         for (final item in items) {
+          if (item.isFree) continue;
           final sid = productSupplier[item.productId];
           if (sid != null && supplierIds.contains(sid)) {
-            sales[sid] = (sales[sid] ?? 0.0) + item.subtotal;
+            sales[sid] = (sales[sid] ?? 0.0) +
+                item.quantity * (gelsPrices[item.productId] ?? 0.0);
           }
         }
       }

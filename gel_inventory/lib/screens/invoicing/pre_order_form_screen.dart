@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
+import '../../core/services/app_settings_service.dart';
 import '../../models/client.dart';
 import '../../models/invoice.dart';
 import '../../models/invoice_item.dart';
@@ -89,6 +90,7 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
   final List<_LineItem> _lineItems = [];
   bool _loading = true;
   bool _saving = false;
+  bool _useOpSellingPrice = false;
   Timer? _autoSaveTimer;
   bool _autoSaving = false;
   DateTime? _lastAutoSaved;
@@ -155,6 +157,7 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
   }
 
   Future<void> _loadData() async {
+    _useOpSellingPrice = await ref.read(useOpSellingPriceProvider.future);
     final clients = await ref.read(clientRepositoryProvider).getAll();
     final products = await ref.read(productRepositoryProvider).getAll();
     final inventoryRepo = ref.read(inventoryRepositoryProvider);
@@ -396,10 +399,13 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
         await ref.read(productRepositoryProvider).getCurrentPrice(product.id);
     final inv =
         await ref.read(inventoryRepositoryProvider).getByProductId(product.id);
+    final effectivePrice = _useOpSellingPrice && price?.sellingPriceOp != null
+        ? price!.sellingPriceOp!
+        : (price?.sellingPrice ?? 0);
     setState(() {
       _lineItems.add(_LineItem(
         product: product,
-        pricePerPiece: price?.sellingPrice ?? 0,
+        pricePerPiece: effectivePrice,
         availablePieces: inv?.quantityPieces ?? 0,
       ));
     });

@@ -2073,11 +2073,17 @@ class _MonthlySalesTab extends ConsumerStatefulWidget {
   ConsumerState<_MonthlySalesTab> createState() => _MonthlySalesTabState();
 }
 
+enum _DrillLevel { month, week, day }
+
 class _MonthlySalesTabState extends ConsumerState<_MonthlySalesTab> {
   int _year = DateTime.now().year;
   String? _selectedSupplierId;
   String? _selectedProductId;
   late Future<List<double>> _future;
+
+  _DrillLevel _level = _DrillLevel.month;
+  int? _selectedMonth; // 0-based; set once drilled to week/day level
+  int? _selectedWeek;  // 0-based, within _selectedMonth; set at day level
 
   static const _monthLabels = [
     'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -2094,28 +2100,136 @@ class _MonthlySalesTabState extends ConsumerState<_MonthlySalesTab> {
 
   void _setYear(int y) => setState(() {
         _year = y;
+        _level = _DrillLevel.month;
+        _selectedMonth = null;
+        _selectedWeek = null;
         _future = _load();
       });
 
-  Future<List<double>> _load() async {
+  void _drillToWeek(int monthIndex) => setState(() {
+        _level = _DrillLevel.week;
+        _selectedMonth = monthIndex;
+        _future = _load();
+      });
+
+  void _drillToDay(int weekIndex) => setState(() {
+        _level = _DrillLevel.day;
+        _selectedWeek = weekIndex;
+        _future = _load();
+      });
+
+  void _backToMonth() => setState(() {
+        _level = _DrillLevel.month;
+        _selectedMonth = null;
+        _selectedWeek = null;
+        _future = _load();
+      });
+
+  void _backToWeek() => setState(() {
+        _level = _DrillLevel.week;
+        _selectedWeek = null;
+        _future = _load();
+      });
+
+  int _weeksInMonth(int monthIndex) {
+    final daysInMonth = DateUtils.getDaysInMonth(_year, monthIndex + 1);
+    return ((daysInMonth - 1) ~/ 7) + 1;
+  }
+
+  List<String> get _labels {
+    switch (_level) {
+      case _DrillLevel.month:
+        return _monthLabels;
+      case _DrillLevel.week:
+        final weekCount = _weeksInMonth(_selectedMonth!);
+        return [for (var i = 0; i < weekCount; i++) 'Wk ${i + 1}'];
+      case _DrillLevel.day:
+        final daysInMonth = DateUtils.getDaysInMonth(_year, _selectedMonth! + 1);
+        final startDay = _selectedWeek! * 7 + 1;
+        final endDayExclusive = (startDay + 7).clamp(1, daysInMonth + 1);
+        return [for (var d = startDay; d < endDayExclusive; d++) '$d'];
+    }
+  }
+
+  String get _chartTitle {
+    switch (_level) {
+      case _DrillLevel.month:
+        return 'Monthly Sales Trend — $_year';
+      case _DrillLevel.week:
+        return 'Weekly Sales Trend — ${_monthLabels[_selectedMonth!]} $_year';
+      case _DrillLevel.day:
+        return 'Daily Sales Trend — Week ${_selectedWeek! + 1}, '
+            '${_monthLabels[_selectedMonth!]} $_year';
+    }
+  }
+
+  String get _totalLabel {
+    switch (_level) {
+      case _DrillLevel.month:
+        return 'Total for Year: ';
+      case _DrillLevel.week:
+        return 'Total for Month: ';
+      case _DrillLevel.day:
+        return 'Total for Week: ';
+    }
+  }
+
+  Future<List<double>> _load() {
+    switch (_level) {
+      case _DrillLevel.month:
+        return _sumSalesByBucket(
+          start: DateTime(_year),
+          end: DateTime(_year + 1),
+          bucketCount: 12,
+          bucketOf: (d) => d.month - 1,
+        );
+      case _DrillLevel.week:
+        final monthIndex = _selectedMonth!;
+        final weekCount = _weeksInMonth(monthIndex);
+        return _sumSalesByBucket(
+          start: DateTime(_year, monthIndex + 1, 1),
+          end: DateTime(_year, monthIndex + 2, 1),
+          bucketCount: weekCount,
+          bucketOf: (d) => ((d.day - 1) ~/ 7).clamp(0, weekCount - 1),
+        );
+      case _DrillLevel.day:
+        final monthIndex = _selectedMonth!;
+        final daysInMonth = DateUtils.getDaysInMonth(_year, monthIndex + 1);
+        final startDay = _selectedWeek! * 7 + 1;
+        final endDayExclusive = (startDay + 7).clamp(1, daysInMonth + 1);
+        return _sumSalesByBucket(
+          start: DateTime(_year, monthIndex + 1, startDay),
+          end: DateTime(_year, monthIndex + 1, endDayExclusive),
+          bucketCount: endDayExclusive - startDay,
+          bucketOf: (d) => d.day - startDay,
+        );
+    }
+  }
+
+  Future<List<double>> _sumSalesByBucket({
+    required DateTime start,
+    required DateTime end,
+    required int bucketCount,
+    required int Function(DateTime date) bucketOf,
+  }) async {
     final products = await ref.read(productRepositoryProvider).getAll();
     final productsById = {for (final p in products) p.id: p};
 
-    final start = DateTime(_year);
-    final end = DateTime(_year + 1);
     final invoices = await ref
         .read(invoiceRepositoryProvider)
         .getAll(startDate: start, endDate: end);
 
-    final totals = List<double>.filled(12, 0);
+    final totals = List<double>.filled(bucketCount, 0);
     for (final inv in invoices) {
       if (inv.status == 'cancelled') continue;
       final items = await ref.read(invoiceRepositoryProvider).getItems(inv.id);
       // inv.totalAmount is net of any adjustment (e.g. swap amount) applied
       // to the invoice as a whole; distribute that adjustment proportionally
-      // across items so filtered/monthly sums still foot to the invoice total.
+      // across items so filtered sums still foot to the invoice total.
       final grossTotal = items.fold(0.0, (s, it) => s + it.subtotal);
       final netFactor = grossTotal > 0 ? inv.totalAmount / grossTotal : 1.0;
+      final bucket = bucketOf(inv.invoiceDate);
+      if (bucket < 0 || bucket >= bucketCount) continue;
       for (final item in items) {
         final product = productsById[item.productId];
         if (product == null) continue;
@@ -2126,7 +2240,7 @@ class _MonthlySalesTabState extends ConsumerState<_MonthlySalesTab> {
         if (_selectedProductId != null && item.productId != _selectedProductId) {
           continue;
         }
-        totals[inv.invoiceDate.month - 1] += item.subtotal * netFactor;
+        totals[bucket] += item.subtotal * netFactor;
       }
     }
     return totals;
@@ -2136,36 +2250,55 @@ class _MonthlySalesTabState extends ConsumerState<_MonthlySalesTab> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // ── Year navigation ─────────────────────────────────────────
+        // ── Year navigation / drill-down breadcrumb ──────────────────
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.chevron_left),
-                visualDensity: VisualDensity.compact,
-                onPressed: () => _setYear(_year - 1),
-              ),
-              Text(
-                '$_year',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-              IconButton(
-                icon: const Icon(Icons.chevron_right),
-                visualDensity: VisualDensity.compact,
-                onPressed: () => _setYear(_year + 1),
-              ),
-              const SizedBox(width: 16),
-              TextButton(
-                onPressed: () => _setYear(DateTime.now().year),
-                style:
-                    TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                child: const Text('This Year'),
-              ),
-            ],
+            children: _level == _DrillLevel.month
+                ? [
+                    IconButton(
+                      icon: const Icon(Icons.chevron_left),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _setYear(_year - 1),
+                    ),
+                    Text(
+                      '$_year',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w600),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _setYear(_year + 1),
+                    ),
+                    const SizedBox(width: 16),
+                    TextButton(
+                      onPressed: () => _setYear(DateTime.now().year),
+                      style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact),
+                      child: const Text('This Year'),
+                    ),
+                  ]
+                : [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: _level == _DrillLevel.day
+                          ? _backToWeek
+                          : _backToMonth,
+                    ),
+                    Text(
+                      _level == _DrillLevel.week
+                          ? '${_monthLabels[_selectedMonth!]} $_year'
+                          : 'Week ${_selectedWeek! + 1} • '
+                              '${_monthLabels[_selectedMonth!]} $_year',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w600),
+                    ),
+                  ],
           ),
         ),
         // ── Supplier filter ─────────────────────────────────────────
@@ -2251,13 +2384,16 @@ class _MonthlySalesTabState extends ConsumerState<_MonthlySalesTab> {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
-              final totals = snapshot.data ?? List.filled(12, 0);
+              final labels = _labels;
+              final totals = snapshot.data ?? List.filled(labels.length, 0);
               final grandTotal = totals.fold(0.0, (s, v) => s + v);
               final maxValue = totals.fold(0.0, (m, v) => v > m ? v : m);
               final maxY = maxValue <= 0 ? 100.0 : maxValue * 1.25;
+              final canDrill = _level != _DrillLevel.day;
 
               final spots = [
-                for (var i = 0; i < 12; i++) FlSpot(i.toDouble(), totals[i]),
+                for (var i = 0; i < labels.length; i++)
+                  FlSpot(i.toDouble(), totals[i]),
               ];
 
               return Padding(
@@ -2266,12 +2402,20 @@ class _MonthlySalesTabState extends ConsumerState<_MonthlySalesTab> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      'Monthly Sales Trend — $_year',
+                      _chartTitle,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                           fontSize: 17, fontWeight: FontWeight.bold),
                     ),
-                    const SizedBox(height: 16),
+                    if (canDrill) ...[
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Tap a point to drill down',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 11, color: Colors.grey),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
                     Expanded(
                       child: Container(
                         padding: const EdgeInsets.fromLTRB(8, 24, 16, 8),
@@ -2282,7 +2426,7 @@ class _MonthlySalesTabState extends ConsumerState<_MonthlySalesTab> {
                         child: LineChart(
                           LineChartData(
                             minX: 0,
-                            maxX: 11,
+                            maxX: (labels.length - 1).toDouble(),
                             minY: 0,
                             maxY: maxY,
                             gridData: FlGridData(
@@ -2309,13 +2453,13 @@ class _MonthlySalesTabState extends ConsumerState<_MonthlySalesTab> {
                                   getTitlesWidget: (value, meta) {
                                     final i = value.round();
                                     if (i < 0 ||
-                                        i > 11 ||
+                                        i >= labels.length ||
                                         (value - i).abs() > 0.01) {
                                       return const SizedBox.shrink();
                                     }
                                     return Padding(
                                       padding: const EdgeInsets.only(top: 6),
-                                      child: Text(_monthLabels[i],
+                                      child: Text(labels[i],
                                           style: const TextStyle(fontSize: 11)),
                                     );
                                   },
@@ -2337,7 +2481,7 @@ class _MonthlySalesTabState extends ConsumerState<_MonthlySalesTab> {
                               ),
                             ),
                             lineTouchData: LineTouchData(
-                              enabled: false,
+                              enabled: true,
                               touchTooltipData: LineTouchTooltipData(
                                 getTooltipColor: (_) => Colors.transparent,
                                 tooltipBorder: BorderSide.none,
@@ -2354,6 +2498,23 @@ class _MonthlySalesTabState extends ConsumerState<_MonthlySalesTab> {
                                         ))
                                     .toList(),
                               ),
+                              touchCallback: (event, response) {
+                                if (!canDrill || event is! FlTapUpEvent) {
+                                  return;
+                                }
+                                final touchedSpots = response?.lineBarSpots;
+                                if (touchedSpots == null ||
+                                    touchedSpots.isEmpty) {
+                                  return;
+                                }
+                                final index = touchedSpots.first.spotIndex;
+                                if (totals[index] <= 0) return;
+                                if (_level == _DrillLevel.month) {
+                                  _drillToWeek(index);
+                                } else {
+                                  _drillToDay(index);
+                                }
+                              },
                             ),
                             lineBarsData: [
                               LineChartBarData(
@@ -2374,7 +2535,7 @@ class _MonthlySalesTabState extends ConsumerState<_MonthlySalesTab> {
                               ),
                             ],
                             showingTooltipIndicators: [
-                              for (var i = 0; i < 12; i++)
+                              for (var i = 0; i < labels.length; i++)
                                 if (totals[i] > 0)
                                   ShowingTooltipIndicators(
                                       [LineBarSpot(
@@ -2390,8 +2551,8 @@ class _MonthlySalesTabState extends ConsumerState<_MonthlySalesTab> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        const Text('Total for Year: ',
-                            style: TextStyle(
+                        Text(_totalLabel,
+                            style: const TextStyle(
                                 fontSize: 15, fontWeight: FontWeight.bold)),
                         Text(formatCurrency(grandTotal),
                             style: const TextStyle(

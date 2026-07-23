@@ -558,7 +558,10 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Invoice $invoiceNumber created.')),
+        SnackBar(
+          content: Text('Invoice $invoiceNumber created.'),
+          duration: const Duration(seconds: 1),
+        ),
       );
       context.go('/pre-orders');
     } catch (e) {

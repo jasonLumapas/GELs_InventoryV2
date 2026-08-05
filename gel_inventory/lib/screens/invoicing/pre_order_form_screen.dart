@@ -11,9 +11,11 @@ import '../../models/client.dart';
 import '../../models/invoice.dart';
 import '../../models/invoice_item.dart';
 import '../../models/product.dart';
+import '../../models/product_discount.dart';
 import '../../repositories/client_repository.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_repository.dart';
+import '../../repositories/product_discount_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../repositories/supplier_repository.dart';
 import '../../utils/currency_format.dart';
@@ -28,6 +30,13 @@ class _LineItem {
   final TextEditingController quantityCtrl;
   final TextEditingController priceCtrl;
   int availablePieces;
+  final ProductDiscount? discount;
+  bool isFree = false;
+  // Highest "buy X get Y" cycle count the user has already been prompted
+  // about for this line item.
+  int promptedFreeCycles = 0;
+  // The free line item added in response to this item's promo, if any.
+  _LineItem? linkedFreeItem;
 
   _LineItem({
     required this.product,
@@ -35,6 +44,7 @@ class _LineItem {
     this.unitType = 'box',
     int quantity = 0,
     this.availablePieces = 0,
+    this.discount,
   })  : quantityCtrl = TextEditingController(
             text: quantity > 0 ? '$quantity' : ''),
         priceCtrl = TextEditingController(
@@ -52,14 +62,33 @@ class _LineItem {
   int get quantityInPieces =>
       unitType == 'box' ? quantity * product.piecesPerBox : quantity;
 
-  double get subtotal => quantityInPieces * pricePerPiece;
+  bool get _thresholdMet =>
+      !isFree && discount != null &&
+      quantityInPieces >= discount!.minQuantityPieces;
 
-  bool get isSufficient => quantityInPieces <= availablePieces;
+  double get originalAmount => quantityInPieces * pricePerPiece;
 
-  int get avlBoxes =>
-      product.piecesPerBox > 0 ? availablePieces ~/ product.piecesPerBox : 0;
-  int get avlPcs =>
-      product.piecesPerBox > 0 ? availablePieces % product.piecesPerBox : availablePieces;
+  double get discountAmount {
+    if (!_thresholdMet) return 0;
+    if (discount!.isPercent) {
+      return originalAmount * discount!.discountValue / 100;
+    } else {
+      final multiples = quantityInPieces ~/ discount!.minQuantityPieces;
+      return (multiples * discount!.discountValue).clamp(0.0, originalAmount);
+    }
+  }
+
+  double get subtotal {
+    if (isFree) return 0;
+    return (originalAmount - discountAmount).clamp(0.0, double.infinity);
+  }
+
+  String get discountLabel {
+    if (!_thresholdMet) return '';
+    return discount!.isPercent
+        ? 'Less ${discount!.discountValue.toStringAsFixed(0)}%'
+        : 'Less ${formatCurrency(discount!.discountValue)}';
+  }
 
   String get packagingLabel {
     final ppb = product.piecesPerBox;
@@ -88,6 +117,7 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
   DateTime _invoiceDate = DateTime.now().add(const Duration(days: 1));
   Client? _selectedClient;
   final List<_LineItem> _lineItems = [];
+  final Map<String, ProductDiscount?> _discountCache = {};
   bool _loading = true;
   bool _saving = false;
   bool _useOpSellingPrice = false;
@@ -133,20 +163,9 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
       invoiceType: 'pre_order',
       paymentType: 'cash',
     );
-    final items = _lineItems
-        .map((li) => InvoiceItem(
-              id: const Uuid().v4(),
-              invoiceId: _id,
-              productId: li.product.id,
-              unitType: li.unitType,
-              quantity: li.quantityInPieces,
-              pricePerPiece: li.pricePerPiece,
-              subtotal: li.subtotal,
-            ))
-        .toList();
     await ref
         .read(invoiceRepositoryProvider)
-        .saveDraftInvoice(invoice: invoice, items: items);
+        .saveDraftInvoice(invoice: invoice, items: _buildInvoiceItems());
     ref.invalidate(preOrderDraftsProvider);
     if (mounted) {
       setState(() {
@@ -155,6 +174,22 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
       });
     }
   }
+
+  List<InvoiceItem> _buildInvoiceItems() => _lineItems
+      .map((li) => InvoiceItem(
+            id: const Uuid().v4(),
+            invoiceId: _id,
+            productId: li.product.id,
+            unitType: li.unitType,
+            quantity: li.quantityInPieces,
+            pricePerPiece: li.pricePerPiece,
+            subtotal: li.subtotal,
+            isFree: li.isFree,
+            discountPercent: (li._thresholdMet && li.discount!.isPercent)
+                ? li.discount!.discountValue
+                : 0,
+          ))
+      .toList();
 
   Future<void> _loadData() async {
     _useOpSellingPrice = await ref.read(useOpSellingPriceProvider.future);
@@ -176,16 +211,43 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
           final product = productsById[it.productId];
           if (product == null) continue;
           final inv = await inventoryRepo.getByProductId(it.productId);
+          var disc = _discountCache[product.id];
+          if (!_discountCache.containsKey(product.id)) {
+            disc = await ref
+                .read(productDiscountRepositoryProvider)
+                .getForProduct(product.id);
+            _discountCache[product.id] = disc;
+          }
           final displayQty = it.unitType == 'box' && product.piecesPerBox > 0
               ? it.quantity ~/ product.piecesPerBox
               : it.quantity;
-          _lineItems.add(_LineItem(
+          final lineItem = _LineItem(
             product: product,
             pricePerPiece: it.pricePerPiece,
             unitType: it.unitType,
             quantity: displayQty,
             availablePieces: inv?.quantityPieces ?? 0,
-          ));
+            discount: disc,
+          )..isFree = it.isFree;
+          if (disc != null && disc.isBuyXGetY && disc.minQuantityPieces > 0) {
+            lineItem.promptedFreeCycles = it.quantity ~/ disc.minQuantityPieces;
+          }
+          _lineItems.add(lineItem);
+        }
+
+        // Re-link previously added free items to the line that grants them.
+        for (final item in _lineItems) {
+          if (item.isFree ||
+              item.discount == null ||
+              !item.discount!.isBuyXGetY) {
+            continue;
+          }
+          item.linkedFreeItem = _lineItems
+              .where((other) =>
+                  other.isFree &&
+                  other.product.id == item.product.id &&
+                  other != item)
+              .firstOrNull;
         }
       }
     }
@@ -399,6 +461,13 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
         await ref.read(productRepositoryProvider).getCurrentPrice(product.id);
     final inv =
         await ref.read(inventoryRepositoryProvider).getByProductId(product.id);
+    var disc = _discountCache[product.id];
+    if (!_discountCache.containsKey(product.id)) {
+      disc = await ref
+          .read(productDiscountRepositoryProvider)
+          .getForProduct(product.id);
+      _discountCache[product.id] = disc;
+    }
     final effectivePrice = _useOpSellingPrice && price?.sellingPriceOp != null
         ? price!.sellingPriceOp!
         : (price?.sellingPrice ?? 0);
@@ -407,9 +476,103 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
         product: product,
         pricePerPiece: effectivePrice,
         availablePieces: inv?.quantityPieces ?? 0,
+        discount: disc,
       ));
     });
     _scheduleAutoSave();
+  }
+
+  // Checks whether the entered quantity now satisfies a "buy X get Y free"
+  // promo for this line, and if so, asks the user whether to add the free
+  // item to the pre-order. Re-prompts if the quantity grows enough to reach
+  // another cycle of the promo, even if a previous prompt was declined.
+  Future<void> _maybeOfferFreeItem(_LineItem item) async {
+    final discount = item.discount;
+    if (item.isFree || discount == null || !discount.isBuyXGetY) return;
+    final freeQtyPieces = discount.freeQuantityPieces ?? 0;
+    if (freeQtyPieces <= 0) return;
+
+    final cycles = item.quantityInPieces ~/ discount.minQuantityPieces;
+    if (cycles <= item.promptedFreeCycles) return;
+    item.promptedFreeCycles = cycles;
+    if (cycles <= 0) return;
+
+    final ppb = item.product.piecesPerBox;
+    final buyBoxes =
+        ppb > 0 ? discount.minQuantityPieces ~/ ppb : discount.minQuantityPieces;
+
+    final freeUnit = discount.freeQuantityUnit;
+    final freeQtyPerCycle =
+        freeUnit == 'box' && ppb > 0 ? freeQtyPieces ~/ ppb : freeQtyPieces;
+    final totalFreeQty = freeQtyPerCycle * cycles;
+    final freeUnitLabel = freeUnit == 'box' ? 'box(es)' : 'piece(s)';
+
+    final add = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Free Item Available'),
+        content: Text(
+          '${item.product.name} qualifies for a "Buy $buyBoxes box(es) '
+          'get $freeQtyPerCycle $freeUnitLabel free" promo.\n\n'
+          'Add $totalFreeQty $freeUnitLabel of ${item.product.name} to this pre-order for free?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('No'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Yes'),
+          ),
+        ],
+      ),
+    );
+
+    if (add == true && mounted) {
+      setState(() {
+        final existing = item.linkedFreeItem;
+        if (existing != null && _lineItems.contains(existing)) {
+          existing.quantityCtrl.text = '$totalFreeQty';
+        } else {
+          final freeItem = _LineItem(
+            product: item.product,
+            pricePerPiece: item.pricePerPiece,
+            unitType: freeUnit == 'box' ? 'box' : 'piece',
+            quantity: totalFreeQty,
+            availablePieces: item.availablePieces,
+            discount: item.discount,
+          )..isFree = true;
+          item.linkedFreeItem = freeItem;
+          _lineItems.add(freeItem);
+        }
+      });
+      _scheduleAutoSave();
+      _computeEffectiveAvailability();
+    }
+  }
+
+  // Total pieces already committed to _lineItems for a product, optionally
+  // excluding one index (used so a tile can check its own slot fairly).
+  int _committedPieces(String productId, {int? excludeIndex}) {
+    int total = 0;
+    for (int i = 0; i < _lineItems.length; i++) {
+      if (i == excludeIndex) continue;
+      if (_lineItems[i].product.id == productId) {
+        total += _lineItems[i].quantityInPieces;
+      }
+    }
+    return total;
+  }
+
+  int _effectiveAvailable(String productId, {int? excludeIndex}) {
+    final avail = _lineItems
+        .where((li) => li.product.id == productId)
+        .map((li) => li.availablePieces)
+        .firstOrNull ??
+        0;
+    return (avail - _committedPieces(productId, excludeIndex: excludeIndex))
+        .clamp(0, avail);
   }
 
   bool get _canSave =>
@@ -418,12 +581,18 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
       _lineItems.isNotEmpty &&
       _lineItems.every((li) => li.quantity > 0);
 
-  bool get _canSaveAsInvoice =>
-      !_saving &&
-      _selectedClient != null &&
-      _lineItems.isNotEmpty &&
-      _lineItems.every((li) => li.quantity > 0) &&
-      _lineItems.every((li) => li.isSufficient);
+  bool get _canSaveAsInvoice {
+    if (_saving || _selectedClient == null || _lineItems.isEmpty) return false;
+    for (int i = 0; i < _lineItems.length; i++) {
+      final li = _lineItems[i];
+      if (li.quantity <= 0) return false;
+      if (_effectiveAvailable(li.product.id, excludeIndex: i) <
+          li.quantityInPieces) {
+        return false;
+      }
+    }
+    return true;
+  }
 
   double get _grandTotal =>
       _lineItems.fold(0.0, (s, li) => s + li.subtotal);
@@ -440,21 +609,10 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
       invoiceType: 'pre_order',
       paymentType: 'cash',
     );
-    final items = _lineItems
-        .map((li) => InvoiceItem(
-              id: const Uuid().v4(),
-              invoiceId: _id,
-              productId: li.product.id,
-              unitType: li.unitType,
-              quantity: li.quantityInPieces,
-              pricePerPiece: li.pricePerPiece,
-              subtotal: li.subtotal,
-            ))
-        .toList();
 
     await ref
         .read(invoiceRepositoryProvider)
-        .saveDraftInvoice(invoice: invoice, items: items);
+        .saveDraftInvoice(invoice: invoice, items: _buildInvoiceItems());
     ref.invalidate(preOrderDraftsProvider);
 
     if (mounted) context.go('/pre-orders');
@@ -538,19 +696,7 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
         invoiceType: invoiceType,
         paymentType: paymentType,
       );
-      final items = _lineItems
-          .map((li) => InvoiceItem(
-                id: const Uuid().v4(),
-                invoiceId: _id,
-                productId: li.product.id,
-                unitType: li.unitType,
-                quantity: li.quantityInPieces,
-                pricePerPiece: li.pricePerPiece,
-                subtotal: li.subtotal,
-              ))
-          .toList();
-
-      await repo.finalizeDraft(invoice: invoice, items: items);
+      await repo.finalizeDraft(invoice: invoice, items: _buildInvoiceItems());
       ref.invalidate(preOrderDraftsProvider);
       ref.invalidate(invoicesListProvider);
       ref.invalidate(filteredInvoicesProvider);
@@ -674,6 +820,9 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
                           itemCount: _lineItems.length,
                           itemBuilder: (ctx, i) => _LineItemTile(
                             item: _lineItems[i],
+                            effectiveAvailable: _effectiveAvailable(
+                                _lineItems[i].product.id,
+                                excludeIndex: i),
                             onRemove: () {
                               setState(() => _lineItems.removeAt(i));
                               _scheduleAutoSave();
@@ -682,6 +831,8 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
                               setState(() {});
                               _scheduleAutoSave();
                             },
+                            onQuantityEntered: (item) =>
+                                _maybeOfferFreeItem(item),
                           ),
                         ),
                 ),
@@ -755,13 +906,17 @@ class _PreOrderFormScreenState extends ConsumerState<PreOrderFormScreen> {
 
 class _LineItemTile extends StatefulWidget {
   final _LineItem item;
+  final int effectiveAvailable;
   final VoidCallback onRemove;
   final VoidCallback onChanged;
+  final ValueChanged<_LineItem> onQuantityEntered;
 
   const _LineItemTile({
     required this.item,
+    required this.effectiveAvailable,
     required this.onRemove,
     required this.onChanged,
+    required this.onQuantityEntered,
   });
 
   @override
@@ -772,6 +927,13 @@ class _LineItemTileState extends State<_LineItemTile> {
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
+    final availQty = widget.effectiveAvailable;
+    final sufficient = item.quantityInPieces <= availQty;
+    final ppb = item.product.piecesPerBox;
+    final avlBoxes = ppb > 0 ? availQty ~/ ppb : 0;
+    final avlPcs = ppb > 0 ? availQty % ppb : availQty;
+    final hasDiscount = item.discountAmount > 0;
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Padding(
@@ -785,6 +947,21 @@ class _LineItemTileState extends State<_LineItemTile> {
                   child: Text(item.product.name,
                       style:
                           const TextStyle(fontWeight: FontWeight.bold)),
+                ),
+                // Free toggle
+                IconButton(
+                  icon: Icon(
+                    item.isFree
+                        ? Icons.card_giftcard
+                        : Icons.card_giftcard_outlined,
+                    color: item.isFree ? Colors.green : Colors.grey,
+                    size: 20,
+                  ),
+                  tooltip: item.isFree ? 'Remove free' : 'Mark as free',
+                  onPressed: () {
+                    setState(() => item.isFree = !item.isFree);
+                    widget.onChanged();
+                  },
                 ),
                 IconButton(
                   icon: const Icon(Icons.close, color: Colors.red),
@@ -805,6 +982,7 @@ class _LineItemTileState extends State<_LineItemTile> {
                   onSelectionChanged: (s) {
                     setState(() => item.unitType = s.first);
                     widget.onChanged();
+                    widget.onQuantityEntered(item);
                   },
                   style: const ButtonStyle(
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -830,7 +1008,10 @@ class _LineItemTileState extends State<_LineItemTile> {
                           item.unitType == 'box' ? 'Qty (Box)' : 'Qty (Pcs)',
                       isDense: true,
                     ),
-                    onChanged: (_) => widget.onChanged(),
+                    onChanged: (_) {
+                      widget.onChanged();
+                      widget.onQuantityEntered(item);
+                    },
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -863,27 +1044,27 @@ class _LineItemTileState extends State<_LineItemTile> {
                 Row(
                   children: [
                     Icon(
-                      item.isSufficient
+                      sufficient
                           ? Icons.check_circle_outline
                           : Icons.warning_amber_rounded,
                       size: 14,
-                      color: item.isSufficient
+                      color: sufficient
                           ? Colors.green.shade700
                           : Colors.orange.shade700,
                     ),
                     const SizedBox(width: 4),
                     Text(
                       () {
-                        final b = item.avlBoxes;
-                        final p = item.avlPcs;
-                        if (b > 0 && p > 0) return 'In stock: $b box(es) + $p pcs';
-                        if (b > 0) return 'In stock: $b box(es)';
-                        if (p > 0) return 'In stock: $p pcs';
+                        if (avlBoxes > 0 && avlPcs > 0) {
+                          return 'In stock: $avlBoxes box(es) + $avlPcs pcs';
+                        }
+                        if (avlBoxes > 0) return 'In stock: $avlBoxes box(es)';
+                        if (avlPcs > 0) return 'In stock: $avlPcs pcs';
                         return 'Out of stock';
                       }(),
                       style: TextStyle(
                         fontSize: 11,
-                        color: item.isSufficient
+                        color: sufficient
                             ? Colors.green.shade700
                             : Colors.orange.shade700,
                         fontWeight: FontWeight.w500,
@@ -891,10 +1072,26 @@ class _LineItemTileState extends State<_LineItemTile> {
                     ),
                   ],
                 ),
-                Text(
-                  'Subtotal: ${formatCurrency(item.subtotal)}',
-                  style: const TextStyle(fontSize: 12),
-                ),
+                if (item.isFree)
+                  Text('FREE',
+                      style: TextStyle(
+                          color: Colors.green.shade700,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12))
+                else if (hasDiscount)
+                  Text(
+                    '${item.discountLabel}:  -${formatCurrency(item.discountAmount)}  '
+                    '=  ${formatCurrency(item.subtotal)}',
+                    style: TextStyle(
+                        color: Colors.green.shade700,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold),
+                  )
+                else
+                  Text(
+                    'Subtotal: ${formatCurrency(item.subtotal)}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
               ],
             ),
           ],

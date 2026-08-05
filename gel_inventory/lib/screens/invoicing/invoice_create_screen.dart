@@ -678,8 +678,10 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
 
   int _effectiveAvailable(String productId, {int? excludeIndex}) {
     final inv = _inventoryCache[productId]?.quantityPieces ?? 0;
-    return (inv - _committedPieces(productId, excludeIndex: excludeIndex))
-        .clamp(0, inv);
+    final available =
+        inv - _committedPieces(productId, excludeIndex: excludeIndex);
+    if (available <= 0) return 0;
+    return inv <= 0 ? 0 : (available > inv ? inv : available);
   }
 
   double get _total =>

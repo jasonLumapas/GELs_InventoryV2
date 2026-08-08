@@ -703,15 +703,38 @@ class _SupplierReceivedInvoiceFormScreenState
     }
   }
 
+  void _showStockError(InsufficientStockException e) {
+    if (!mounted) return;
+    setState(() => _saving = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(e.toString()),
+        backgroundColor: Theme.of(context).colorScheme.error,
+      ),
+    );
+  }
+
   Future<void> _save() async {
     setState(() => _saving = true);
-    await _persist();
+    try {
+      await _persist();
+    } on InsufficientStockException catch (e) {
+      _showStockError(e);
+      return;
+    }
     if (mounted) context.go('/supplier-deliveries');
   }
 
   Future<void> _print() async {
     setState(() => _saving = true);
-    final persisted = await _persist();
+    final ({SupplierReceivedInvoice invoice, List<SupplierReceivedInvoiceItem> items})
+        persisted;
+    try {
+      persisted = await _persist();
+    } on InsufficientStockException catch (e) {
+      _showStockError(e);
+      return;
+    }
 
     final productsById = {
       for (final li in _lineItems) li.product.id: li.product
@@ -745,9 +768,21 @@ class _SupplierReceivedInvoiceFormScreenState
     );
     if (confirm != true) return;
 
-    await ref
-        .read(supplierReceivedInvoiceRepositoryProvider)
-        .cancelInvoice(_invoiceId);
+    try {
+      await ref
+          .read(supplierReceivedInvoiceRepositoryProvider)
+          .cancelInvoice(_invoiceId);
+    } on InsufficientStockException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+      return;
+    }
     ref.invalidate(supplierReceivedInvoicesListProvider);
     ref.invalidate(filteredSupplierReceivedInvoicesProvider);
     ref.invalidate(inventoryListProvider);

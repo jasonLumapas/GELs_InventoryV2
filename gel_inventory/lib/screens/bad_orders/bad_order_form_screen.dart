@@ -484,9 +484,22 @@ class _BadOrderFormScreenState extends ConsumerState<BadOrderFormScreen> {
         )
         .toList();
     final ppbMap = {for (final p in _products) p.id: p.piecesPerBox};
-    await ref
-        .read(badOrderRepositoryProvider)
-        .save(order: order, items: items, piecesPerBoxByProduct: ppbMap);
+    try {
+      await ref
+          .read(badOrderRepositoryProvider)
+          .save(order: order, items: items, piecesPerBoxByProduct: ppbMap);
+    } on InsufficientStockException catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+      return;
+    }
 
     _finalized = true;
     if (_draftPersisted) {

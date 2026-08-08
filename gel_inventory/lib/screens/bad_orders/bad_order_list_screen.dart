@@ -646,9 +646,24 @@ class _BadOrderListScreenState extends ConsumerState<BadOrderListScreen>
                                     confirmLabel: 'Delete',
                                   );
                                   if (ok) {
-                                    await ref
-                                        .read(badOrderRepositoryProvider)
-                                        .delete(o.id);
+                                    try {
+                                      await ref
+                                          .read(badOrderRepositoryProvider)
+                                          .delete(o.id);
+                                    } on InsufficientStockException catch (e) {
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Text(e.toString()),
+                                            backgroundColor: Theme.of(context)
+                                                .colorScheme
+                                                .error,
+                                          ),
+                                        );
+                                      }
+                                      return;
+                                    }
                                     ref.invalidate(badOrdersListProvider);
                                     ref.invalidate(inventoryListProvider);
                                     if (o.isStockPulledOut &&
@@ -1153,13 +1168,25 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
       quantity: newQty,
     );
 
-    await ref
-        .read(badOrderRepositoryProvider)
-        .addItem(
-          order: widget.order,
-          item: newItem,
-          piecesPerBox: piecesPerBox,
+    try {
+      await ref
+          .read(badOrderRepositoryProvider)
+          .addItem(
+            order: widget.order,
+            item: newItem,
+            piecesPerBox: piecesPerBox,
+          );
+    } on InsufficientStockException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
         );
+      }
+      return;
+    }
     ref.invalidate(badOrdersListProvider);
     ref.invalidate(inventoryListProvider);
     _invalidateInvoiceIfLinked();
@@ -1274,15 +1301,27 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
     final newQty = int.tryParse(qtyCtrl.text.trim()) ?? 0;
     if (newQty <= 0) return;
 
-    await ref
-        .read(badOrderRepositoryProvider)
-        .updateItem(
-          order: widget.order,
-          oldItem: item,
-          newUnitType: unitType,
-          newQuantity: newQty,
-          piecesPerBox: product?.piecesPerBox ?? 1,
+    try {
+      await ref
+          .read(badOrderRepositoryProvider)
+          .updateItem(
+            order: widget.order,
+            oldItem: item,
+            newUnitType: unitType,
+            newQuantity: newQty,
+            piecesPerBox: product?.piecesPerBox ?? 1,
+          );
+    } on InsufficientStockException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
         );
+      }
+      return;
+    }
     ref.invalidate(badOrdersListProvider);
     ref.invalidate(inventoryListProvider);
     _invalidateInvoiceIfLinked();
@@ -1301,13 +1340,25 @@ class _DetailSheetState extends ConsumerState<_DetailSheet> {
     );
     if (!ok || !mounted) return;
 
-    await ref
-        .read(badOrderRepositoryProvider)
-        .deleteItem(
-          order: widget.order,
-          item: item,
-          piecesPerBox: product?.piecesPerBox ?? 1,
+    try {
+      await ref
+          .read(badOrderRepositoryProvider)
+          .deleteItem(
+            order: widget.order,
+            item: item,
+            piecesPerBox: product?.piecesPerBox ?? 1,
+          );
+    } on InsufficientStockException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
         );
+      }
+      return;
+    }
     ref.invalidate(badOrdersListProvider);
     ref.invalidate(inventoryListProvider);
     _invalidateInvoiceIfLinked();

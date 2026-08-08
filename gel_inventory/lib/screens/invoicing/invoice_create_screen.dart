@@ -703,7 +703,6 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
 
   Future<({Invoice invoice, List<InvoiceItem> items})> _persistInvoice() async {
     _autoSaveTimer?.cancel();
-    _finalized = true;
 
     final invoice = Invoice(
       id: _invoiceId,
@@ -744,6 +743,7 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       savedInvoice = await _invoiceRepo.saveInvoice(invoice: invoice, items: items);
     }
 
+    _finalized = true;
     ref.invalidate(invoicesListProvider);
     ref.invalidate(filteredInvoicesProvider);
     ref.invalidate(inventoryListProvider);
@@ -752,15 +752,36 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
     return (invoice: savedInvoice, items: items);
   }
 
+  void _showStockError(InsufficientStockException e) {
+    if (!mounted) return;
+    setState(() => _saving = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(e.toString()),
+        backgroundColor: Theme.of(context).colorScheme.error,
+      ),
+    );
+  }
+
   Future<void> _save() async {
     setState(() => _saving = true);
-    await _persistInvoice();
-    if (mounted) context.go('/invoices');
+    try {
+      await _persistInvoice();
+      if (mounted) context.go('/invoices');
+    } on InsufficientStockException catch (e) {
+      _showStockError(e);
+    }
   }
 
   Future<void> _print() async {
     setState(() => _saving = true);
-    final persisted = await _persistInvoice();
+    final ({Invoice invoice, List<InvoiceItem> items}) persisted;
+    try {
+      persisted = await _persistInvoice();
+    } on InsufficientStockException catch (e) {
+      _showStockError(e);
+      return;
+    }
 
     final productsById = {
       for (final li in _lineItems) li.product.id: li.product

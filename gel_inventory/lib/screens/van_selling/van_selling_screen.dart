@@ -128,7 +128,11 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
         for (final entry in edits.entries) {
           final tx = items.where((t) => t.id == entry.key).firstOrNull;
           if (tx == null || entry.value == tx.quantityPieces) continue;
-          await repo.updateRecord(tx, entry.value);
+          try {
+            await repo.updateRecord(tx, entry.value);
+          } on InsufficientStockException {
+            // Screen is gone; nobody to show the error to — drop the edit.
+          }
         }
       }());
     }
@@ -183,13 +187,26 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
   Future<void> _persistPendingEdits() async {
     if (_pendingEdits.isEmpty) return;
     final repo = ref.read(vanStockRepositoryProvider);
+    String? error;
     for (final entry in List.of(_pendingEdits.entries)) {
       final tx = _outItems.where((t) => t.id == entry.key).firstOrNull;
       if (tx == null || entry.value == tx.quantityPieces) continue;
-      await repo.updateRecord(tx, entry.value);
+      try {
+        await repo.updateRecord(tx, entry.value);
+      } on InsufficientStockException catch (e) {
+        error ??= e.toString();
+      }
     }
     _pendingEdits.clear();
     ref.invalidate(inventoryListProvider);
+    if (error != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    }
   }
 
   Future<void> _loadOutItems() async {
@@ -620,15 +637,28 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
               FilledButton(
                 onPressed: canSave()
                     ? () async {
-                        for (final li in lineItems) {
-                          await ref.read(vanStockRepositoryProvider).record(
-                                productId: li.product.id,
-                                type: isOut ? 'out' : 'in',
-                                quantityPieces: li.pieces,
-                                notes: null,
-                                date: txDate,
-                                areaId: selectedAreaId,
-                              );
+                        try {
+                          for (final li in lineItems) {
+                            await ref.read(vanStockRepositoryProvider).record(
+                                  productId: li.product.id,
+                                  type: isOut ? 'out' : 'in',
+                                  quantityPieces: li.pieces,
+                                  notes: null,
+                                  date: txDate,
+                                  areaId: selectedAreaId,
+                                );
+                          }
+                        } on InsufficientStockException catch (e) {
+                          if (ctx.mounted) {
+                            ScaffoldMessenger.of(ctx).showSnackBar(
+                              SnackBar(
+                                content: Text(e.toString()),
+                                backgroundColor:
+                                    Theme.of(ctx).colorScheme.error,
+                              ),
+                            );
+                          }
+                          return;
                         }
                         finalized = true;
                         if (ctx.mounted) Navigator.pop(ctx);

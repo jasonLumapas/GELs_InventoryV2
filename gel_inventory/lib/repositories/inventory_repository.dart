@@ -8,6 +8,22 @@ import '../core/services/sync_service.dart';
 import '../models/inventory_item.dart';
 import 'base_repository.dart';
 
+class InsufficientStockException implements Exception {
+  final String productId;
+  final int available;
+  final int requested;
+
+  InsufficientStockException({
+    required this.productId,
+    required this.available,
+    required this.requested,
+  });
+
+  @override
+  String toString() =>
+      'Not enough stock available: requested $requested piece(s), only $available in stock.';
+}
+
 class InventoryRepository extends BaseRepository {
   InventoryRepository({
     required super.db,
@@ -67,15 +83,24 @@ class InventoryRepository extends BaseRepository {
     var item = await getByProductId(productId);
     final now = DateTime.now();
 
+    final currentQty = item?.quantityPieces ?? 0;
+    final newQty = (currentQty + deltaPieces).clamp(-999999, 999999);
+    if (newQty < 0) {
+      throw InsufficientStockException(
+        productId: productId,
+        available: currentQty,
+        requested: -deltaPieces,
+      );
+    }
+
     if (item == null) {
       item = InventoryItem(
         id: const Uuid().v4(),
         productId: productId,
-        quantityPieces: deltaPieces.clamp(-999999, 999999),
+        quantityPieces: newQty,
         lastUpdated: now,
       );
     } else {
-      final newQty = (item.quantityPieces + deltaPieces).clamp(-999999, 999999);
       item = InventoryItem(
         id: item.id,
         productId: productId,

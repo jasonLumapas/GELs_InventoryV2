@@ -503,6 +503,17 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     });
   }
 
+  void _showStockError(InsufficientStockException e) {
+    if (!mounted) return;
+    setState(() => _saving = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(e.toString()),
+        backgroundColor: Theme.of(context).colorScheme.error,
+      ),
+    );
+  }
+
   Future<void> _saveOnly() async {
     setState(() => _saving = true);
 
@@ -533,13 +544,18 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
         .map((li) => li.toInvoiceItem(widget.invoiceId))
         .toList();
 
-    await ref
-        .read(invoiceRepositoryProvider)
-        .editInvoice(
-          invoice: updatedInvoice,
-          newItems: newItems,
-          oldItems: _originalItems,
-        );
+    try {
+      await ref
+          .read(invoiceRepositoryProvider)
+          .editInvoice(
+            invoice: updatedInvoice,
+            newItems: newItems,
+            oldItems: _originalItems,
+          );
+    } on InsufficientStockException catch (e) {
+      _showStockError(e);
+      return;
+    }
 
     ref.invalidate(invoicesListProvider);
     ref.invalidate(filteredInvoicesProvider);
@@ -594,7 +610,13 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
 
   Future<void> _saveAndPrint() async {
     setState(() => _saving = true);
-    final persisted = await _persistEdit();
+    final ({Invoice invoice, List<InvoiceItem> items}) persisted;
+    try {
+      persisted = await _persistEdit();
+    } on InsufficientStockException catch (e) {
+      _showStockError(e);
+      return;
+    }
 
     final productsById = {
       for (final li in _editItems) li.product.id: li.product,
@@ -639,7 +661,12 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
       confirmLabel: 'Cancel Invoice',
     );
     if (ok) {
-      await ref.read(invoiceRepositoryProvider).cancelInvoice(_invoice!);
+      try {
+        await ref.read(invoiceRepositoryProvider).cancelInvoice(_invoice!);
+      } on InsufficientStockException catch (e) {
+        _showStockError(e);
+        return;
+      }
       ref.invalidate(invoicesListProvider);
       ref.invalidate(filteredInvoicesProvider);
       ref.invalidate(inventoryListProvider);
@@ -658,7 +685,12 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
       confirmLabel: 'Restore',
     );
     if (ok) {
-      await ref.read(invoiceRepositoryProvider).restoreInvoice(_invoice!);
+      try {
+        await ref.read(invoiceRepositoryProvider).restoreInvoice(_invoice!);
+      } on InsufficientStockException catch (e) {
+        _showStockError(e);
+        return;
+      }
       ref.invalidate(invoicesListProvider);
       ref.invalidate(filteredInvoicesProvider);
       ref.invalidate(inventoryListProvider);

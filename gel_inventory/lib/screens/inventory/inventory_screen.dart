@@ -282,19 +282,30 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final stockMovementRepo = ref.read(stockMovementRepositoryProvider);
     final now = DateTime.now();
 
-    for (final item in items) {
-      if (item.quantityPieces == 0) continue;
-      await inventoryRepo.adjust(
-          productId: item.productId, deltaPieces: -item.quantityPieces);
-      await stockMovementRepo.save(StockMovement(
-        id: const Uuid().v4(),
-        productId: item.productId,
-        movementType: 'out',
-        quantityPieces: item.quantityPieces,
-        referenceDate: now,
-        comments: 'Bulk clear all stock',
-        createdAt: now,
-      ));
+    try {
+      for (final item in items) {
+        if (item.quantityPieces == 0) continue;
+        await inventoryRepo.adjust(
+            productId: item.productId, deltaPieces: -item.quantityPieces);
+        await stockMovementRepo.save(StockMovement(
+          id: const Uuid().v4(),
+          productId: item.productId,
+          movementType: 'out',
+          quantityPieces: item.quantityPieces,
+          referenceDate: now,
+          comments: 'Bulk clear all stock',
+          createdAt: now,
+        ));
+      }
+    } on InsufficientStockException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
     }
 
     ref.invalidate(inventoryListProvider);
@@ -455,9 +466,21 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 final pieces = boxes * product.piecesPerBox + pcs;
                 if (pieces <= 0) return;
                 final delta = isAdd ? pieces : -pieces;
-                await ref
-                    .read(inventoryRepositoryProvider)
-                    .adjust(productId: product.id, deltaPieces: delta);
+                try {
+                  await ref
+                      .read(inventoryRepositoryProvider)
+                      .adjust(productId: product.id, deltaPieces: delta);
+                } on InsufficientStockException catch (e) {
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(
+                        content: Text(e.toString()),
+                        backgroundColor: Theme.of(ctx).colorScheme.error,
+                      ),
+                    );
+                  }
+                  return;
+                }
                 await ref
                     .read(stockMovementRepositoryProvider)
                     .save(StockMovement(

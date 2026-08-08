@@ -1004,6 +1004,83 @@ Future<void> printInventoryReport({
     doc: doc, format: pageFormat, slot: PrinterSettingsService.layout);
 }
 
+// ── Product Price List PDF ────────────────────────────────────────────────────
+
+class ProductPriceListRow {
+  final String productName;
+  final double withdrawalPricePerPiece;
+  final double sellingPricePerPiece;
+
+  const ProductPriceListRow({
+    required this.productName,
+    required this.withdrawalPricePerPiece,
+    required this.sellingPricePerPiece,
+  });
+}
+
+Future<void> printProductPriceList({
+  required List<ProductPriceListRow> rows,
+}) async {
+  final doc = pw.Document();
+  final dateFmt = DateFormat('MMMM dd, yyyy');
+
+  final pageFormat = PdfPageFormat.a4.copyWith(
+    marginTop: 40,
+    marginBottom: 40,
+    marginLeft: 40,
+    marginRight: 40,
+  );
+  final usableW = pageFormat.availableWidth;
+  final nameW = usableW * 0.5;
+  final priceW = (usableW - nameW) / 2;
+
+  final font = pw.Font.helvetica();
+  final fontBold = pw.Font.helveticaBold();
+  const double fs = 9.5;
+  const double fsHead = 12;
+
+  pw.TextStyle ts({bool bold = false, double? size}) =>
+      pw.TextStyle(font: bold ? fontBold : font, fontSize: size ?? fs);
+
+  pw.Widget col(String text, double width,
+          {bool bold = false, pw.TextAlign align = pw.TextAlign.left}) =>
+      pw.SizedBox(
+        width: width,
+        child: pw.Text(text, style: ts(bold: bold), textAlign: align),
+      );
+
+  doc.addPage(pw.MultiPage(
+    pageFormat: pageFormat,
+    build: (ctx) => [
+      pw.Text('Product Price List', style: ts(bold: true, size: fsHead + 2)),
+      pw.SizedBox(height: 4),
+      pw.Text('As of: ${dateFmt.format(DateTime.now())}',
+          style: ts(size: fsHead - 1)),
+      pw.SizedBox(height: 10),
+      pw.Row(children: [
+        col('Product Name', nameW, bold: true),
+        col('Withdrawal/pc', priceW, bold: true, align: pw.TextAlign.right),
+        col('Selling/pc', priceW, bold: true, align: pw.TextAlign.right),
+      ]),
+      pw.Divider(height: 4, thickness: 0.5),
+      for (final row in rows)
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 2),
+          child: pw.Row(children: [
+            col(row.productName, nameW),
+            col(_n(row.withdrawalPricePerPiece), priceW,
+                align: pw.TextAlign.right),
+            col(_n(row.sellingPricePerPiece), priceW,
+                align: pw.TextAlign.right),
+          ]),
+        ),
+    ],
+  ));
+
+  await _printWithSlot(
+      doc: doc, format: pageFormat, slot: PrinterSettingsService.layout);
+}
+
 // ── Van Stock History PDF ─────────────────────────────────────────────────────
 
 class VanStockHistoryRow {

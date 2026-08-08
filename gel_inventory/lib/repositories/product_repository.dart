@@ -237,3 +237,13 @@ final productsListProvider = FutureProvider<List<Product>>((ref) {
   return ref.watch(productRepositoryProvider).getAll();
 });
 
+final productCurrentSellingPricesProvider =
+    FutureProvider<Map<String, double>>((ref) {
+  return ref.watch(productRepositoryProvider).getAllCurrentPrices();
+});
+
+final productCurrentWithdrawalPricesProvider =
+    FutureProvider<Map<String, double>>((ref) {
+  return ref.watch(productRepositoryProvider).getAllCurrentCostPrices();
+});
+

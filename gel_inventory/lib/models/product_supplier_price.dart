@@ -8,6 +8,13 @@ class ProductSupplierPrice {
   // e.g. [10, 5] = 10% off, then 5% off the result.
   final List<double> discountPercents;
   final bool vatEnabled; // applies 12% VAT on top of the discounted price
+  // "Buy X Get Y Free" term from the supplier, applied automatically in
+  // New Supplier Delivery once the ordered quantity crosses the threshold.
+  final int? buyMinQuantityPieces;
+  // Free quantity (in pieces) granted per cycle of buyMinQuantityPieces.
+  final int? freeQuantityPieces;
+  // Whether freeQuantityPieces represents pieces or boxes ('piece' | 'box').
+  final String freeQuantityUnit;
 
   const ProductSupplierPrice({
     required this.id,
@@ -15,7 +22,16 @@ class ProductSupplierPrice {
     required this.priceBox,
     this.discountPercents = const [],
     this.vatEnabled = false,
+    this.buyMinQuantityPieces,
+    this.freeQuantityPieces,
+    this.freeQuantityUnit = 'box',
   });
+
+  bool get hasBuyXGetY =>
+      buyMinQuantityPieces != null &&
+      buyMinQuantityPieces! > 0 &&
+      freeQuantityPieces != null &&
+      freeQuantityPieces! > 0;
 
   /// Decodes the comma-separated "discount_percents" column, e.g. "10,5".
   static List<double> decodeDiscountPercents(String? raw) =>
@@ -35,6 +51,9 @@ class ProductSupplierPrice {
         discountPercents:
             decodeDiscountPercents(j['discount_percents'] as String?),
         vatEnabled: (j['vat_enabled'] as bool?) ?? false,
+        buyMinQuantityPieces: j['buy_min_quantity_pieces'] as int?,
+        freeQuantityPieces: j['free_quantity_pieces'] as int?,
+        freeQuantityUnit: (j['free_quantity_unit'] as String?) ?? 'box',
       );
 
   Map<String, dynamic> toJson() => {
@@ -43,5 +62,8 @@ class ProductSupplierPrice {
         'price_box': priceBox,
         'discount_percents': encodeDiscountPercents(discountPercents),
         'vat_enabled': vatEnabled,
+        'buy_min_quantity_pieces': buyMinQuantityPieces,
+        'free_quantity_pieces': freeQuantityPieces,
+        'free_quantity_unit': freeQuantityUnit,
       };
 }

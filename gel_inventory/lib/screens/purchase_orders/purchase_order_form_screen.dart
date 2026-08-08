@@ -464,7 +464,12 @@ class _PurchaseOrderFormScreenState
         product: product,
         systemPrice: (price?.withdrawalPrice ?? 0) * product.piecesPerBox,
         discountMultiplier: () => _discountMultiplier,
-        supplierPrice: supplierPrice?.priceBox,
+        // Only prefill from the saved supplier price if one was actually
+        // entered (priceBox > 0) — otherwise fall back to the withdrawal
+        // price, same as a brand-new line with no supplier price on record.
+        supplierPrice: (supplierPrice != null && supplierPrice.priceBox > 0)
+            ? supplierPrice.priceBox
+            : null,
       ));
     });
     _scheduleAutoSave();
@@ -673,6 +678,9 @@ class _PurchaseOrderFormScreenState
         priceBox: li.rawPrice,
         discountPercents: existing?.discountPercents ?? const [],
         vatEnabled: existing?.vatEnabled ?? false,
+        buyMinQuantityPieces: existing?.buyMinQuantityPieces,
+        freeQuantityPieces: existing?.freeQuantityPieces,
+        freeQuantityUnit: existing?.freeQuantityUnit ?? 'box',
       ));
     }
   }

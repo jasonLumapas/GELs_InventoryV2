@@ -92,6 +92,13 @@ class ProductSupplierPrices extends Table {
   RealColumn get priceBox => real()();
   TextColumn get discountPercents => text().nullable()();
   BoolColumn get vatEnabled => boolean().withDefault(const Constant(false))();
+  // "Buy X Get Y Free" term from the supplier (threshold, in pieces).
+  IntColumn get buyMinQuantityPieces => integer().nullable()();
+  // Free quantity (in pieces) granted per cycle of buyMinQuantityPieces.
+  IntColumn get freeQuantityPieces => integer().nullable()();
+  // Whether the free quantity is expressed in 'piece' or 'box' units.
+  TextColumn get freeQuantityUnit =>
+      text().withDefault(const Constant('box'))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -507,7 +514,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 38;
+  int get schemaVersion => 39;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -693,6 +700,14 @@ class LocalDatabase extends _$LocalDatabase {
           if (from < 38) {
             await _addColumnIfMissing(
                 m.database, 'product_prices', 'selling_price_op', 'REAL');
+          }
+          if (from < 39) {
+            await _addColumnIfMissing(m.database, 'product_supplier_prices',
+                'buy_min_quantity_pieces', 'INTEGER');
+            await _addColumnIfMissing(m.database, 'product_supplier_prices',
+                'free_quantity_pieces', 'INTEGER');
+            await _addColumnIfMissing(m.database, 'product_supplier_prices',
+                'free_quantity_unit', "TEXT NOT NULL DEFAULT 'box'");
           }
         },
         beforeOpen: (details) async {

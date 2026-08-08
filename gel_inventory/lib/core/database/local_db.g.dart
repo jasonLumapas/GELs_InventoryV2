@@ -2354,6 +2354,38 @@ class $ProductSupplierPricesTable extends ProductSupplierPrices
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _buyMinQuantityPiecesMeta =
+      const VerificationMeta('buyMinQuantityPieces');
+  @override
+  late final GeneratedColumn<int> buyMinQuantityPieces = GeneratedColumn<int>(
+    'buy_min_quantity_pieces',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _freeQuantityPiecesMeta =
+      const VerificationMeta('freeQuantityPieces');
+  @override
+  late final GeneratedColumn<int> freeQuantityPieces = GeneratedColumn<int>(
+    'free_quantity_pieces',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _freeQuantityUnitMeta = const VerificationMeta(
+    'freeQuantityUnit',
+  );
+  @override
+  late final GeneratedColumn<String> freeQuantityUnit = GeneratedColumn<String>(
+    'free_quantity_unit',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('box'),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -2361,6 +2393,9 @@ class $ProductSupplierPricesTable extends ProductSupplierPrices
     priceBox,
     discountPercents,
     vatEnabled,
+    buyMinQuantityPieces,
+    freeQuantityPieces,
+    freeQuantityUnit,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2410,6 +2445,33 @@ class $ProductSupplierPricesTable extends ProductSupplierPrices
         vatEnabled.isAcceptableOrUnknown(data['vat_enabled']!, _vatEnabledMeta),
       );
     }
+    if (data.containsKey('buy_min_quantity_pieces')) {
+      context.handle(
+        _buyMinQuantityPiecesMeta,
+        buyMinQuantityPieces.isAcceptableOrUnknown(
+          data['buy_min_quantity_pieces']!,
+          _buyMinQuantityPiecesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('free_quantity_pieces')) {
+      context.handle(
+        _freeQuantityPiecesMeta,
+        freeQuantityPieces.isAcceptableOrUnknown(
+          data['free_quantity_pieces']!,
+          _freeQuantityPiecesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('free_quantity_unit')) {
+      context.handle(
+        _freeQuantityUnitMeta,
+        freeQuantityUnit.isAcceptableOrUnknown(
+          data['free_quantity_unit']!,
+          _freeQuantityUnitMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -2439,6 +2501,18 @@ class $ProductSupplierPricesTable extends ProductSupplierPrices
         DriftSqlType.bool,
         data['${effectivePrefix}vat_enabled'],
       )!,
+      buyMinQuantityPieces: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}buy_min_quantity_pieces'],
+      ),
+      freeQuantityPieces: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}free_quantity_pieces'],
+      ),
+      freeQuantityUnit: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}free_quantity_unit'],
+      )!,
     );
   }
 
@@ -2455,12 +2529,18 @@ class ProductSupplierPrice extends DataClass
   final double priceBox;
   final String? discountPercents;
   final bool vatEnabled;
+  final int? buyMinQuantityPieces;
+  final int? freeQuantityPieces;
+  final String freeQuantityUnit;
   const ProductSupplierPrice({
     required this.id,
     required this.productId,
     required this.priceBox,
     this.discountPercents,
     required this.vatEnabled,
+    this.buyMinQuantityPieces,
+    this.freeQuantityPieces,
+    required this.freeQuantityUnit,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2472,6 +2552,13 @@ class ProductSupplierPrice extends DataClass
       map['discount_percents'] = Variable<String>(discountPercents);
     }
     map['vat_enabled'] = Variable<bool>(vatEnabled);
+    if (!nullToAbsent || buyMinQuantityPieces != null) {
+      map['buy_min_quantity_pieces'] = Variable<int>(buyMinQuantityPieces);
+    }
+    if (!nullToAbsent || freeQuantityPieces != null) {
+      map['free_quantity_pieces'] = Variable<int>(freeQuantityPieces);
+    }
+    map['free_quantity_unit'] = Variable<String>(freeQuantityUnit);
     return map;
   }
 
@@ -2484,6 +2571,13 @@ class ProductSupplierPrice extends DataClass
           ? const Value.absent()
           : Value(discountPercents),
       vatEnabled: Value(vatEnabled),
+      buyMinQuantityPieces: buyMinQuantityPieces == null && nullToAbsent
+          ? const Value.absent()
+          : Value(buyMinQuantityPieces),
+      freeQuantityPieces: freeQuantityPieces == null && nullToAbsent
+          ? const Value.absent()
+          : Value(freeQuantityPieces),
+      freeQuantityUnit: Value(freeQuantityUnit),
     );
   }
 
@@ -2498,6 +2592,11 @@ class ProductSupplierPrice extends DataClass
       priceBox: serializer.fromJson<double>(json['priceBox']),
       discountPercents: serializer.fromJson<String?>(json['discountPercents']),
       vatEnabled: serializer.fromJson<bool>(json['vatEnabled']),
+      buyMinQuantityPieces: serializer.fromJson<int?>(
+        json['buyMinQuantityPieces'],
+      ),
+      freeQuantityPieces: serializer.fromJson<int?>(json['freeQuantityPieces']),
+      freeQuantityUnit: serializer.fromJson<String>(json['freeQuantityUnit']),
     );
   }
   @override
@@ -2509,6 +2608,9 @@ class ProductSupplierPrice extends DataClass
       'priceBox': serializer.toJson<double>(priceBox),
       'discountPercents': serializer.toJson<String?>(discountPercents),
       'vatEnabled': serializer.toJson<bool>(vatEnabled),
+      'buyMinQuantityPieces': serializer.toJson<int?>(buyMinQuantityPieces),
+      'freeQuantityPieces': serializer.toJson<int?>(freeQuantityPieces),
+      'freeQuantityUnit': serializer.toJson<String>(freeQuantityUnit),
     };
   }
 
@@ -2518,6 +2620,9 @@ class ProductSupplierPrice extends DataClass
     double? priceBox,
     Value<String?> discountPercents = const Value.absent(),
     bool? vatEnabled,
+    Value<int?> buyMinQuantityPieces = const Value.absent(),
+    Value<int?> freeQuantityPieces = const Value.absent(),
+    String? freeQuantityUnit,
   }) => ProductSupplierPrice(
     id: id ?? this.id,
     productId: productId ?? this.productId,
@@ -2526,6 +2631,13 @@ class ProductSupplierPrice extends DataClass
         ? discountPercents.value
         : this.discountPercents,
     vatEnabled: vatEnabled ?? this.vatEnabled,
+    buyMinQuantityPieces: buyMinQuantityPieces.present
+        ? buyMinQuantityPieces.value
+        : this.buyMinQuantityPieces,
+    freeQuantityPieces: freeQuantityPieces.present
+        ? freeQuantityPieces.value
+        : this.freeQuantityPieces,
+    freeQuantityUnit: freeQuantityUnit ?? this.freeQuantityUnit,
   );
   ProductSupplierPrice copyWithCompanion(ProductSupplierPricesCompanion data) {
     return ProductSupplierPrice(
@@ -2538,6 +2650,15 @@ class ProductSupplierPrice extends DataClass
       vatEnabled: data.vatEnabled.present
           ? data.vatEnabled.value
           : this.vatEnabled,
+      buyMinQuantityPieces: data.buyMinQuantityPieces.present
+          ? data.buyMinQuantityPieces.value
+          : this.buyMinQuantityPieces,
+      freeQuantityPieces: data.freeQuantityPieces.present
+          ? data.freeQuantityPieces.value
+          : this.freeQuantityPieces,
+      freeQuantityUnit: data.freeQuantityUnit.present
+          ? data.freeQuantityUnit.value
+          : this.freeQuantityUnit,
     );
   }
 
@@ -2548,14 +2669,25 @@ class ProductSupplierPrice extends DataClass
           ..write('productId: $productId, ')
           ..write('priceBox: $priceBox, ')
           ..write('discountPercents: $discountPercents, ')
-          ..write('vatEnabled: $vatEnabled')
+          ..write('vatEnabled: $vatEnabled, ')
+          ..write('buyMinQuantityPieces: $buyMinQuantityPieces, ')
+          ..write('freeQuantityPieces: $freeQuantityPieces, ')
+          ..write('freeQuantityUnit: $freeQuantityUnit')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, productId, priceBox, discountPercents, vatEnabled);
+  int get hashCode => Object.hash(
+    id,
+    productId,
+    priceBox,
+    discountPercents,
+    vatEnabled,
+    buyMinQuantityPieces,
+    freeQuantityPieces,
+    freeQuantityUnit,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -2564,7 +2696,10 @@ class ProductSupplierPrice extends DataClass
           other.productId == this.productId &&
           other.priceBox == this.priceBox &&
           other.discountPercents == this.discountPercents &&
-          other.vatEnabled == this.vatEnabled);
+          other.vatEnabled == this.vatEnabled &&
+          other.buyMinQuantityPieces == this.buyMinQuantityPieces &&
+          other.freeQuantityPieces == this.freeQuantityPieces &&
+          other.freeQuantityUnit == this.freeQuantityUnit);
 }
 
 class ProductSupplierPricesCompanion
@@ -2574,6 +2709,9 @@ class ProductSupplierPricesCompanion
   final Value<double> priceBox;
   final Value<String?> discountPercents;
   final Value<bool> vatEnabled;
+  final Value<int?> buyMinQuantityPieces;
+  final Value<int?> freeQuantityPieces;
+  final Value<String> freeQuantityUnit;
   final Value<int> rowid;
   const ProductSupplierPricesCompanion({
     this.id = const Value.absent(),
@@ -2581,6 +2719,9 @@ class ProductSupplierPricesCompanion
     this.priceBox = const Value.absent(),
     this.discountPercents = const Value.absent(),
     this.vatEnabled = const Value.absent(),
+    this.buyMinQuantityPieces = const Value.absent(),
+    this.freeQuantityPieces = const Value.absent(),
+    this.freeQuantityUnit = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ProductSupplierPricesCompanion.insert({
@@ -2589,6 +2730,9 @@ class ProductSupplierPricesCompanion
     required double priceBox,
     this.discountPercents = const Value.absent(),
     this.vatEnabled = const Value.absent(),
+    this.buyMinQuantityPieces = const Value.absent(),
+    this.freeQuantityPieces = const Value.absent(),
+    this.freeQuantityUnit = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        productId = Value(productId),
@@ -2599,6 +2743,9 @@ class ProductSupplierPricesCompanion
     Expression<double>? priceBox,
     Expression<String>? discountPercents,
     Expression<bool>? vatEnabled,
+    Expression<int>? buyMinQuantityPieces,
+    Expression<int>? freeQuantityPieces,
+    Expression<String>? freeQuantityUnit,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -2607,6 +2754,11 @@ class ProductSupplierPricesCompanion
       if (priceBox != null) 'price_box': priceBox,
       if (discountPercents != null) 'discount_percents': discountPercents,
       if (vatEnabled != null) 'vat_enabled': vatEnabled,
+      if (buyMinQuantityPieces != null)
+        'buy_min_quantity_pieces': buyMinQuantityPieces,
+      if (freeQuantityPieces != null)
+        'free_quantity_pieces': freeQuantityPieces,
+      if (freeQuantityUnit != null) 'free_quantity_unit': freeQuantityUnit,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -2617,6 +2769,9 @@ class ProductSupplierPricesCompanion
     Value<double>? priceBox,
     Value<String?>? discountPercents,
     Value<bool>? vatEnabled,
+    Value<int?>? buyMinQuantityPieces,
+    Value<int?>? freeQuantityPieces,
+    Value<String>? freeQuantityUnit,
     Value<int>? rowid,
   }) {
     return ProductSupplierPricesCompanion(
@@ -2625,6 +2780,9 @@ class ProductSupplierPricesCompanion
       priceBox: priceBox ?? this.priceBox,
       discountPercents: discountPercents ?? this.discountPercents,
       vatEnabled: vatEnabled ?? this.vatEnabled,
+      buyMinQuantityPieces: buyMinQuantityPieces ?? this.buyMinQuantityPieces,
+      freeQuantityPieces: freeQuantityPieces ?? this.freeQuantityPieces,
+      freeQuantityUnit: freeQuantityUnit ?? this.freeQuantityUnit,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2647,6 +2805,17 @@ class ProductSupplierPricesCompanion
     if (vatEnabled.present) {
       map['vat_enabled'] = Variable<bool>(vatEnabled.value);
     }
+    if (buyMinQuantityPieces.present) {
+      map['buy_min_quantity_pieces'] = Variable<int>(
+        buyMinQuantityPieces.value,
+      );
+    }
+    if (freeQuantityPieces.present) {
+      map['free_quantity_pieces'] = Variable<int>(freeQuantityPieces.value);
+    }
+    if (freeQuantityUnit.present) {
+      map['free_quantity_unit'] = Variable<String>(freeQuantityUnit.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2661,6 +2830,9 @@ class ProductSupplierPricesCompanion
           ..write('priceBox: $priceBox, ')
           ..write('discountPercents: $discountPercents, ')
           ..write('vatEnabled: $vatEnabled, ')
+          ..write('buyMinQuantityPieces: $buyMinQuantityPieces, ')
+          ..write('freeQuantityPieces: $freeQuantityPieces, ')
+          ..write('freeQuantityUnit: $freeQuantityUnit, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -16869,6 +17041,9 @@ typedef $$ProductSupplierPricesTableCreateCompanionBuilder =
       required double priceBox,
       Value<String?> discountPercents,
       Value<bool> vatEnabled,
+      Value<int?> buyMinQuantityPieces,
+      Value<int?> freeQuantityPieces,
+      Value<String> freeQuantityUnit,
       Value<int> rowid,
     });
 typedef $$ProductSupplierPricesTableUpdateCompanionBuilder =
@@ -16878,6 +17053,9 @@ typedef $$ProductSupplierPricesTableUpdateCompanionBuilder =
       Value<double> priceBox,
       Value<String?> discountPercents,
       Value<bool> vatEnabled,
+      Value<int?> buyMinQuantityPieces,
+      Value<int?> freeQuantityPieces,
+      Value<String> freeQuantityUnit,
       Value<int> rowid,
     });
 
@@ -16946,6 +17124,21 @@ class $$ProductSupplierPricesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<int> get buyMinQuantityPieces => $composableBuilder(
+    column: $table.buyMinQuantityPieces,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get freeQuantityPieces => $composableBuilder(
+    column: $table.freeQuantityPieces,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get freeQuantityUnit => $composableBuilder(
+    column: $table.freeQuantityUnit,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$ProductsTableFilterComposer get productId {
     final $$ProductsTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -16999,6 +17192,21 @@ class $$ProductSupplierPricesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get buyMinQuantityPieces => $composableBuilder(
+    column: $table.buyMinQuantityPieces,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get freeQuantityPieces => $composableBuilder(
+    column: $table.freeQuantityPieces,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get freeQuantityUnit => $composableBuilder(
+    column: $table.freeQuantityUnit,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$ProductsTableOrderingComposer get productId {
     final $$ProductsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -17045,6 +17253,21 @@ class $$ProductSupplierPricesTableAnnotationComposer
 
   GeneratedColumn<bool> get vatEnabled => $composableBuilder(
     column: $table.vatEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get buyMinQuantityPieces => $composableBuilder(
+    column: $table.buyMinQuantityPieces,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get freeQuantityPieces => $composableBuilder(
+    column: $table.freeQuantityPieces,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get freeQuantityUnit => $composableBuilder(
+    column: $table.freeQuantityUnit,
     builder: (column) => column,
   );
 
@@ -17116,6 +17339,9 @@ class $$ProductSupplierPricesTableTableManager
                 Value<double> priceBox = const Value.absent(),
                 Value<String?> discountPercents = const Value.absent(),
                 Value<bool> vatEnabled = const Value.absent(),
+                Value<int?> buyMinQuantityPieces = const Value.absent(),
+                Value<int?> freeQuantityPieces = const Value.absent(),
+                Value<String> freeQuantityUnit = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProductSupplierPricesCompanion(
                 id: id,
@@ -17123,6 +17349,9 @@ class $$ProductSupplierPricesTableTableManager
                 priceBox: priceBox,
                 discountPercents: discountPercents,
                 vatEnabled: vatEnabled,
+                buyMinQuantityPieces: buyMinQuantityPieces,
+                freeQuantityPieces: freeQuantityPieces,
+                freeQuantityUnit: freeQuantityUnit,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -17132,6 +17361,9 @@ class $$ProductSupplierPricesTableTableManager
                 required double priceBox,
                 Value<String?> discountPercents = const Value.absent(),
                 Value<bool> vatEnabled = const Value.absent(),
+                Value<int?> buyMinQuantityPieces = const Value.absent(),
+                Value<int?> freeQuantityPieces = const Value.absent(),
+                Value<String> freeQuantityUnit = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProductSupplierPricesCompanion.insert(
                 id: id,
@@ -17139,6 +17371,9 @@ class $$ProductSupplierPricesTableTableManager
                 priceBox: priceBox,
                 discountPercents: discountPercents,
                 vatEnabled: vatEnabled,
+                buyMinQuantityPieces: buyMinQuantityPieces,
+                freeQuantityPieces: freeQuantityPieces,
+                freeQuantityUnit: freeQuantityUnit,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

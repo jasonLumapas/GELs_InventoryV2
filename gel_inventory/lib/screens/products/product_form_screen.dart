@@ -47,6 +47,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
   final _supplierPriceBoxCtrl = TextEditingController();
   final List<double> _supplierDiscountPercents = [];
   bool _supplierVatEnabled = false;
+  bool _supplierBuyXGetYEnabled = false;
+  final _supplierBuyQtyCtrl = TextEditingController();
+  final _supplierFreeQtyCtrl = TextEditingController();
+  String _supplierFreeQtyUnit = 'box'; // 'piece' | 'box'
   // Separate controllers per discount type so values don't bleed when toggling
   final _percentMinQtyCtrl = TextEditingController();
   final _percentValueCtrl  = TextEditingController();
@@ -110,6 +114,19 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
             ..clear()
             ..addAll(_existingSupplierPrice!.discountPercents);
           _supplierVatEnabled = _existingSupplierPrice!.vatEnabled;
+          _supplierBuyXGetYEnabled = _existingSupplierPrice!.hasBuyXGetY;
+          if (_supplierBuyXGetYEnabled) {
+            final ppb = _existing!.piecesPerBox;
+            _supplierBuyQtyCtrl.text =
+                (_existingSupplierPrice!.buyMinQuantityPieces! ~/ ppb)
+                    .toString();
+            _supplierFreeQtyUnit = _existingSupplierPrice!.freeQuantityUnit;
+            final freeQtyPieces = _existingSupplierPrice!.freeQuantityPieces!;
+            _supplierFreeQtyCtrl.text = (_supplierFreeQtyUnit == 'box'
+                    ? freeQtyPieces ~/ ppb
+                    : freeQtyPieces)
+                .toString();
+          }
         }
         _existingDiscount = await ref
             .read(productDiscountRepositoryProvider)
@@ -277,7 +294,22 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
     if (existing == null) return;
 
     final priceBox = double.tryParse(_supplierPriceBoxCtrl.text);
-    if (priceBox == null || priceBox <= 0) {
+    int? buyMinQuantityPieces;
+    int? freeQuantityPieces;
+    if (_supplierBuyXGetYEnabled) {
+      final buyBoxes = int.tryParse(_supplierBuyQtyCtrl.text);
+      final freeQty = int.tryParse(_supplierFreeQtyCtrl.text);
+      if (buyBoxes != null && buyBoxes > 0 &&
+          freeQty != null && freeQty > 0) {
+        buyMinQuantityPieces = buyBoxes * existing.piecesPerBox;
+        freeQuantityPieces = _supplierFreeQtyUnit == 'box'
+            ? freeQty * existing.piecesPerBox
+            : freeQty;
+      }
+    }
+    final hasBuyXGetY = buyMinQuantityPieces != null && freeQuantityPieces != null;
+
+    if ((priceBox == null || priceBox <= 0) && !hasBuyXGetY) {
       await ref
           .read(productSupplierPriceRepositoryProvider)
           .deleteForProduct(existing.id);
@@ -286,9 +318,14 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
       final newPrice = ProductSupplierPrice(
         id: _existingSupplierPrice?.id ?? const Uuid().v4(),
         productId: existing.id,
-        priceBox: priceBox,
+        priceBox: (priceBox != null && priceBox > 0)
+            ? priceBox
+            : (_existingSupplierPrice?.priceBox ?? 0),
         discountPercents: List<double>.from(_supplierDiscountPercents),
         vatEnabled: _supplierVatEnabled,
+        buyMinQuantityPieces: buyMinQuantityPieces,
+        freeQuantityPieces: freeQuantityPieces,
+        freeQuantityUnit: _supplierFreeQtyUnit,
       );
       await ref.read(productSupplierPriceRepositoryProvider).upsert(newPrice);
       setState(() => _existingSupplierPrice = newPrice);
@@ -892,7 +929,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           InputDecorator(
             decoration: const InputDecoration(
               labelText: 'Net Value (Box)',
@@ -915,6 +952,105 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen>
             ),
           ),
           const SizedBox(height: 16),
+          Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              children: [
+                CheckboxListTile(
+                  value: _supplierBuyXGetYEnabled,
+                  onChanged: (val) => setState(
+                      () => _supplierBuyXGetYEnabled = val ?? false),
+                  title: const Row(
+                    children: [
+                      Icon(Icons.card_giftcard, size: 16),
+                      SizedBox(width: 6),
+                      Text('Buy X Get Y Free (Supplier Term)',
+                          style: TextStyle(fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                  controlAffinity: ListTileControlAffinity.leading,
+                ),
+                if (_supplierBuyXGetYEnabled)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    child: Column(
+                      children: [
+                        TextFormField(
+                          controller: _supplierBuyQtyCtrl,
+                          decoration: InputDecoration(
+                            labelText: 'Buy quantity (boxes)',
+                            helperText: ppb > 0
+                                ? '= ${(int.tryParse(_supplierBuyQtyCtrl.text) ?? 0) * ppb} pcs'
+                                : null,
+                          ),
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly
+                          ],
+                          onChanged: (_) => setState(() {}),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: _supplierFreeQtyCtrl,
+                                decoration: InputDecoration(
+                                  labelText: _supplierFreeQtyUnit == 'box'
+                                      ? 'Free quantity (boxes)'
+                                      : 'Free quantity (pieces)',
+                                  helperText:
+                                      _supplierFreeQtyUnit == 'box' && ppb > 0
+                                          ? '= ${(int.tryParse(_supplierFreeQtyCtrl.text) ?? 0) * ppb} pcs per cycle'
+                                          : 'per cycle',
+                                ),
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.digitsOnly
+                                ],
+                                onChanged: (_) => setState(() {}),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            SegmentedButton<String>(
+                              segments: const [
+                                ButtonSegment(value: 'box', label: Text('Box')),
+                                ButtonSegment(value: 'piece', label: Text('Pcs')),
+                              ],
+                              selected: {_supplierFreeQtyUnit},
+                              onSelectionChanged: (s) => setState(
+                                  () => _supplierFreeQtyUnit = s.first),
+                              style: const ButtonStyle(
+                                visualDensity: VisualDensity.compact,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (_existingSupplierPrice?.hasBuyXGetY ?? false) ...[
+            Builder(builder: (_) {
+              final freeQtyPieces =
+                  _existingSupplierPrice!.freeQuantityPieces ?? 0;
+              final freeUnit = _existingSupplierPrice!.freeQuantityUnit;
+              final freeDisplay = freeUnit == 'box'
+                  ? '${freeQtyPieces ~/ ppb} box(es)'
+                  : '$freeQtyPieces piece(s)';
+              return Text(
+                'Active: Buy ${_existingSupplierPrice!.buyMinQuantityPieces! ~/ ppb} '
+                'box(es) → +$freeDisplay free (per cycle)',
+                style: TextStyle(color: Colors.green.shade700, fontSize: 13),
+              );
+            }),
+            const SizedBox(height: 8),
+          ],
+          const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerRight,
             child: FilledButton(

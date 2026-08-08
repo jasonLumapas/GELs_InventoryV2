@@ -25,15 +25,33 @@ import '../../widgets/common/search_picker.dart';
 // ── Line item ─────────────────────────────────────────────────────────────────
 
 class _LineItem {
+  // Unique per line-item identity — the same product can appear twice (a
+  // regular line plus its auto-added free line), so this (not product.id)
+  // is what the list's widget keys must use to avoid two tiles colliding on
+  // the same key.
+  final String id;
   final Product product;
   final double systemPrice;
   int quantity;
   int quantityPieces;
   bool isFree;
   final TextEditingController supplierPriceCtrl;
+  final TextEditingController quantityCtrl;
+  final TextEditingController quantityPiecesCtrl;
   final double Function() discountMultiplier;
+  // The supplier's pricing record for this product, if any — carries the
+  // "Buy X Get Y Free" term (if set) applied automatically as quantity is
+  // entered below.
+  final ProductSupplierPrice? supplierRule;
+  // Highest "buy X get Y" cycle count the user has already been prompted
+  // about for this line item (so we don't re-prompt on every keystroke,
+  // but do re-prompt if the quantity grows enough for another cycle).
+  int promptedFreeCycles = 0;
+  // The free line item added in response to this item's promo, if any.
+  _LineItem? linkedFreeItem;
 
   _LineItem({
+    String? id,
     required this.product,
     required this.systemPrice,
     required this.discountMultiplier,
@@ -41,10 +59,38 @@ class _LineItem {
     this.quantityPieces = 0,
     this.isFree = false,
     double? supplierPrice,
-  }) : supplierPriceCtrl = TextEditingController(
+    this.supplierRule,
+  })  : id = id ?? const Uuid().v4(),
+        supplierPriceCtrl = TextEditingController(
           text: ((supplierPrice ?? systemPrice) * product.piecesPerBox)
               .toStringAsFixed(2),
+        ),
+        quantityCtrl = TextEditingController(
+          text: quantity > 0 ? quantity.toString() : '',
+        ),
+        quantityPiecesCtrl = TextEditingController(
+          text: quantityPieces > 0 ? quantityPieces.toString() : '',
         );
+
+  /// Sets [quantity]/[quantityPieces] and keeps their text controllers in
+  /// sync — used when the app (not the user) changes the quantity, e.g.
+  /// auto-updating a linked free item's quantity.
+  void setQuantity({int? boxes, int? pieces}) {
+    if (boxes != null) {
+      quantity = boxes;
+      quantityCtrl.text = boxes > 0 ? boxes.toString() : '';
+    }
+    if (pieces != null) {
+      quantityPieces = pieces;
+      quantityPiecesCtrl.text = pieces > 0 ? pieces.toString() : '';
+    }
+  }
+
+  void dispose() {
+    supplierPriceCtrl.dispose();
+    quantityCtrl.dispose();
+    quantityPiecesCtrl.dispose();
+  }
 
   int get quantityInPieces =>
       quantity * product.piecesPerBox + quantityPieces;
@@ -150,7 +196,7 @@ class _SupplierReceivedInvoiceFormScreenState
     _referenceCtrl.dispose();
     _notesCtrl.dispose();
     for (final item in _lineItems) {
-      item.supplierPriceCtrl.dispose();
+      item.dispose();
     }
     super.dispose();
   }
@@ -184,7 +230,10 @@ class _SupplierReceivedInvoiceFormScreenState
           final currentPrice = await ref
               .read(productRepositoryProvider)
               .getCurrentPrice(product.id);
-          _lineItems.add(_LineItem(
+          final supplierRule = await ref
+              .read(productSupplierPriceRepositoryProvider)
+              .getForProduct(product.id);
+          final lineItem = _LineItem(
             product: product,
             systemPrice: currentPrice?.withdrawalPrice ?? it.systemPrice,
             discountMultiplier: () => _discountMultiplier,
@@ -199,7 +248,28 @@ class _SupplierReceivedInvoiceFormScreenState
             // price (rows saved before discounts existed, or no discount
             // was applied — both cases mean "no discount to replay").
             supplierPrice: it.rawSupplierPrice ?? it.supplierPrice,
-          ));
+            supplierRule: supplierRule,
+          );
+          if (supplierRule != null &&
+              supplierRule.hasBuyXGetY &&
+              supplierRule.buyMinQuantityPieces! > 0) {
+            lineItem.promptedFreeCycles =
+                it.quantity ~/ supplierRule.buyMinQuantityPieces!;
+          }
+          _lineItems.add(lineItem);
+        }
+
+        // Re-link previously added free items to the line that grants them.
+        for (final item in _lineItems) {
+          if (item.isFree ||
+              item.supplierRule == null ||
+              !item.supplierRule!.hasBuyXGetY) {
+            continue;
+          }
+          item.linkedFreeItem = _lineItems.where((other) =>
+              other.isFree &&
+              other.product.id == item.product.id &&
+              other != item).firstOrNull;
         }
       }
     }
@@ -470,12 +540,120 @@ class _SupplierReceivedInvoiceFormScreenState
         product: product,
         systemPrice: price?.withdrawalPrice ?? 0,
         discountMultiplier: () => _discountMultiplier,
-        supplierPrice: supplierPrice != null && product.piecesPerBox > 0
+        // Only prefill from the saved supplier price if one was actually
+        // entered (priceBox > 0) — otherwise fall back to the withdrawal
+        // price, same as a brand-new line with no supplier price on record.
+        supplierPrice: supplierPrice != null &&
+                supplierPrice.priceBox > 0 &&
+                product.piecesPerBox > 0
             ? supplierPrice.priceBox / product.piecesPerBox
             : null,
+        supplierRule: supplierPrice,
       ));
     });
     _scheduleAutoSave();
+  }
+
+  // Checks whether the entered quantity now satisfies the supplier's
+  // "buy X get Y free" term for this line, and keeps any linked free item in
+  // sync. Growing the quantity into another cycle prompts the user to add
+  // the extra free item; shrinking it back below a previously-granted cycle
+  // silently shrinks (or removes) the linked free item to match, without
+  // re-prompting.
+  Future<void> _maybeOfferFreeItem(_LineItem item) async {
+    final rule = item.supplierRule;
+    if (item.isFree || rule == null || !rule.hasBuyXGetY) return;
+    final freeQtyPieces = rule.freeQuantityPieces ?? 0;
+    if (freeQtyPieces <= 0) return;
+
+    final ppb = item.product.piecesPerBox;
+    final freeUnit = rule.freeQuantityUnit;
+    final freeQtyPerCycle =
+        freeUnit == 'box' && ppb > 0 ? freeQtyPieces ~/ ppb : freeQtyPieces;
+
+    final cycles = item.quantityInPieces ~/ rule.buyMinQuantityPieces!;
+
+    if (cycles <= item.promptedFreeCycles) {
+      if (cycles == item.promptedFreeCycles) return;
+      // Quantity dropped below a previously-granted cycle count — shrink or
+      // remove the linked free item to match, without asking.
+      item.promptedFreeCycles = cycles;
+      final existing = item.linkedFreeItem;
+      if (existing == null || !_lineItems.contains(existing) || !mounted) {
+        return;
+      }
+      setState(() {
+        final totalFreeQty = freeQtyPerCycle * cycles;
+        if (totalFreeQty <= 0) {
+          _lineItems.remove(existing);
+          existing.dispose();
+          item.linkedFreeItem = null;
+        } else if (freeUnit == 'box') {
+          existing.setQuantity(boxes: totalFreeQty, pieces: 0);
+        } else {
+          existing.setQuantity(boxes: 0, pieces: totalFreeQty);
+        }
+      });
+      _scheduleAutoSave();
+      return;
+    }
+
+    item.promptedFreeCycles = cycles;
+    if (cycles <= 0) return;
+
+    final buyBoxes =
+        ppb > 0 ? rule.buyMinQuantityPieces! ~/ ppb : rule.buyMinQuantityPieces!;
+    final totalFreeQty = freeQtyPerCycle * cycles;
+    final freeUnitLabel = freeUnit == 'box' ? 'box(es)' : 'piece(s)';
+
+    final add = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Free Item Available'),
+        content: Text(
+          '${item.product.name} qualifies for the supplier\'s "Buy $buyBoxes '
+          'box(es) get $freeQtyPerCycle $freeUnitLabel free" term.\n\n'
+          'Add $totalFreeQty $freeUnitLabel of ${item.product.name} to this delivery for free?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('No'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Yes'),
+          ),
+        ],
+      ),
+    );
+
+    if (add == true && mounted) {
+      setState(() {
+        final existing = item.linkedFreeItem;
+        if (existing != null && _lineItems.contains(existing)) {
+          if (freeUnit == 'box') {
+            existing.setQuantity(boxes: totalFreeQty, pieces: 0);
+          } else {
+            existing.setQuantity(boxes: 0, pieces: totalFreeQty);
+          }
+        } else {
+          final freeItem = _LineItem(
+            product: item.product,
+            systemPrice: item.systemPrice,
+            discountMultiplier: item.discountMultiplier,
+            quantity: freeUnit == 'box' ? totalFreeQty : 0,
+            quantityPieces: freeUnit == 'box' ? 0 : totalFreeQty,
+            isFree: true,
+            supplierPrice: item.rawSupplierPrice,
+            supplierRule: item.supplierRule,
+          );
+          item.linkedFreeItem = freeItem;
+          _lineItems.add(freeItem);
+        }
+      });
+      _scheduleAutoSave();
+    }
   }
 
   double get _totalSystem =>
@@ -699,6 +877,9 @@ class _SupplierReceivedInvoiceFormScreenState
         priceBox: li.rawSupplierPriceBox,
         discountPercents: existing?.discountPercents ?? const [],
         vatEnabled: existing?.vatEnabled ?? false,
+        buyMinQuantityPieces: existing?.buyMinQuantityPieces,
+        freeQuantityPieces: existing?.freeQuantityPieces,
+        freeQuantityUnit: existing?.freeQuantityUnit ?? 'box',
       ));
     }
   }
@@ -976,17 +1157,27 @@ class _SupplierReceivedInvoiceFormScreenState
                       : ListView.builder(
                           itemCount: _lineItems.length,
                           itemBuilder: (ctx, i) => _LineItemTile(
-                            key: ValueKey(_lineItems[i].product.id),
+                            key: ValueKey(_lineItems[i].id),
                             item: _lineItems[i],
                             enabled: _status != 'cancelled',
                             onRemove: () {
-                              setState(() => _lineItems.removeAt(i));
+                              setState(() {
+                                final removed = _lineItems.removeAt(i);
+                                for (final other in _lineItems) {
+                                  if (other.linkedFreeItem == removed) {
+                                    other.linkedFreeItem = null;
+                                  }
+                                }
+                                removed.dispose();
+                              });
                               _scheduleAutoSave();
                             },
                             onChanged: () {
                               setState(() {});
                               _scheduleAutoSave();
                             },
+                            onQuantityEntered: (item) =>
+                                _maybeOfferFreeItem(item),
                           ),
                         ),
                 ),
@@ -1090,6 +1281,7 @@ class _LineItemTile extends StatefulWidget {
   final bool enabled;
   final VoidCallback onRemove;
   final VoidCallback onChanged;
+  final ValueChanged<_LineItem> onQuantityEntered;
 
   const _LineItemTile({
     super.key,
@@ -1097,6 +1289,7 @@ class _LineItemTile extends StatefulWidget {
     required this.enabled,
     required this.onRemove,
     required this.onChanged,
+    required this.onQuantityEntered,
   });
 
   @override
@@ -1104,32 +1297,11 @@ class _LineItemTile extends StatefulWidget {
 }
 
 class _LineItemTileState extends State<_LineItemTile> {
-  late TextEditingController _qtyCtrl;
-  late TextEditingController _qtyPiecesCtrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _qtyCtrl = TextEditingController(
-      text: widget.item.quantity > 0 ? widget.item.quantity.toString() : '',
-    );
-    _qtyPiecesCtrl = TextEditingController(
-      text: widget.item.quantityPieces > 0
-          ? widget.item.quantityPieces.toString()
-          : '',
-    );
-  }
-
-  @override
-  void dispose() {
-    _qtyCtrl.dispose();
-    _qtyPiecesCtrl.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
+    final qtyCtrl = item.quantityCtrl;
+    final qtyPiecesCtrl = item.quantityPiecesCtrl;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -1197,7 +1369,7 @@ class _LineItemTileState extends State<_LineItemTile> {
                 SizedBox(
                   width: 100,
                   child: TextField(
-                    controller: _qtyCtrl,
+                    controller: qtyCtrl,
                     enabled: widget.enabled,
                     decoration: const InputDecoration(
                         labelText: 'Qty (Box)', isDense: true),
@@ -1208,6 +1380,7 @@ class _LineItemTileState extends State<_LineItemTile> {
                     onChanged: (v) {
                       item.quantity = int.tryParse(v) ?? 0;
                       widget.onChanged();
+                      widget.onQuantityEntered(item);
                     },
                   ),
                 ),
@@ -1215,7 +1388,7 @@ class _LineItemTileState extends State<_LineItemTile> {
                 SizedBox(
                   width: 100,
                   child: TextField(
-                    controller: _qtyPiecesCtrl,
+                    controller: qtyPiecesCtrl,
                     enabled: widget.enabled,
                     decoration: const InputDecoration(
                         labelText: 'Qty (pcs)', isDense: true),
@@ -1226,6 +1399,7 @@ class _LineItemTileState extends State<_LineItemTile> {
                     onChanged: (v) {
                       item.quantityPieces = int.tryParse(v) ?? 0;
                       widget.onChanged();
+                      widget.onQuantityEntered(item);
                     },
                   ),
                 ),

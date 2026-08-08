@@ -37,6 +37,9 @@ class ProductSupplierPriceRepository extends BaseRepository {
       discountPercents:
           ProductSupplierPrice.decodeDiscountPercents(r.discountPercents),
       vatEnabled: r.vatEnabled,
+      buyMinQuantityPieces: r.buyMinQuantityPieces,
+      freeQuantityPieces: r.freeQuantityPieces,
+      freeQuantityUnit: r.freeQuantityUnit,
     );
   }
 
@@ -64,6 +67,9 @@ class ProductSupplierPriceRepository extends BaseRepository {
               ProductSupplierPrice.encodeDiscountPercents(
                   price.discountPercents)),
           vatEnabled: drift.Value(price.vatEnabled),
+          buyMinQuantityPieces: drift.Value(price.buyMinQuantityPieces),
+          freeQuantityPieces: drift.Value(price.freeQuantityPieces),
+          freeQuantityUnit: drift.Value(price.freeQuantityUnit),
         )));
   }
 

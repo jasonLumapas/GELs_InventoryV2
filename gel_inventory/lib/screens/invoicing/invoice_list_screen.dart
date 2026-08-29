@@ -729,6 +729,10 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                                 .watch(showCapitalProfitProvider)
                                 .valueOrNull ??
                             true;
+                        final useOpPrice = ref
+                                .watch(useOpSellingPriceProvider)
+                                .valueOrNull ??
+                            false;
                         final finAsync = ref.watch(
                             _financialsProvider((_startDate, _endDate)));
                         return Row(
@@ -807,7 +811,7 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                                               color: Colors.grey.shade700),
                                         ),
                                         Text(
-                                          'OP: ${formatCurrency(fin.opDifference)}',
+                                          'OP: ${formatCurrency(!useOpPrice && hasActual ? actualTotal - fin.gelsTotal : fin.opDifference)}',
                                           style: TextStyle(
                                               fontSize: 13,
                                               color: Colors.grey.shade700),

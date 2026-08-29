@@ -489,6 +489,30 @@ class _PurchaseOrderFormScreenState
     return m;
   }
 
+  /// Gross amount — sum of (cases × supplier price) before any discount or
+  /// VAT is applied. Free items don't count.
+  double get _grossTotal => _lineItems.fold(
+      0.0, (sum, item) => sum + (item.isFree ? 0 : item.cases * item.rawPrice));
+
+  /// Per-discount cascade detail, in order: the peso amount that discount
+  /// removes (taken off the running total left by the previous discount)
+  /// and the running total remaining right after it's applied.
+  List<({double amount, double runningTotal})> get _discountBreakdown {
+    final result = <({double amount, double runningTotal})>[];
+    double running = _grossTotal;
+    for (final d in _discountPercents) {
+      final amt = running * (d / 100);
+      running -= amt;
+      result.add((amount: amt, runningTotal: running));
+    }
+    return result;
+  }
+
+  double get _subtotalAfterDiscounts =>
+      _discountBreakdown.isEmpty ? _grossTotal : _discountBreakdown.last.runningTotal;
+
+  double get _vatAmount => _vatEnabled ? _subtotalAfterDiscounts * 0.12 : 0.0;
+
   Future<void> _promptAddDiscount() async {
     final ctrl = TextEditingController();
     final formKey = GlobalKey<FormState>();
@@ -732,6 +756,82 @@ class _PurchaseOrderFormScreenState
     if (mounted) context.go('/purchase-orders');
   }
 
+  static const double _totalLabelWidth = 130;
+  static const double _totalValueWidth = 120;
+
+  Widget _totalLine(String label, String value,
+      {Color? color, bool bold = false, bool underline = false}) {
+    final fontSize = bold ? 16.0 : 13.0;
+    final valueText = Text(
+      value,
+      textAlign: TextAlign.right,
+      style: TextStyle(
+          fontSize: fontSize,
+          fontWeight: bold ? FontWeight.bold : FontWeight.w500,
+          color: color),
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: _totalLabelWidth,
+            child: Text(
+              label,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: bold ? FontWeight.bold : null),
+            ),
+          ),
+          const SizedBox(width: 10),
+          SizedBox(
+            width: _totalValueWidth,
+            child: underline
+                ? Container(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                            color: color ?? Colors.black45, width: 1),
+                      ),
+                    ),
+                    child: valueText,
+                  )
+                : valueText,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _subtotalLine(String label, String value) {
+    final valueStyle = TextStyle(
+      fontSize: 11,
+      fontStyle: FontStyle.italic,
+      color: Colors.grey.shade600,
+    );
+    final labelStyle = valueStyle.copyWith(fontWeight: FontWeight.bold);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: _totalLabelWidth,
+            child: Text(label, textAlign: TextAlign.right, style: labelStyle),
+          ),
+          const SizedBox(width: 10),
+          SizedBox(
+            width: _totalValueWidth,
+            child: Text(value, textAlign: TextAlign.right, style: valueStyle),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     _container ??= ProviderScope.containerOf(context, listen: false);
@@ -962,14 +1062,44 @@ class _PurchaseOrderFormScreenState
                         children: [
                           Expanded(
                             child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.end,
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text(
-                                  'Grand Total: ${formatCurrency(_grandTotal)}',
-                                  style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold),
+                                _totalLine(
+                                    'Gross Amount', formatCurrency(_grossTotal)),
+                                for (int i = 0;
+                                    i < _discountPercents.length;
+                                    i++) ...[
+                                  _totalLine(
+                                    'Less: ${formatNumber(_discountPercents[i])}%',
+                                    formatCurrency(_discountBreakdown[i].amount),
+                                    color: Colors.red.shade700,
+                                    underline: true,
+                                  ),
+                                  _subtotalLine(
+                                    'Subtotal',
+                                    formatCurrency(
+                                        _discountBreakdown[i].runningTotal),
+                                  ),
+                                ],
+                                if (_vatEnabled)
+                                  _totalLine(
+                                    'Add: VAT (12%)',
+                                    formatCurrency(_vatAmount),
+                                    color: Colors.green.shade700,
+                                  ),
+                                const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 4),
+                                  child: SizedBox(
+                                      width: _totalLabelWidth +
+                                          10 +
+                                          _totalValueWidth,
+                                      child: Divider(height: 1)),
+                                ),
+                                _totalLine(
+                                  'Net Amount',
+                                  formatCurrency(_grandTotal),
+                                  bold: true,
                                 ),
                                 Text(
                                   '${_lineItems.length} item(s)',

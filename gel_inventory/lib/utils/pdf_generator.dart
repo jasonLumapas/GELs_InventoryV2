@@ -1870,6 +1870,22 @@ Future<void> printPurchaseOrder({
   final grandTotal = items.fold(0.0, (s, i) => s + i.amount);
   final totalCases = items.fold(0.0, (s, i) => s + i.cases);
 
+  // Gross amount — sum of (cases × supplier price) before any discount or
+  // VAT is applied. Free items don't count.
+  final grossTotal = items.fold(
+      0.0, (s, i) => s + (i.isFree ? 0 : i.cases * (i.rawPrice ?? i.price)));
+
+  // Peso amount removed by each discount in the cascade, in order — each
+  // discount is taken off the running total left by the previous one.
+  final discountBreakdown = <({double amount, double runningTotal})>[];
+  double runningTotal = grossTotal;
+  for (final d in order.discountPercents) {
+    final amt = runningTotal * (d / 100);
+    runningTotal -= amt;
+    discountBreakdown.add((amount: amt, runningTotal: runningTotal));
+  }
+  final vatAmount = order.vatEnabled ? runningTotal * 0.12 : 0.0;
+
   doc.addPage(pw.MultiPage(
     pageFormat: pageFormat,
     build: (ctx) => [
@@ -1932,16 +1948,89 @@ Future<void> printPurchaseOrder({
             align: pw.TextAlign.right),
         col('', colW),
       ]),
+      pw.SizedBox(height: 4),
       pw.Align(
         alignment: pw.Alignment.centerRight,
-        child: pw.Text('Grand Total: ${_n(grandTotal)}',
-            style: ts(bold: true, size: fsHead)),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.end,
+          children: [
+            _poTotalLine('Gross Amount', _n(grossTotal), ts),
+            for (int i = 0; i < order.discountPercents.length; i++) ...[
+              _poTotalLine(
+                'Less: ${NumberFormat('#,##0.##').format(order.discountPercents[i])}%',
+                _n(discountBreakdown[i].amount),
+                ts,
+                underline: true,
+              ),
+              _poTotalLine(
+                'Subtotal',
+                _n(discountBreakdown[i].runningTotal),
+                ts,
+                small: true,
+                boldLabel: true,
+              ),
+            ],
+            if (order.vatEnabled)
+              _poTotalLine('Add: VAT (12%)', _n(vatAmount), ts),
+            pw.SizedBox(
+              width: _poLabelWidth + 8 + _poValueWidth,
+              child: pw.Divider(height: 6, thickness: 0.5),
+            ),
+            _poTotalLine('Net Amount', _n(grandTotal), ts, bold: true),
+          ],
+        ),
       ),
     ],
   ));
 
   await _printWithSlot(
     doc: doc, format: pageFormat, slot: PrinterSettingsService.purchaseOrder);
+}
+
+const double _poLabelWidth = 90;
+const double _poValueWidth = 70;
+
+pw.Widget _poTotalLine(
+  String label,
+  String value,
+  pw.TextStyle Function({bool bold, double? size}) ts, {
+  bool bold = false,
+  bool small = false,
+  bool boldLabel = false,
+  bool underline = false,
+}) {
+  final size = bold ? 11.0 : (small ? 7.5 : 8.5);
+  final labelStyle = ts(bold: bold || boldLabel, size: size);
+  final valueStyle = ts(bold: bold, size: size);
+  final valueText =
+      pw.Text(value, textAlign: pw.TextAlign.right, style: valueStyle);
+  return pw.Padding(
+    padding: const pw.EdgeInsets.only(bottom: 1),
+    child: pw.Row(
+      mainAxisSize: pw.MainAxisSize.min,
+      children: [
+        pw.SizedBox(
+          width: _poLabelWidth,
+          child: pw.Text(label, textAlign: pw.TextAlign.right, style: labelStyle),
+        ),
+        pw.SizedBox(width: 8),
+        pw.SizedBox(
+          width: _poValueWidth,
+          child: underline
+              ? pw.Container(
+                  padding: const pw.EdgeInsets.only(bottom: 1),
+                  decoration: const pw.BoxDecoration(
+                    border: pw.Border(
+                      bottom: pw.BorderSide(color: PdfColors.black, width: 0.5),
+                    ),
+                  ),
+                  child: valueText,
+                )
+              : valueText,
+        ),
+      ],
+    ),
+  );
 }
 
 // ── Daily Sales Summary PDF ───────────────────────────────────────────────────

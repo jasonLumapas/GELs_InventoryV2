@@ -12,6 +12,7 @@ import '../../models/purchase_order.dart';
 import '../../models/purchase_order_item.dart';
 import '../../models/product_supplier_price.dart';
 import '../../models/supplier.dart';
+import '../../repositories/inventory_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../repositories/product_supplier_price_repository.dart';
 import '../../repositories/purchase_order_repository.dart';
@@ -835,6 +836,13 @@ class _PurchaseOrderFormScreenState
   @override
   Widget build(BuildContext context) {
     _container ??= ProviderScope.containerOf(context, listen: false);
+    final inventoryState = ref.watch(inventoryListProvider);
+    final inventoryItems = inventoryState.valueOrNull;
+    final stockPiecesByProductId = {
+      for (final stock in inventoryItems ?? [])
+        stock.productId: stock.quantityPieces,
+    };
+
     return AppScaffold(
       title: isNew ? 'New Purchase Order' : 'Purchase Order',
       body: _loading
@@ -1038,6 +1046,14 @@ class _PurchaseOrderFormScreenState
                           itemBuilder: (ctx, i) => _LineItemTile(
                             key: ValueKey(_lineItems[i].product.id),
                             item: _lineItems[i],
+                            remainingPieces: inventoryItems == null
+                                ? null
+                                : stockPiecesByProductId[
+                                        _lineItems[i].product.id] ??
+                                    0,
+                            stockUnavailable:
+                                inventoryItems == null &&
+                                    inventoryState.hasError,
                             enabled: _status != 'cancelled',
                             onRemove: () {
                               setState(() => _lineItems.removeAt(i));
@@ -1165,6 +1181,8 @@ class _PurchaseOrderFormScreenState
 
 class _LineItemTile extends StatelessWidget {
   final _LineItem item;
+  final int? remainingPieces;
+  final bool stockUnavailable;
   final bool enabled;
   final VoidCallback onRemove;
   final VoidCallback onChanged;
@@ -1172,10 +1190,29 @@ class _LineItemTile extends StatelessWidget {
   const _LineItemTile({
     super.key,
     required this.item,
+    required this.remainingPieces,
+    required this.stockUnavailable,
     required this.enabled,
     required this.onRemove,
     required this.onChanged,
   });
+
+  String _remainingStockLabel() {
+    final quantity = remainingPieces;
+    if (quantity == null) {
+      return stockUnavailable
+          ? 'Remaining stock unavailable'
+          : 'Loading remaining stock…';
+    }
+
+    final piecesPerBox = item.product.piecesPerBox;
+    if (piecesPerBox <= 0) return 'Remaining: $quantity pcs';
+
+    final boxes = quantity ~/ piecesPerBox;
+    final pieces = quantity % piecesPerBox;
+    final boxLabel = boxes == 1 ? 'box' : 'boxes';
+    return 'Remaining: $boxes $boxLabel + $pieces pcs';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1203,6 +1240,13 @@ class _LineItemTile extends StatelessWidget {
                     onPressed: onRemove,
                   ),
               ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 2, bottom: 4),
+              child: Text(
+                _remainingStockLabel(),
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
             ),
             Row(
               children: [

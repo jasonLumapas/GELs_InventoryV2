@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/services/app_settings_service.dart';
 import '../../core/services/connectivity_service.dart';
+import '../../core/services/instance_config_service.dart';
 
 class AppScaffold extends ConsumerWidget {
   final String title;
   final Widget body;
   final Widget? floatingActionButton;
   final List<Widget>? actions;
+  final Widget? leading;
 
   const AppScaffold({
     super.key,
@@ -15,16 +18,34 @@ class AppScaffold extends ConsumerWidget {
     required this.body,
     this.floatingActionButton,
     this.actions,
+    this.leading,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final onlineAsync = ref.watch(isOnlineProvider);
     final isOnline = onlineAsync.valueOrNull ?? true;
+    final headerTitle = ref.watch(headerTitleProvider).valueOrNull;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(title),
+        leading: leading,
+        title: headerTitle == null
+            ? Text(title)
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(title),
+                  Text(
+                    headerTitle,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.normal,
+                    ),
+                  ),
+                ],
+              ),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 8),
@@ -43,9 +64,18 @@ class AppScaffold extends ConsumerWidget {
   }
 }
 
-class _AppDrawer extends StatelessWidget {
+class _AppDrawer extends ConsumerWidget {
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final showOffSiteLoading =
+        ref.watch(showOffSiteLoadingProvider).valueOrNull ?? true;
+    final showImportCsv =
+        ref.watch(showImportCsvProvider).valueOrNull ?? true;
+    final showPreOrderDrafts =
+        ref.watch(showPreOrderDraftsProvider).valueOrNull ?? true;
+    final showVerifyPreOrder =
+        ref.watch(showVerifyPreOrderProvider).valueOrNull ?? true;
+
     return Drawer(
       child: ListView(
         children: [
@@ -60,11 +90,28 @@ class _AppDrawer extends StatelessWidget {
           _tile(context, Icons.store, 'Clients', '/clients'),
           _tile(context, Icons.inventory_2, 'Products', '/products'),
           _tile(context, Icons.warehouse, 'Inventory', '/inventory'),
+          _tile(context, Icons.move_to_inbox, 'Supplier Deliveries',
+              '/supplier-deliveries'),
+          _tile(context, Icons.shopping_cart, 'Purchase Orders',
+              '/purchase-orders'),
           _tile(context, Icons.receipt_long, 'Invoices', '/invoices'),
-          _tile(context, Icons.bar_chart, 'Reports', '/reports'),
+          if (showPreOrderDrafts)
+            _tile(context, Icons.edit_note, 'Pre-Order Drafts', '/pre-orders'),
+          if (showVerifyPreOrder)
+            _tile(context, Icons.file_open, 'Verify Pre-Order', '/pre-order-import'),
           _tile(context, Icons.summarize, 'Layout', '/layout'),
-          _tile(context, Icons.remove_shopping_cart, 'Bad Orders', '/bad-orders'),
-          _tile(context, Icons.local_shipping, 'Van Selling', '/van-selling'),
+          _tile(context, Icons.account_balance_wallet, 'Remittance', '/collectibles'),
+          _tile(context, Icons.remove_shopping_cart, 'Returns/Bad Orders', '/bad-orders'),
+          _tile(context, Icons.bar_chart, 'Reports', '/reports'),
+          _tile(context, Icons.groups, 'Client Purchases',
+              '/client-purchases'),
+          if (showOffSiteLoading)
+            _tile(context, Icons.local_shipping, 'Off-site Loading', '/van-selling'),
+          _tile(context, Icons.inventory, 'Stocks for Sale Loading', '/stocks-loading'),
+          _tile(context, Icons.star_rate, 'Incentives', '/incentives'),
+          if (showImportCsv)
+            _tile(context, Icons.star_rate, 'Import CSV', '/import-csv'),
+          _tile(context, Icons.settings, 'Settings', '/settings'),
         ],
       ),
     );

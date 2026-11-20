@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import '../services/instance_config_service.dart';
 
 part 'local_db.g.dart';
 
@@ -22,7 +23,10 @@ class Suppliers extends Table {
 class Clients extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
+  TextColumn get contact => text().nullable()();
   TextColumn get address => text().nullable()();
+  BoolColumn get isBlacklisted =>
+      boolean().withDefault(const Constant(false))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
   @override
@@ -32,10 +36,16 @@ class Clients extends Table {
 class Products extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
+  TextColumn get productCode => text().nullable()();
   TextColumn get supplierId => text().references(Suppliers, #id)();
   IntColumn get piecesPerBox => integer()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   BoolColumn get isDeleted => boolean().withDefault(const Constant(false))();
+  // Minimum stock (in pieces) below which the product is flagged for reorder.
+  IntColumn get reorderPoint => integer().nullable()();
+  // Fixed reorder batch size (in pieces). When null, the suggested quantity
+  // is computed from recent sales velocity instead.
+  IntColumn get reorderQuantity => integer().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -46,6 +56,7 @@ class ProductPrices extends Table {
   TextColumn get productId => text().references(Products, #id)();
   RealColumn get withdrawalPrice => real()();
   RealColumn get sellingPrice => real()();
+  RealColumn get sellingPriceOp => real().nullable()();
   DateTimeColumn get effectiveFrom =>
       dateTime().withDefault(currentDateAndTime)();
 
@@ -60,9 +71,34 @@ class ProductDiscounts extends Table {
   TextColumn get productId => text().references(Products, #id)();
   IntColumn get minQuantityPieces => integer()();
   RealColumn get discountPercent => real()(); // value: percent (0-100) or fixed amount
-  // discount_type: 'percent' | 'amount'
+  // discount_type: 'percent' | 'amount' | 'buy_x_get_y'
   TextColumn get discountType =>
       text().withDefault(const Constant('percent'))();
+  // Free quantity (in pieces) granted per cycle when discount_type == 'buy_x_get_y'.
+  IntColumn get freeQuantityPieces => integer().nullable()();
+  // Whether the free quantity is expressed in 'piece' or 'box' units.
+  TextColumn get freeQuantityUnit =>
+      text().withDefault(const Constant('box'))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Supplier's price for a product (one row per product, matching the
+/// product's currently assigned supplier).
+class ProductSupplierPrices extends Table {
+  TextColumn get id => text()();
+  TextColumn get productId => text().references(Products, #id)();
+  RealColumn get priceBox => real()();
+  TextColumn get discountPercents => text().nullable()();
+  BoolColumn get vatEnabled => boolean().withDefault(const Constant(false))();
+  // "Buy X Get Y Free" term from the supplier (threshold, in pieces).
+  IntColumn get buyMinQuantityPieces => integer().nullable()();
+  // Free quantity (in pieces) granted per cycle of buyMinQuantityPieces.
+  IntColumn get freeQuantityPieces => integer().nullable()();
+  // Whether the free quantity is expressed in 'piece' or 'box' units.
+  TextColumn get freeQuantityUnit =>
+      text().withDefault(const Constant('box'))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -90,9 +126,36 @@ class Invoices extends Table {
   DateTimeColumn get createdAt =>
       dateTime().withDefault(currentDateAndTime)();
   TextColumn get invoiceNumber => text().nullable()();
+  // Permanent sequential display number (0, 1, 2, ...), assigned once at
+  // creation/backfill time. Displayed zero-padded to 8 digits.
+  IntColumn get sequenceNumber => integer().nullable()();
   // invoice_type: 'delivery' | 'walk_in'
   TextColumn get invoiceType =>
       text().withDefault(const Constant('delivery'))();
+  // payment_type: 'cash' | 'check' | 'credit' | 'partial'
+  TextColumn get paymentType =>
+      text().withDefault(const Constant('cash'))();
+  RealColumn get partialAmount => real().nullable()();
+  DateTimeColumn get partialDate => dateTime().nullable()();
+  TextColumn get checkReference => text().nullable()();
+  RealColumn get checkAmount  => real().nullable()();
+  DateTimeColumn get checkIssuedDate => dateTime().nullable()();
+  DateTimeColumn get checkDueDate => dateTime().nullable()();
+  // Internal note — never included on the printed invoice.
+  TextColumn get notes => text().nullable()();
+  // Optional: the actual amount shown on the referenced (physical) receipt.
+  RealColumn get actualAmount => real().nullable()();
+  // Optional: amount deducted from the invoice total for swapped items.
+  RealColumn get swapAmount => real().nullable()();
+  // Repository-maintained: sum of the sale value / cost of all linked
+  // "Stock Pulled out" bad-order entries, recomputed from live current
+  // prices whenever a linked entry is created, edited, or deleted.
+  RealColumn get stockPulledOutAmount => real().nullable()();
+  RealColumn get stockPulledOutCost => real().nullable()();
+  // Whether this invoice should be counted in the Layout (Order Summary)
+  // screen for its invoice date. Only relevant for delivery invoices.
+  BoolColumn get includeInLayout =>
+      boolean().withDefault(const Constant(true))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -115,16 +178,39 @@ class InvoiceItems extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Audit log of items removed from an invoice during editing — preserved
+/// even after the invoice's active item rows are replaced.
+class DeletedInvoiceItems extends Table {
+  TextColumn get id => text()();
+  TextColumn get invoiceId => text().references(Invoices, #id)();
+  TextColumn get productId => text().references(Products, #id)();
+  // unitType: 'box' | 'piece'
+  TextColumn get unitType => text()();
+  IntColumn get quantity => integer()();
+  RealColumn get pricePerPiece => real()();
+  RealColumn get subtotal => real()();
+  BoolColumn get isFree => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get deletedAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// Bad orders (defective) and returned goods.
 class BadOrders extends Table {
   TextColumn get id => text()();
   TextColumn get clientId => text().references(Clients, #id)();
   DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
-  // type: 'bad_order' | 'return'
+  // type: 'bad_order' | 'return' | 'stock_release' | 'stock_pulled_out'
   TextColumn get type => text()();
   TextColumn get notes => text().nullable()();
   DateTimeColumn get createdAt =>
       dateTime().withDefault(currentDateAndTime)();
+  // 'stock_pulled_out' only: the invoice this entry is linked to. Not a
+  // constrained FK (nullable, unconstrained, like BadOrderDrafts.clientId)
+  // so a plain ALTER TABLE ADD COLUMN migration suffices.
+  TextColumn get invoiceId => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -142,6 +228,15 @@ class BadOrderItems extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Delivery areas for van selling.
+class VanAreas extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// Van selling stock transactions.
 class VanStocks extends Table {
   TextColumn get id => text()();
@@ -151,6 +246,44 @@ class VanStocks extends Table {
   IntColumn get quantityPieces => integer()();
   DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
   TextColumn get notes => text().nullable()();
+  TextColumn get areaId => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Unfinished Loading / Stocks Return popups, auto-saved so they can be
+/// resumed later.
+class VanStockDrafts extends Table {
+  TextColumn get id => text()();
+  // type: 'out' (Loading) | 'in' (Stocks Return)
+  TextColumn get type => text()();
+  TextColumn get areaId => text().nullable()();
+  DateTimeColumn get txDate => dateTime().withDefault(currentDateAndTime)();
+  // JSON-encoded list of {product_id, unit_type, quantity}
+  TextColumn get itemsJson => text()();
+  DateTimeColumn get createdAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Unfinished "New Bad Order / Return" forms, auto-saved so they can be
+/// resumed later. Does not affect inventory — only the bad_orders /
+/// bad_order_items tables (written on final Save) do.
+class BadOrderDrafts extends Table {
+  TextColumn get id => text()();
+  // type: 'bad_order' | 'return'
+  TextColumn get type => text()();
+  TextColumn get clientId => text().nullable()();
+  BoolColumn get noClient => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
+  TextColumn get notes => text().nullable()();
+  // JSON-encoded list of {product_id, boxes, pieces}
+  TextColumn get itemsJson => text()();
+  DateTimeColumn get createdAt =>
+      dateTime().withDefault(currentDateAndTime)();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -168,6 +301,165 @@ class StockMovements extends Table {
   TextColumn get comments => text().nullable()();
   DateTimeColumn get createdAt =>
       dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Individual payment records for partial-payment invoices.
+class InvoicePayments extends Table {
+  TextColumn get id => text()();
+  TextColumn get invoiceId => text().references(Invoices, #id)();
+  RealColumn get amount => real()();
+  DateTimeColumn get paymentDate => dateTime().nullable()();
+  TextColumn get notes => text().nullable()();
+  DateTimeColumn get createdAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Stock received from a supplier (delivery / receiving record).
+class SupplierReceivedInvoices extends Table {
+  TextColumn get id => text()();
+  TextColumn get supplierId => text().references(Suppliers, #id)();
+  DateTimeColumn get receivedDate =>
+      dateTime().withDefault(currentDateAndTime)();
+  // Supplier's own DR/invoice number.
+  TextColumn get referenceNumber => text().nullable()();
+  RealColumn get totalAmountSystem =>
+      real().withDefault(const Constant(0.0))();
+  RealColumn get totalAmountSupplier =>
+      real().withDefault(const Constant(0.0))();
+  // status: 'received' | 'cancelled'
+  TextColumn get status => text().withDefault(const Constant('received'))();
+  TextColumn get notes => text().nullable()();
+  DateTimeColumn get createdAt =>
+      dateTime().withDefault(currentDateAndTime)();
+  // Comma-separated cascading discount percentages, e.g. "10,5".
+  TextColumn get discountPercents => text().nullable()();
+  BoolColumn get vatEnabled => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+class SupplierReceivedInvoiceItems extends Table {
+  TextColumn get id => text()();
+  TextColumn get receivedInvoiceId =>
+      text().references(SupplierReceivedInvoices, #id)();
+  TextColumn get productId => text().references(Products, #id)();
+  // unitType: 'box' | 'piece'
+  TextColumn get unitType => text()();
+  IntColumn get quantity => integer()(); // pieces
+  // Product's withdrawal price at the time of receiving.
+  RealColumn get systemPrice => real()();
+  // Price entered from the supplier's invoice.
+  RealColumn get supplierPrice => real()();
+  RealColumn get subtotalSystem => real()();
+  RealColumn get subtotalSupplier => real()();
+  BoolColumn get isFree => boolean().withDefault(const Constant(false))();
+  // Supplier price (per piece) before the invoice's discounts/VAT.
+  RealColumn get rawSupplierPrice => real().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// A request for stock to be ordered from a supplier (before delivery).
+class PurchaseOrders extends Table {
+  TextColumn get id => text()();
+  TextColumn get supplierId => text().references(Suppliers, #id)();
+  DateTimeColumn get orderDate =>
+      dateTime().withDefault(currentDateAndTime)();
+  TextColumn get referenceNumber => text().nullable()();
+  RealColumn get totalAmount => real().withDefault(const Constant(0.0))();
+  // status: 'open' | 'cancelled'
+  TextColumn get status => text().withDefault(const Constant('open'))();
+  TextColumn get notes => text().nullable()();
+  DateTimeColumn get createdAt =>
+      dateTime().withDefault(currentDateAndTime)();
+  // Comma-separated cascading discount percentages, e.g. "10,5".
+  TextColumn get discountPercents => text().nullable()();
+  BoolColumn get vatEnabled => boolean().withDefault(const Constant(false))();
+  TextColumn get preparedBy => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+class PurchaseOrderItems extends Table {
+  TextColumn get id => text()();
+  TextColumn get purchaseOrderId =>
+      text().references(PurchaseOrders, #id)();
+  TextColumn get productId => text().references(Products, #id)();
+  // Product's withdrawal price (per box) at the time the item was added.
+  RealColumn get systemPrice => real().withDefault(const Constant(0.0))();
+  // Net price (per box) after discounts/VAT — used for amount.
+  RealColumn get price => real()();
+  // "# of case", editable.
+  RealColumn get cases => real()();
+  RealColumn get amount => real()();
+  BoolColumn get isFree => boolean().withDefault(const Constant(false))();
+  // Supplier price (per box) before the order's discounts/VAT.
+  RealColumn get rawPrice => real().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Header record for a stocks-for-sale loading import (local-only, no sync).
+class StocksLoadings extends Table {
+  TextColumn get id => text()();
+  /// The date the loading is intended for (display / layout date).
+  DateTimeColumn get loadingDate => dateTime()();
+  DateTimeColumn get importedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Line items for a stocks-for-sale loading import.
+class StocksLoadingItems extends Table {
+  TextColumn get id => text()();
+  TextColumn get stocksLoadingId =>
+      text().references(StocksLoadings, #id)();
+  TextColumn get productCode => text().nullable()();
+  TextColumn get productName => text()();
+  TextColumn get supplierName => text()();
+  IntColumn get quantityPieces => integer()();
+  IntColumn get piecesPerBox => integer().withDefault(const Constant(1))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Header record for a saved pre-order review (local-only, no sync).
+class PreOrderReviews extends Table {
+  TextColumn get id => text()();
+  TextColumn get sourceFile => text()();
+  TextColumn get originalExportedAt => text()();
+  DateTimeColumn get reviewedAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Line items for a saved pre-order review.
+class PreOrderReviewItems extends Table {
+  TextColumn get id => text()();
+  TextColumn get reviewId => text().references(PreOrderReviews, #id)();
+  TextColumn get productId => text().nullable()();
+  TextColumn get matchedProductId => text().nullable()();
+  TextColumn get productName => text()();
+  TextColumn get productCode => text().nullable()();
+  TextColumn get supplierName => text()();
+  IntColumn get piecesPerBox => integer()();
+  IntColumn get requestedPieces => integer()();
+  IntColumn get availablePieces => integer().withDefault(const Constant(0))();
+  IntColumn get confirmedPieces => integer()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -195,20 +487,34 @@ class SyncQueue extends Table {
   Products,
   ProductPrices,
   ProductDiscounts,
+  ProductSupplierPrices,
   Inventory,
   Invoices,
   InvoiceItems,
+  DeletedInvoiceItems,
   BadOrders,
   BadOrderItems,
+  VanAreas,
   VanStocks,
+  VanStockDrafts,
+  BadOrderDrafts,
   StockMovements,
+  InvoicePayments,
+  SupplierReceivedInvoices,
+  SupplierReceivedInvoiceItems,
+  PurchaseOrders,
+  PurchaseOrderItems,
+  PreOrderReviews,
+  PreOrderReviewItems,
+  StocksLoadings,
+  StocksLoadingItems,
   SyncQueue,
 ])
 class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 39;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -241,6 +547,186 @@ class LocalDatabase extends _$LocalDatabase {
           if (from < 6) {
             await m.createTable(stockMovements);
           }
+          if (from < 7) {
+            await _addColumnIfMissing(m.database, 'invoices', 'payment_type',
+                "TEXT NOT NULL DEFAULT 'cash'");
+          }
+          if (from < 8) {
+            await _addColumnIfMissing(
+                m.database, 'invoices', 'partial_amount', 'REAL');
+            await _addColumnIfMissing(
+                m.database, 'invoices', 'partial_date', 'INTEGER');
+          }
+          if (from < 9) {
+            await _addColumnIfMissing(
+                m.database, 'invoices', 'check_reference', 'TEXT');
+          }
+          if (from < 10) {
+            await _addColumnIfMissing(
+                m.database, 'invoices', 'check_amount', 'REAL');
+            await _addColumnIfMissing(
+                m.database, 'invoices', 'check_due_date', 'INTEGER');
+          }
+          if (from < 11) {
+            await m.createTable(invoicePayments);
+          }
+          if (from < 12) {
+            await m.createTable(vanAreas);
+            await _addColumnIfMissing(
+                m.database, 'van_stocks', 'area_id', 'TEXT');
+          }
+          if (from < 13) {
+            await _addColumnIfMissing(
+                m.database, 'products', 'product_code', 'TEXT');
+          }
+          if (from < 14) {
+            await _addColumnIfMissing(
+                m.database, 'invoices', 'notes', 'TEXT');
+          }
+          if (from < 15) {
+            await _addColumnIfMissing(m.database, 'product_discounts',
+                'free_quantity_pieces', 'INTEGER');
+          }
+          if (from < 16) {
+            await _addColumnIfMissing(m.database, 'product_discounts',
+                'free_quantity_unit', "TEXT NOT NULL DEFAULT 'box'");
+          }
+          if (from < 17) {
+            await m.createTable(supplierReceivedInvoices);
+            await m.createTable(supplierReceivedInvoiceItems);
+          }
+          if (from < 18) {
+            await m.createTable(purchaseOrders);
+            await m.createTable(purchaseOrderItems);
+          }
+          if (from < 19) {
+            await _addColumnIfMissing(
+                m.database, 'invoices', 'sequence_number', 'INTEGER');
+          }
+          if (from < 20) {
+            await _addColumnIfMissing(
+                m.database, 'invoices', 'actual_amount', 'REAL');
+          }
+          if (from < 21) {
+            await _addColumnIfMissing(
+                m.database, 'clients', 'contact', 'TEXT');
+          }
+          if (from < 22) {
+            await _addColumnIfMissing(m.database, 'supplier_received_invoice_items',
+                'is_free', 'INTEGER NOT NULL DEFAULT 0');
+          }
+          if (from < 23) {
+            await m.createTable(vanStockDrafts);
+          }
+          if (from < 24) {
+            await _addColumnIfMissing(
+                m.database, 'clients', 'is_blacklisted',
+                'INTEGER NOT NULL DEFAULT 0');
+          }
+          if (from < 25) {
+            await m.createTable(badOrderDrafts);
+          }
+          if (from < 26) {
+            await m.createTable(deletedInvoiceItems);
+          }
+          if (from < 27) {
+            await _addColumnIfMissing(m.database, 'supplier_received_invoices',
+                'discount_percents', 'TEXT');
+            await _addColumnIfMissing(m.database, 'supplier_received_invoices',
+                'vat_enabled', 'INTEGER NOT NULL DEFAULT 0');
+            await _addColumnIfMissing(m.database,
+                'supplier_received_invoice_items', 'raw_supplier_price',
+                'REAL');
+          }
+          if (from < 28) {
+            await _addColumnIfMissing(
+                m.database, 'invoices', 'check_issued_date', 'INTEGER');
+          }
+          if (from < 29) {
+            await _addColumnIfMissing(m.database, 'purchase_orders',
+                'discount_percents', 'TEXT');
+            await _addColumnIfMissing(m.database, 'purchase_orders',
+                'vat_enabled', 'INTEGER NOT NULL DEFAULT 0');
+            await _addColumnIfMissing(
+                m.database, 'purchase_order_items', 'raw_price', 'REAL');
+            await m.createTable(preOrderReviews);
+            await m.createTable(preOrderReviewItems);
+          }
+          if (from < 30) {
+            await _addColumnIfMissing(m.database, 'purchase_order_items',
+                'system_price', 'REAL NOT NULL DEFAULT 0');
+            await _addColumnIfMissing(m.database, 'purchase_order_items',
+                'is_free', 'INTEGER NOT NULL DEFAULT 0');
+            await _addColumnIfMissing(m.database, 'pre_order_review_items',
+                'available_pieces', 'INTEGER NOT NULL DEFAULT 0');
+          }
+          if (from < 31) {
+            await m.createTable(productSupplierPrices);
+          }
+          if (from < 32) {
+            await _addColumnIfMissing(m.database, 'product_supplier_prices',
+                'discount_percents', 'TEXT');
+            await _addColumnIfMissing(m.database, 'product_supplier_prices',
+                'vat_enabled', 'INTEGER NOT NULL DEFAULT 0');
+          }
+          if (from < 33) {
+            await _addColumnIfMissing(m.database, 'invoices',
+                'include_in_layout', 'INTEGER NOT NULL DEFAULT 1');
+          }
+          if (from < 34) {
+            await _addColumnIfMissing(
+                m.database, 'products', 'reorder_point', 'INTEGER');
+            await _addColumnIfMissing(
+                m.database, 'products', 'reorder_quantity', 'INTEGER');
+          }
+          if (from < 35) {
+            await _addColumnIfMissing(
+                m.database, 'purchase_orders', 'prepared_by', 'TEXT');
+          }
+          if (from < 36) {
+            await _addColumnIfMissing(
+                m.database, 'invoices', 'swap_amount', 'REAL');
+            await m.createTable(stocksLoadings);
+            await m.createTable(stocksLoadingItems);
+          }
+          if (from < 37) {
+            await _addColumnIfMissing(
+                m.database, 'bad_orders', 'invoice_id', 'TEXT');
+            await _addColumnIfMissing(
+                m.database, 'invoices', 'stock_pulled_out_amount', 'REAL');
+            await _addColumnIfMissing(
+                m.database, 'invoices', 'stock_pulled_out_cost', 'REAL');
+          }
+          if (from < 38) {
+            await _addColumnIfMissing(
+                m.database, 'product_prices', 'selling_price_op', 'REAL');
+          }
+          if (from < 39) {
+            await _addColumnIfMissing(m.database, 'product_supplier_prices',
+                'buy_min_quantity_pieces', 'INTEGER');
+            await _addColumnIfMissing(m.database, 'product_supplier_prices',
+                'free_quantity_pieces', 'INTEGER');
+            await _addColumnIfMissing(m.database, 'product_supplier_prices',
+                'free_quantity_unit', "TEXT NOT NULL DEFAULT 'box'");
+          }
+        },
+        beforeOpen: (details) async {
+          // Some installs reached a schema version past the point a table's
+          // `createTable` call was added to `onUpgrade` (added in the same
+          // release as a later, unrelated version bump), so their `from <
+          // N` block was skipped and the table was never created. Heal that
+          // by creating any table that's missing regardless of version.
+          final existing = await customSelect(
+            "SELECT name FROM sqlite_master WHERE type = 'table'",
+          ).get();
+          final existingNames =
+              existing.map((r) => r.read<String>('name')).toSet();
+          final migrator = createMigrator();
+          for (final table in allTables) {
+            if (!existingNames.contains(table.actualTableName)) {
+              await migrator.createTable(table);
+            }
+          }
         },
       );
 
@@ -263,7 +749,7 @@ class LocalDatabase extends _$LocalDatabase {
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     final dbFolder = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dbFolder.path, 'gel_inventory.sqlite'));
+    final file = File(p.join(dbFolder.path, await resolveDbName()));
     return NativeDatabase(file);
   });
 }

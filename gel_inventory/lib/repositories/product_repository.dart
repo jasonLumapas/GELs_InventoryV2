@@ -36,9 +36,12 @@ class ProductRepository extends BaseRepository {
         .map((r) => Product(
               id: r.id,
               name: r.name,
+              productCode: r.productCode,
               supplierId: r.supplierId,
               piecesPerBox: r.piecesPerBox,
               createdAt: r.createdAt,
+              reorderPoint: r.reorderPoint,
+              reorderQuantity: r.reorderQuantity,
             ))
         .toList();
   }
@@ -97,6 +100,7 @@ class ProductRepository extends BaseRepository {
             productId: drift.Value(price.productId),
             withdrawalPrice: drift.Value(price.withdrawalPrice),
             sellingPrice: drift.Value(price.sellingPrice),
+            sellingPriceOp: drift.Value(price.sellingPriceOp),
             effectiveFrom: drift.Value(price.effectiveFrom),
           ),
         );
@@ -125,8 +129,60 @@ class ProductRepository extends BaseRepository {
       productId: r.productId,
       withdrawalPrice: r.withdrawalPrice,
       sellingPrice: r.sellingPrice,
+      sellingPriceOp: r.sellingPriceOp,
       effectiveFrom: r.effectiveFrom,
     );
+  }
+
+  /// Returns the latest selling price per product as a `Map<productId, sellingPrice>`.
+  Future<Map<String, double>> getAllCurrentPrices() async {
+    final prices = <String, double>{};
+    if (isOnline) {
+      final data = await Supabase.instance.client
+          .from('product_prices')
+          .select()
+          .order('effective_from', ascending: false);
+      for (final row in (data as List)) {
+        final id = row['product_id'] as String;
+        if (!prices.containsKey(id)) {
+          prices[id] = (row['selling_price'] as num).toDouble();
+        }
+      }
+    } else {
+      final rows = await (db.select(db.productPrices)
+            ..orderBy([(t) => drift.OrderingTerm.desc(t.effectiveFrom)]))
+          .get();
+      for (final r in rows) {
+        prices.putIfAbsent(r.productId, () => r.sellingPrice);
+      }
+    }
+    return prices;
+  }
+
+  /// Returns the latest cost (withdrawal) price per product as a
+  /// `Map<productId, withdrawalPrice>`.
+  Future<Map<String, double>> getAllCurrentCostPrices() async {
+    final prices = <String, double>{};
+    if (isOnline) {
+      final data = await Supabase.instance.client
+          .from('product_prices')
+          .select()
+          .order('effective_from', ascending: false);
+      for (final row in (data as List)) {
+        final id = row['product_id'] as String;
+        if (!prices.containsKey(id)) {
+          prices[id] = (row['withdrawal_price'] as num).toDouble();
+        }
+      }
+    } else {
+      final rows = await (db.select(db.productPrices)
+            ..orderBy([(t) => drift.OrderingTerm.desc(t.effectiveFrom)]))
+          .get();
+      for (final r in rows) {
+        prices.putIfAbsent(r.productId, () => r.withdrawalPrice);
+      }
+    }
+    return prices;
   }
 
   Future<List<ProductPrice>> getPriceHistory(String productId) async {
@@ -148,6 +204,7 @@ class ProductRepository extends BaseRepository {
               productId: r.productId,
               withdrawalPrice: r.withdrawalPrice,
               sellingPrice: r.sellingPrice,
+              sellingPriceOp: r.sellingPriceOp,
               effectiveFrom: r.effectiveFrom,
             ))
         .toList();
@@ -157,10 +214,13 @@ class ProductRepository extends BaseRepository {
     await db.into(db.products).insertOnConflictUpdate(ProductsCompanion(
           id: drift.Value(p.id),
           name: drift.Value(p.name),
+          productCode: drift.Value(p.productCode),
           supplierId: drift.Value(p.supplierId),
           piecesPerBox: drift.Value(p.piecesPerBox),
           createdAt: drift.Value(p.createdAt),
           isDeleted: const drift.Value(false),
+          reorderPoint: drift.Value(p.reorderPoint),
+          reorderQuantity: drift.Value(p.reorderQuantity),
         ));
   }
 }
@@ -175,5 +235,15 @@ final productRepositoryProvider = Provider<ProductRepository>((ref) {
 
 final productsListProvider = FutureProvider<List<Product>>((ref) {
   return ref.watch(productRepositoryProvider).getAll();
+});
+
+final productCurrentSellingPricesProvider =
+    FutureProvider<Map<String, double>>((ref) {
+  return ref.watch(productRepositoryProvider).getAllCurrentPrices();
+});
+
+final productCurrentWithdrawalPricesProvider =
+    FutureProvider<Map<String, double>>((ref) {
+  return ref.watch(productRepositoryProvider).getAllCurrentCostPrices();
 });
 

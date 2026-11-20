@@ -37,6 +37,8 @@ class ProductDiscountRepository extends BaseRepository {
       minQuantityPieces: r.minQuantityPieces,
       discountValue: r.discountPercent,
       discountType: r.discountType,
+      freeQuantityPieces: r.freeQuantityPieces,
+      freeQuantityUnit: r.freeQuantityUnit,
     );
   }
 
@@ -62,6 +64,8 @@ class ProductDiscountRepository extends BaseRepository {
           minQuantityPieces: drift.Value(discount.minQuantityPieces),
           discountPercent: drift.Value(discount.discountValue),
           discountType: drift.Value(discount.discountType),
+          freeQuantityPieces: drift.Value(discount.freeQuantityPieces),
+          freeQuantityUnit: drift.Value(discount.freeQuantityUnit),
         )));
   }
 

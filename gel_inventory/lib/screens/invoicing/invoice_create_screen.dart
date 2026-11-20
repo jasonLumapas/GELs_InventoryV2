@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
+import '../../core/services/app_settings_service.dart';
 import '../../models/client.dart';
 import '../../models/invoice.dart';
 import '../../models/invoice_item.dart';
@@ -15,6 +19,7 @@ import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_repository.dart';
 import '../../repositories/product_discount_repository.dart';
 import '../../repositories/product_repository.dart';
+import '../../repositories/supplier_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../utils/pdf_generator.dart';
 import '../../widgets/common/app_scaffold.dart';
@@ -27,15 +32,27 @@ class _LineItem {
   final ProductPrice price;
   final InventoryItem? inventory;
   final ProductDiscount? discount;
+  // Whether to price this line using the product's OP selling price
+  // (falling back to the GELs price when the product has none), per the
+  // "Use OP Selling Price on Invoices" setting in effect when this line
+  // was added.
+  final bool useOpPrice;
   String unitType = 'piece';
-  int quantity = 1;
+  int quantity = 0;
   bool isFree = false;
+  // Highest "buy X get Y" cycle count the user has already been prompted
+  // about for this line item (so we don't re-prompt on every keystroke,
+  // but do re-prompt if the quantity grows enough for another cycle).
+  int promptedFreeCycles = 0;
+  // The free line item added in response to this item's promo, if any.
+  _LineItem? linkedFreeItem;
 
   _LineItem({
     required this.product,
     required this.price,
     required this.inventory,
     required this.discount,
+    required this.useOpPrice,
   });
 
   int get quantityInPieces =>
@@ -45,7 +62,12 @@ class _LineItem {
       !isFree && discount != null &&
       quantityInPieces >= discount!.minQuantityPieces;
 
-  double get originalAmount => quantityInPieces * price.sellingPrice;
+  double get effectiveSellingPrice =>
+      useOpPrice && price.sellingPriceOp != null
+          ? price.sellingPriceOp!
+          : price.sellingPrice;
+
+  double get originalAmount => quantityInPieces * effectiveSellingPrice;
 
   double get discountAmount {
     if (!_thresholdMet) return 0;
@@ -76,7 +98,11 @@ class _LineItem {
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 class InvoiceCreateScreen extends ConsumerStatefulWidget {
-  const InvoiceCreateScreen({super.key});
+  /// If set, resumes the existing draft invoice with this id instead of
+  /// starting a new one.
+  final String? draftId;
+
+  const InvoiceCreateScreen({super.key, this.draftId});
 
   @override
   ConsumerState<InvoiceCreateScreen> createState() =>
@@ -84,31 +110,280 @@ class InvoiceCreateScreen extends ConsumerStatefulWidget {
 }
 
 class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
+  // Captured during build so it can still be used in dispose(), where `ref`
+  // throws (the ConsumerStatefulElement is already marked disposed by then).
+  ProviderContainer? _container;
+
   List<Client> _clients = [];
+  Set<String> _pendingClientIds = {};
   List<Product> _products = [];
+  Map<String, String> _supplierNames = {}; // productId → supplier name
   final Map<String, ProductPrice?> _priceCache = {};
   final Map<String, InventoryItem?> _inventoryCache = {};
   final Map<String, ProductDiscount?> _discountCache = {};
   Client? _selectedClient;
-  String _invoiceType = 'delivery';
+  static DateTime _lastInvoiceDate =
+      DateTime.now().add(const Duration(days: 1));
+
+  String _invoiceType  = 'delivery';
+  String _paymentType  = 'cash';
+  DateTime _invoiceDate = _lastInvoiceDate;
+  String? _invoiceNumber;
+  int? _displaySequenceNumber;
   final List<_LineItem> _lineItems = [];
+  final _notesCtrl = TextEditingController();
+  final _actualAmountCtrl = TextEditingController();
+  final _swapAmountCtrl = TextEditingController();
   bool _loading = true;
   bool _saving = false;
+  bool _useOpSellingPrice = false;
+
+  // ── Auto-save (draft) ────────────────────────────────────────────────────
+  late final InvoiceRepository _invoiceRepo;
+  late String _invoiceId;
+  late DateTime _createdAt;
+  Timer? _autoSaveTimer;
+  bool _draftPersisted = false;
+  bool _finalized = false;
+  bool _autoSaving = false;
+  DateTime? _lastAutoSaved;
 
   @override
   void initState() {
     super.initState();
+    _invoiceRepo = ref.read(invoiceRepositoryProvider);
+    _invoiceId = widget.draftId ?? const Uuid().v4();
+    _createdAt = DateTime.now();
     _loadData();
   }
 
   Future<void> _loadData() async {
-    final clients = await ref.read(clientRepositoryProvider).getAll();
-    final products = await ref.read(productRepositoryProvider).getAll();
+    _useOpSellingPrice = await ref.read(useOpSellingPriceProvider.future);
+    final clients   = await ref.read(clientRepositoryProvider).getAll();
+    final products  = await ref.read(productRepositoryProvider).getAll();
+    final suppliers = await ref.read(supplierRepositoryProvider).getAll();
+    final pendingIds = await ref
+        .read(invoiceRepositoryProvider)
+        .getPendingCheckCreditClientIds();
+    final suppMap = {for (final s in suppliers) s.id: s.name};
+
+    String? invoiceNum;
+    if (widget.draftId != null) {
+      await _loadDraft(widget.draftId!, clients, products);
+      invoiceNum = _invoiceNumber;
+    } else {
+      invoiceNum = await ref
+          .read(invoiceRepositoryProvider)
+          .generateInvoiceNumber(_invoiceDate);
+    }
+
+    final displaySeq = _displaySequenceNumber ??
+        await ref.read(invoiceRepositoryProvider).getNextSequenceNumber();
+
     setState(() {
-      _clients = clients;
+      _clients  = clients;
+      _pendingClientIds = pendingIds;
       _products = products;
-      _loading = false;
+      _supplierNames = {for (final p in products) p.id: suppMap[p.supplierId] ?? ''};
+      _invoiceNumber = invoiceNum;
+      _displaySequenceNumber = displaySeq;
+      _loading  = false;
     });
+  }
+
+  bool _isClientFlagged(Client c) =>
+      c.isBlacklisted || _pendingClientIds.contains(c.id);
+
+  // Loads a previously auto-saved draft invoice and reconstructs the
+  // _lineItems list from its stored items.
+  Future<void> _loadDraft(
+      String draftId, List<Client> clients, List<Product> products) async {
+    final draft = await _invoiceRepo.getById(draftId);
+    if (draft == null) return;
+
+    _createdAt = draft.createdAt;
+    _draftPersisted = true;
+    _selectedClient =
+        clients.where((c) => c.id == draft.clientId).firstOrNull;
+    _invoiceDate = draft.invoiceDate;
+    _invoiceNumber = draft.invoiceNumber;
+    _displaySequenceNumber = draft.sequenceNumber;
+    _invoiceType = draft.invoiceType;
+    _paymentType = draft.paymentType;
+    _notesCtrl.text = draft.notes ?? '';
+    _actualAmountCtrl.text = draft.actualAmount != null
+        ? draft.actualAmount!.toStringAsFixed(2)
+        : '';
+    _swapAmountCtrl.text = draft.swapAmount != null
+        ? draft.swapAmount!.toStringAsFixed(2)
+        : '';
+
+    final items = await _invoiceRepo.getItems(draftId);
+    final productsById = {for (final p in products) p.id: p};
+
+    for (final dItem in items) {
+      final product = productsById[dItem.productId];
+      if (product == null) continue;
+
+      var price = _priceCache[product.id];
+      if (!_priceCache.containsKey(product.id)) {
+        price = await ref
+            .read(productRepositoryProvider)
+            .getCurrentPrice(product.id);
+        _priceCache[product.id] = price;
+      }
+      var inv = _inventoryCache[product.id];
+      if (!_inventoryCache.containsKey(product.id)) {
+        inv = await ref
+            .read(inventoryRepositoryProvider)
+            .getByProductId(product.id);
+        _inventoryCache[product.id] = inv;
+      }
+      var disc = _discountCache[product.id];
+      if (!_discountCache.containsKey(product.id)) {
+        disc = await ref
+            .read(productDiscountRepositoryProvider)
+            .getForProduct(product.id);
+        _discountCache[product.id] = disc;
+      }
+      price ??= ProductPrice(
+        id: '',
+        productId: product.id,
+        withdrawalPrice: 0,
+        sellingPrice: dItem.pricePerPiece,
+        effectiveFrom: DateTime.now(),
+      );
+
+      final ppb = product.piecesPerBox;
+      final lineItem = _LineItem(
+        product: product,
+        price: price,
+        inventory: inv,
+        discount: disc,
+        useOpPrice: _useOpSellingPrice,
+      )
+        ..unitType = dItem.unitType
+        ..quantity = dItem.unitType == 'box' && ppb > 0
+            ? dItem.quantity ~/ ppb
+            : dItem.quantity
+        ..isFree = dItem.isFree;
+
+      if (disc != null && disc.isBuyXGetY && disc.minQuantityPieces > 0) {
+        lineItem.promptedFreeCycles =
+            dItem.quantity ~/ disc.minQuantityPieces;
+      }
+
+      _lineItems.add(lineItem);
+    }
+
+    // Re-link previously added free items to the line that grants them.
+    for (final item in _lineItems) {
+      if (item.isFree || item.discount == null || !item.discount!.isBuyXGetY) {
+        continue;
+      }
+      item.linkedFreeItem = _lineItems.where((other) =>
+          other.isFree &&
+          other.product.id == item.product.id &&
+          other != item).firstOrNull;
+    }
+  }
+
+  Widget _groupBox({required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade400),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: child,
+    );
+  }
+
+  // Debounce auto-saving the invoice as a draft so rapid edits don't trigger
+  // a DB write on every keystroke.
+  void _scheduleAutoSave() {
+    if (_finalized) return;
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = Timer(const Duration(seconds: 2), _autoSaveDraft);
+  }
+
+  // Persists the current invoice as a draft (status == 'draft'). Drafts
+  // never affect inventory and are excluded from invoice list queries.
+  // Requires a client to be selected since clientId is a foreign key.
+  bool get _hasDraftContent =>
+      _selectedClient != null && _lineItems.isNotEmpty;
+
+  double? get _actualAmount =>
+      double.tryParse(_actualAmountCtrl.text.trim());
+
+  double? get _swapAmount =>
+      double.tryParse(_swapAmountCtrl.text.trim());
+
+  ({Invoice invoice, List<InvoiceItem> items}) _buildDraftPayload() {
+    final invoice = Invoice(
+      id: _invoiceId,
+      clientId: _selectedClient!.id,
+      invoiceDate: _invoiceDate,
+      totalAmount: _netTotal,
+      status: 'draft',
+      createdAt: _createdAt,
+      invoiceNumber: _invoiceNumber,
+      invoiceType: _invoiceType,
+      paymentType: _paymentType,
+      notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+      actualAmount: _actualAmount,
+      swapAmount: _swapAmount,
+    );
+    final items = _lineItems.map((li) => InvoiceItem(
+          id: const Uuid().v4(),
+          invoiceId: _invoiceId,
+          productId: li.product.id,
+          unitType: li.unitType,
+          quantity: li.quantityInPieces,
+          pricePerPiece: li.effectiveSellingPrice,
+          subtotal: li.subtotal,
+          isFree: li.isFree,
+          discountPercent: (li._thresholdMet && li.discount!.isPercent)
+              ? li.discount!.discountValue
+              : 0,
+        )).toList();
+    return (invoice: invoice, items: items);
+  }
+
+  Future<void> _autoSaveDraft() async {
+    if (_finalized || !mounted) return;
+    if (!_hasDraftContent) return;
+
+    setState(() => _autoSaving = true);
+    final payload = _buildDraftPayload();
+    await _invoiceRepo.saveDraftInvoice(
+        invoice: payload.invoice, items: payload.items);
+    _draftPersisted = true;
+    ref.invalidate(draftInvoicesProvider);
+    if (mounted) {
+      setState(() {
+        _autoSaving = false;
+        _lastAutoSaved = DateTime.now();
+      });
+    }
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _invoiceDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
+      setState(() => _invoiceDate = picked);
+      _lastInvoiceDate = picked;
+      final num = await ref
+          .read(invoiceRepositoryProvider)
+          .generateInvoiceNumber(picked);
+      if (mounted) setState(() => _invoiceNumber = num);
+      _scheduleAutoSave();
+    }
   }
 
   Future<void> _pickClient() async {
@@ -117,9 +392,96 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       title: 'Select Client / Store',
       items: _clients,
       labelOf: (c) => c.name,
-      subtitleOf: (c) => c.address,
+      labelStyleOf: (c) => _isClientFlagged(c)
+          ? const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)
+          : null,
+      subtitleOf: (c) {
+        final parts = [
+          if (c.address != null && c.address!.isNotEmpty) c.address!,
+          if (c.isBlacklisted) 'Blacklisted',
+          if (_pendingClientIds.contains(c.id)) 'Pending balance',
+        ];
+        return parts.isEmpty ? null : parts.join('  •  ');
+      },
+      subtitleStyleOf: (c) => _isClientFlagged(c)
+          ? TextStyle(color: Colors.red.shade700)
+          : null,
+      onAdd: (existing) => _promptAddClient(existing),
     );
-    if (picked != null) setState(() => _selectedClient = picked);
+    if (picked != null) {
+      setState(() => _selectedClient = picked);
+      _scheduleAutoSave();
+    }
+  }
+
+  Future<Client?> _promptAddClient(List<Client> existing) async {
+    final nameCtrl    = TextEditingController();
+    final addressCtrl = TextEditingController();
+    final formKey     = GlobalKey<FormState>();
+
+    return showDialog<Client>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add Client / Store'),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(
+                    labelText: 'Name *', isDense: true),
+                autofocus: true,
+                validator: (v) {
+                  if (v == null || v.trim().isEmpty) return 'Name is required';
+                  final name    = v.trim().toLowerCase();
+                  final address = addressCtrl.text.trim().toLowerCase();
+                  final dup = existing.any((c) =>
+                      c.name.trim().toLowerCase() == name &&
+                      (c.address?.trim().toLowerCase() ?? '') == address);
+                  if (dup) return 'A client with the same name and address already exists';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: addressCtrl,
+                decoration: const InputDecoration(
+                    labelText: 'Address', isDense: true),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () async {
+              if (!formKey.currentState!.validate()) return;
+              final newClient = Client(
+                id: const Uuid().v4(),
+                name: nameCtrl.text.trim(),
+                address: addressCtrl.text.trim().isEmpty
+                    ? null
+                    : addressCtrl.text.trim(),
+                createdAt: DateTime.now(),
+              );
+              await ref
+                  .read(clientRepositoryProvider)
+                  .upsert(newClient);
+              // Keep local _clients list in sync and refresh all watchers
+              // (client list page, invoice list name lookup, etc.).
+              setState(() => _clients.insert(0, newClient));
+              ref.invalidate(clientsListProvider);
+              if (ctx.mounted) Navigator.pop(ctx, newClient);
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _pickProduct() async {
@@ -132,32 +494,45 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       return;
     }
 
-    for (final p in available) {
+    await Future.wait(available.map((p) async {
       if (!_inventoryCache.containsKey(p.id)) {
         _inventoryCache[p.id] = await ref
             .read(inventoryRepositoryProvider)
             .getByProductId(p.id);
       }
-    }
+    }));
 
     if (!mounted) return;
+
+    final supplierChips = <String, String>{};
+    for (final p in available) {
+      final name = _supplierNames[p.id];
+      if (name != null && name.isNotEmpty) supplierChips[p.supplierId] = name;
+    }
+    final supplierFilters = (supplierChips.entries.toList()
+          ..sort((a, b) => a.value.compareTo(b.value)))
+        .map((e) => SearchFilter<Product>(
+              label: e.value,
+              test: (p) => p.supplierId == e.key,
+            ))
+        .toList();
+
     await showSearchPicker<Product>(
       context: context,
       title: 'Select Product',
       items: available,
-      labelOf: (p) => p.name,
-      leadingOf: (p) =>
-          _stockIndicator(_inventoryCache[p.id]?.quantityPieces ?? 0),
-      subtitleOf: (p) =>
-          _stockLabel(p, _inventoryCache[p.id]?.quantityPieces ?? 0),
+      labelOf: (p) => '${p.name} x ${p.piecesPerBox}',
+      searchableOf: (p) => '${p.name} ${p.productCode ?? ''}',
+      leadingOf: (p) => _stockIndicator(_effectiveAvailable(p.id)),
+      subtitleOf: (p) => _stockLabel(p, _effectiveAvailable(p.id)),
       subtitleStyleOf: (p) {
-        final qty = _inventoryCache[p.id]?.quantityPieces ?? 0;
+        final qty = _effectiveAvailable(p.id);
         return TextStyle(
             color: qty > 0 ? Colors.green.shade700 : Colors.red);
       },
-      isDisabledOf: (p) =>
-          (_inventoryCache[p.id]?.quantityPieces ?? 0) <= 0,
+      isDisabledOf: (p) => _effectiveAvailable(p.id) <= 0,
       onSelected: (p) => _addProduct(p),
+      filters: supplierFilters,
     );
   }
 
@@ -212,44 +587,146 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
         price: price!,
         inventory: inv,
         discount: disc,
+        useOpPrice: _useOpSellingPrice,
       ));
     });
+    _scheduleAutoSave();
+  }
+
+  // Checks whether the entered quantity now satisfies a "buy X get Y free"
+  // promo for this line, and if so, asks the user whether to add the free
+  // item to the invoice. Re-prompts if the quantity grows enough to reach
+  // another cycle of the promo, even if a previous prompt was declined.
+  Future<void> _maybeOfferFreeItem(_LineItem item) async {
+    final discount = item.discount;
+    if (item.isFree || discount == null || !discount.isBuyXGetY) return;
+    final freeQtyPieces = discount.freeQuantityPieces ?? 0;
+    if (freeQtyPieces <= 0) return;
+
+    final cycles = item.quantityInPieces ~/ discount.minQuantityPieces;
+    if (cycles <= item.promptedFreeCycles) return;
+    item.promptedFreeCycles = cycles;
+    if (cycles <= 0) return;
+
+    final ppb = item.product.piecesPerBox;
+    final buyBoxes = ppb > 0 ? discount.minQuantityPieces ~/ ppb : discount.minQuantityPieces;
+
+    final freeUnit = discount.freeQuantityUnit;
+    final freeQtyPerCycle =
+        freeUnit == 'box' && ppb > 0 ? freeQtyPieces ~/ ppb : freeQtyPieces;
+    final totalFreeQty = freeQtyPerCycle * cycles;
+    final freeUnitLabel = freeUnit == 'box' ? 'box(es)' : 'piece(s)';
+
+    final add = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Free Item Available'),
+        content: Text(
+          '${item.product.name} qualifies for a "Buy $buyBoxes box(es) '
+          'get $freeQtyPerCycle $freeUnitLabel free" promo.\n\n'
+          'Add $totalFreeQty $freeUnitLabel of ${item.product.name} to this invoice for free?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('No'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Yes'),
+          ),
+        ],
+      ),
+    );
+
+    if (add == true && mounted) {
+      setState(() {
+        final existing = item.linkedFreeItem;
+        if (existing != null && _lineItems.contains(existing)) {
+          existing.quantity = totalFreeQty;
+        } else {
+          final freeItem = _LineItem(
+            product: item.product,
+            price: item.price,
+            inventory: item.inventory,
+            discount: item.discount,
+            useOpPrice: item.useOpPrice,
+          )
+            ..unitType = freeUnit == 'box' ? 'box' : 'piece'
+            ..quantity = totalFreeQty
+            ..isFree = true;
+          item.linkedFreeItem = freeItem;
+          _lineItems.add(freeItem);
+        }
+      });
+      _scheduleAutoSave();
+    }
+  }
+
+  // Total pieces already committed to _lineItems for a product, optionally
+  // excluding one index (used so a tile can check its own slot fairly).
+  int _committedPieces(String productId, {int? excludeIndex}) {
+    int total = 0;
+    for (int i = 0; i < _lineItems.length; i++) {
+      if (i == excludeIndex) continue;
+      if (_lineItems[i].product.id == productId) {
+        total += _lineItems[i].quantityInPieces;
+      }
+    }
+    return total;
+  }
+
+  int _effectiveAvailable(String productId, {int? excludeIndex}) {
+    final inv = _inventoryCache[productId]?.quantityPieces ?? 0;
+    final available =
+        inv - _committedPieces(productId, excludeIndex: excludeIndex);
+    if (available <= 0) return 0;
+    return inv <= 0 ? 0 : (available > inv ? inv : available);
   }
 
   double get _total =>
       _lineItems.fold(0.0, (sum, item) => sum + item.subtotal);
 
-  bool get _canPrint =>
-      _selectedClient != null &&
-      _lineItems.isNotEmpty &&
-      _lineItems.every((i) => i.isFree || i.hasEnoughStock);
+  double get _netTotal =>
+      (_total - (_swapAmount ?? 0)).clamp(0.0, double.infinity);
 
-  Future<void> _print() async {
-    setState(() => _saving = true);
-    final invoiceId = const Uuid().v4();
-    final now = DateTime.now();
-    final invoiceNumber = await ref
-        .read(invoiceRepositoryProvider)
-        .generateInvoiceNumber(now);
+  bool get _canPrint {
+    if (_selectedClient == null || _lineItems.isEmpty) return false;
+    for (int i = 0; i < _lineItems.length; i++) {
+      final item = _lineItems[i];
+      if (item.quantity <= 0) { return false; }
+      if (_effectiveAvailable(item.product.id, excludeIndex: i) <
+          item.quantityInPieces) { return false; }
+    }
+    return true;
+  }
+
+  Future<({Invoice invoice, List<InvoiceItem> items})> _persistInvoice() async {
+    _autoSaveTimer?.cancel();
+
     final invoice = Invoice(
-      id: invoiceId,
+      id: _invoiceId,
       clientId: _selectedClient!.id,
-      invoiceDate: now,
-      totalAmount: _total,
+      invoiceDate: _invoiceDate,
+      totalAmount: _netTotal,
       status: 'printed',
-      createdAt: now,
-      invoiceNumber: invoiceNumber,
-      invoiceType: _invoiceType,
+      createdAt: _createdAt,
+      invoiceNumber: _invoiceNumber,
+      invoiceType:  _invoiceType,
+      paymentType:  _paymentType,
+      notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+      actualAmount: _actualAmount,
+      swapAmount: _swapAmount,
     );
 
     final items = _lineItems.map((li) {
       return InvoiceItem(
         id: const Uuid().v4(),
-        invoiceId: invoiceId,
+        invoiceId: _invoiceId,
         productId: li.product.id,
         unitType: li.unitType,
         quantity: li.quantityInPieces,
-        pricePerPiece: li.price.sellingPrice,
+        pricePerPiece: li.effectiveSellingPrice,
         subtotal: li.subtotal,
         isFree: li.isFree,
         discountPercent: (li._thresholdMet && li.discount!.isPercent)
@@ -258,78 +735,303 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
       );
     }).toList();
 
-    await ref.read(invoiceRepositoryProvider).saveInvoice(
-          invoice: invoice,
-          items: items,
-        );
+    final Invoice savedInvoice;
+    if (_draftPersisted) {
+      savedInvoice =
+          await _invoiceRepo.finalizeDraft(invoice: invoice, items: items);
+    } else {
+      savedInvoice = await _invoiceRepo.saveInvoice(invoice: invoice, items: items);
+    }
 
+    _finalized = true;
     ref.invalidate(invoicesListProvider);
     ref.invalidate(filteredInvoicesProvider);
     ref.invalidate(inventoryListProvider);
+    ref.invalidate(draftInvoicesProvider);
+
+    return (invoice: savedInvoice, items: items);
+  }
+
+  void _showStockError(InsufficientStockException e) {
+    if (!mounted) return;
+    setState(() => _saving = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(e.toString()),
+        backgroundColor: Theme.of(context).colorScheme.error,
+      ),
+    );
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await _persistInvoice();
+      if (mounted) context.go('/invoices');
+    } on InsufficientStockException catch (e) {
+      _showStockError(e);
+    }
+  }
+
+  Future<void> _print() async {
+    setState(() => _saving = true);
+    final ({Invoice invoice, List<InvoiceItem> items}) persisted;
+    try {
+      persisted = await _persistInvoice();
+    } on InsufficientStockException catch (e) {
+      _showStockError(e);
+      return;
+    }
 
     final productsById = {
       for (final li in _lineItems) li.product.id: li.product
     };
     await printInvoice(
-      invoice: invoice,
+      invoice: persisted.invoice,
       client: _selectedClient!,
-      items: items,
+      items: persisted.items,
       productsById: productsById,
     );
 
     if (mounted) context.go('/invoices');
   }
 
+  Future<void> _cancel() async {
+    _autoSaveTimer?.cancel();
+    if (_draftPersisted && !_finalized) {
+      await _invoiceRepo.discardDraft(_invoiceId);
+      _finalized = true;
+      ref.invalidate(draftInvoicesProvider);
+    }
+    if (mounted) context.go('/invoices');
+  }
+
+  @override
+  void dispose() {
+    final hadPendingSave = _autoSaveTimer?.isActive ?? false;
+    _autoSaveTimer?.cancel();
+    if (!_finalized) {
+      if (_hasDraftContent) {
+        // Flush any pending debounced save immediately so the draft shows up
+        // in the list right away, instead of waiting for the next edit.
+        if (hadPendingSave || !_draftPersisted) {
+          final payload = _buildDraftPayload();
+          _invoiceRepo.saveDraftInvoice(
+              invoice: payload.invoice, items: payload.items);
+        }
+      } else if (_draftPersisted && widget.draftId == null) {
+        // Only discard drafts created fresh during this session
+        // (crash-recovery safety net). A resumed draft (widget.draftId !=
+        // null) should remain saved so the user can come back to it again
+        // later — only the explicit Cancel button discards those.
+        _invoiceRepo.discardDraft(_invoiceId);
+      }
+      _container?.invalidate(draftInvoicesProvider);
+    }
+    _notesCtrl.dispose();
+    _actualAmountCtrl.dispose();
+    _swapAmountCtrl.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
+    _container = ProviderScope.containerOf(context, listen: false);
     return AppScaffold(
       title: 'New Invoice',
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // Invoice type selector
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(
-                          value: 'delivery',
-                          icon: Icon(Icons.local_shipping, size: 16),
-                          label: Text('Delivery')),
-                      ButtonSegment(
-                          value: 'walk_in',
-                          icon: Icon(Icons.storefront, size: 16),
-                          label: Text('Walk-in')),
-                    ],
-                    selected: {_invoiceType},
-                    onSelectionChanged: (s) =>
-                        setState(() => _invoiceType = s.first),
-                  ),
-                ),
-
-                // Client selector
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: InkWell(
-                    onTap: _pickClient,
-                    borderRadius: BorderRadius.circular(4),
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Client / Store',
-                        border: OutlineInputBorder(),
-                        suffixIcon: Icon(Icons.search),
-                      ),
-                      child: Text(
-                        _selectedClient?.name ?? 'Tap to search…',
+                // Invoice # + type + date + client + payment type, all in one row
+                Container(
+                  width: double.infinity,
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Invoice #: ${_displaySequenceNumber != null ? _displaySequenceNumber!.toString().padLeft(8, '0') : '...'}',
                         style: TextStyle(
-                          color: _selectedClient == null
-                              ? Theme.of(context).hintColor
-                              : null,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
-                    ),
+                      const SizedBox(width: 12),
+                      _groupBox(
+                        child: SegmentedButton<String>(
+                          segments: const [
+                            ButtonSegment(
+                                value: 'delivery',
+                                icon: Icon(Icons.local_shipping, size: 16),
+                                label: Text('Delivery')),
+                            ButtonSegment(
+                                value: 'walk_in',
+                                icon: Icon(Icons.storefront, size: 16),
+                                label: Text('Walk-in')),
+                          ],
+                          selected: {_invoiceType},
+                          onSelectionChanged: (s) {
+                            setState(() => _invoiceType = s.first);
+                            _scheduleAutoSave();
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 2,
+                        child: InkWell(
+                          onTap: _pickDate,
+                          borderRadius: BorderRadius.circular(4),
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'Invoice Date',
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                              suffixIcon: Icon(Icons.calendar_today, size: 18),
+                            ),
+                            child: Text(
+                              DateFormat('MMM dd, yyyy').format(_invoiceDate),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 3,
+                        child: InkWell(
+                          onTap: _pickClient,
+                          borderRadius: BorderRadius.circular(4),
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'Client / Store',
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                              suffixIcon: Icon(Icons.search),
+                            ),
+                            child: Text(
+                              _selectedClient?.name ?? 'Tap to search…',
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: _selectedClient == null
+                                    ? Theme.of(context).hintColor
+                                    : (_isClientFlagged(_selectedClient!)
+                                        ? Colors.red
+                                        : null),
+                                fontWeight: _selectedClient != null &&
+                                        _isClientFlagged(_selectedClient!)
+                                    ? FontWeight.bold
+                                    : null,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      _groupBox(
+                        child: DropdownButton<String>(
+                          value: _paymentType,
+                          isDense: true,
+                          underline: const SizedBox(),
+                          items: const [
+                            DropdownMenuItem(value: 'cash',    child: Text('Cash')),
+                            DropdownMenuItem(value: 'check',   child: Text('Check')),
+                            DropdownMenuItem(value: 'credit',  child: Text('Credit')),
+                            DropdownMenuItem(value: 'partial', child: Text('Partial')),
+                          ],
+                          onChanged: (v) {
+                            setState(() => _paymentType = v!);
+                            _scheduleAutoSave();
+                          },
+                        ),
+                      ),
+                      if (_autoSaving) ...[
+                        const SizedBox(width: 12),
+                        Text(
+                          'Saving draft…',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant),
+                        ),
+                      ] else if (_lastAutoSaved != null) ...[
+                        const SizedBox(width: 12),
+                        Text(
+                          'Saved at ${DateFormat('HH:mm').format(_lastAutoSaved!)}',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Notes + actual amount
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _notesCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Notes (not included when printing)',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          maxLines: 1,
+                          onChanged: (_) => _scheduleAutoSave(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _actualAmountCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Actual Amount (referenced receipt, optional)',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          keyboardType:
+                              const TextInputType.numberWithOptions(decimal: true),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                                RegExp(r'^\d*\.?\d{0,2}')),
+                          ],
+                          onChanged: (_) => _scheduleAutoSave(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _swapAmountCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Adjustment Amount (deducted from total, optional)',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          keyboardType:
+                              const TextInputType.numberWithOptions(decimal: true),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                                RegExp(r'^\d*\.?\d{0,2}')),
+                          ],
+                          onChanged: (_) {
+                            setState(() {});
+                            _scheduleAutoSave();
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -361,9 +1063,19 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                           itemCount: _lineItems.length,
                           itemBuilder: (ctx, i) => _LineItemTile(
                             item: _lineItems[i],
-                            onRemove: () =>
-                                setState(() => _lineItems.removeAt(i)),
-                            onChanged: () => setState(() {}),
+                            effectiveAvailable: _effectiveAvailable(
+                                _lineItems[i].product.id,
+                                excludeIndex: i),
+                            onRemove: () {
+                              setState(() => _lineItems.removeAt(i));
+                              _scheduleAutoSave();
+                            },
+                            onChanged: () {
+                              setState(() {});
+                              _scheduleAutoSave();
+                            },
+                            onQuantityEntered: (item) =>
+                                _maybeOfferFreeItem(item),
                           ),
                         ),
                 ),
@@ -377,16 +1089,53 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
                   child: Row(
                     children: [
                       Expanded(
-                        child: Text(
-                          'Total: ${formatCurrency(_total)}',
-                          style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if ((_swapAmount ?? 0) > 0) ...[
+                              Text(
+                                'Subtotal: ${formatCurrency(_total)}',
+                                style: const TextStyle(
+                                    fontSize: 12, color: Colors.grey),
+                              ),
+                              Text(
+                                'Adjustment: -${formatCurrency(_swapAmount!)}',
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.red,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                            Text(
+                              'Total: ${formatCurrency(_netTotal)}',
+                              style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold),
+                            ),
+                            Text(
+                              '${_lineItems.length} item(s)',
+                              style: const TextStyle(
+                                  fontSize: 12, color: Colors.grey),
+                            ),
+                          ],
                         ),
                       ),
                       OutlinedButton(
-                        onPressed: () => context.go('/invoices'),
+                        onPressed: _cancel,
                         child: const Text('Cancel'),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        icon: _saving
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.save_outlined),
+                        label: const Text('Save'),
+                        onPressed:
+                            _canPrint && !_saving ? _save : null,
                       ),
                       const SizedBox(width: 8),
                       FilledButton.icon(
@@ -415,13 +1164,17 @@ class _InvoiceCreateScreenState extends ConsumerState<InvoiceCreateScreen> {
 
 class _LineItemTile extends StatefulWidget {
   final _LineItem item;
+  final int effectiveAvailable;
   final VoidCallback onRemove;
   final VoidCallback onChanged;
+  final ValueChanged<_LineItem> onQuantityEntered;
 
   const _LineItemTile({
     required this.item,
+    required this.effectiveAvailable,
     required this.onRemove,
     required this.onChanged,
+    required this.onQuantityEntered,
   });
 
   @override
@@ -434,8 +1187,19 @@ class _LineItemTileState extends State<_LineItemTile> {
   @override
   void initState() {
     super.initState();
-    _qtyCtrl =
-        TextEditingController(text: widget.item.quantity.toString());
+    _qtyCtrl = TextEditingController(
+      text: widget.item.quantity > 0 ? widget.item.quantity.toString() : '',
+    );
+  }
+
+  @override
+  void didUpdateWidget(_LineItemTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.item, widget.item)) {
+      final text =
+          widget.item.quantity > 0 ? widget.item.quantity.toString() : '';
+      if (_qtyCtrl.text != text) _qtyCtrl.text = text;
+    }
   }
 
   @override
@@ -444,11 +1208,21 @@ class _LineItemTileState extends State<_LineItemTile> {
     super.dispose();
   }
 
+  String _availLabel(_LineItem item, int availQty, bool stockOk) {
+    final ppb = item.product.piecesPerBox;
+    final boxes = availQty ~/ ppb;
+    final pcs = availQty % ppb;
+    final qty = boxes > 0
+        ? '$boxes box(es)${pcs > 0 ? ' + $pcs pcs' : ''}'
+        : '$availQty pcs';
+    return stockOk ? 'Available: $qty' : 'Only $qty available';
+  }
+
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
-    final stockOk = item.isFree || item.hasEnoughStock;
-    final availQty = item.inventory?.quantityPieces ?? 0;
+    final availQty = widget.effectiveAvailable;
+    final stockOk = item.isFree || availQty >= item.quantityInPieces;
     final hasDiscount = item.discountAmount > 0;
 
     return Card(
@@ -462,13 +1236,17 @@ class _LineItemTileState extends State<_LineItemTile> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(item.product.name,
+                  Text('${item.product.name} x ${item.product.piecesPerBox}',
                       style:
                           const TextStyle(fontWeight: FontWeight.bold)),
-                  if (!stockOk)
-                    Text('Only $availQty pcs available',
-                        style: const TextStyle(
-                            color: Colors.red, fontSize: 12)),
+                  Text(
+                    _availLabel(item, availQty, stockOk),
+                    style: TextStyle(
+                        color: stockOk
+                            ? Colors.grey.shade600
+                            : Colors.red,
+                        fontSize: 12),
+                  ),
                   if (item.isFree)
                     Text('FREE',
                         style: TextStyle(
@@ -521,6 +1299,7 @@ class _LineItemTileState extends State<_LineItemTile> {
               onSelectionChanged: (s) {
                 setState(() => item.unitType = s.first);
                 widget.onChanged();
+                widget.onQuantityEntered(item);
               },
             ),
             const SizedBox(width: 8),
@@ -528,6 +1307,7 @@ class _LineItemTileState extends State<_LineItemTile> {
               width: 70,
               child: TextField(
                 controller: _qtyCtrl,
+                enabled: widget.effectiveAvailable > 0,
                 decoration: const InputDecoration(
                     labelText: 'Qty', isDense: true),
                 keyboardType: TextInputType.number,
@@ -535,9 +1315,9 @@ class _LineItemTileState extends State<_LineItemTile> {
                   FilteringTextInputFormatter.digitsOnly
                 ],
                 onChanged: (v) {
-                  item.quantity = int.tryParse(v) ?? 1;
-                  if (item.quantity < 1) item.quantity = 1;
+                  item.quantity = int.tryParse(v) ?? 0;
                   widget.onChanged();
+                  widget.onQuantityEntered(item);
                 },
               ),
             ),

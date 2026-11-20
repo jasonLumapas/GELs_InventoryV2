@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/inventory_item.dart';
 import '../../models/product.dart';
 import '../../models/stock_movement.dart';
+import '../../core/services/app_settings_service.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../repositories/stock_movement_repository.dart';
 import '../../repositories/supplier_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../widgets/common/app_scaffold.dart';
+import '../../widgets/common/confirm_dialog.dart';
 
 // Combines all products with their current inventory quantity.
 // Products with no inventory record show as 0 stock.
@@ -36,6 +39,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   String? _selectedSupplierId;
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
+  DateTime _lastRefDate = DateTime.now();
 
   @override
   void dispose() {
@@ -47,10 +51,21 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   Widget build(BuildContext context) {
     final viewAsync      = ref.watch(inventoryViewProvider);
     final suppliersAsync = ref.watch(suppliersListProvider);
-    final suppliers      = suppliersAsync.valueOrNull ?? [];
+    final allowAdd     = ref.watch(inventoryAllowAddStockProvider).valueOrNull ?? true;
+    final allowRemove  = ref.watch(inventoryAllowRemoveStockProvider).valueOrNull ?? true;
+    final showHistory  = ref.watch(inventoryShowHistoryProvider).valueOrNull ?? true;
+    final suppliers      = [...suppliersAsync.valueOrNull ?? []]
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
     return AppScaffold(
       title: 'Inventory',
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.delete_sweep),
+          tooltip: 'Clear all stock quantities',
+          onPressed: _confirmClearAllStock,
+        ),
+      ],
       body: Column(
         children: [
           // ── Search + supplier filter ───────────────────────────────
@@ -99,11 +114,14 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
           // ── Inventory list ─────────────────────────────────────────
           Expanded(
-            child: viewAsync.when(
-              loading: () =>
-                  const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Error: $e')),
-              data: (allRows) {
+            child: Builder(builder: (_) {
+                final allRows = viewAsync.valueOrNull;
+                if (allRows == null) {
+                  if (viewAsync.hasError) {
+                    return Center(child: Text('Error: ${viewAsync.error}'));
+                  }
+                  return const Center(child: CircularProgressIndicator());
+                }
                 final q = _searchQuery.toLowerCase();
                 final rows = allRows.where((r) {
                   final matchesSupplier = _selectedSupplierId == null ||
@@ -118,6 +136,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       child: Text('No products found.'));
                 }
                 return ListView.separated(
+                  key: const PageStorageKey('inventory_list'),
                   itemCount: rows.length,
                   separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (ctx, i) {
@@ -132,7 +151,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                         Icons.inventory,
                         color: qty == 0 ? Colors.red : null,
                       ),
-                      title: Text(product.name),
+                      title: Text('${product.name} x ${product.piecesPerBox}'),
                       subtitle: qty == 0
                           ? const Text('No stock',
                               style: TextStyle(color: Colors.red))
@@ -142,35 +161,154 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          IconButton(
-                            icon: const Icon(Icons.add_circle,
-                                color: Colors.green),
-                            tooltip: 'Add stock',
-                            onPressed: () => _showAdjustDialog(
-                                ctx, product, qty,
-                                isAdd: true),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.remove_circle,
-                                color: Colors.red),
-                            tooltip: 'Remove stock',
-                            onPressed: qty == 0
-                                ? null
-                                : () => _showAdjustDialog(
-                                    ctx, product, qty,
-                                    isAdd: false),
-                          ),
+                          if (allowAdd)
+                            IconButton(
+                              icon: const Icon(Icons.add_circle,
+                                  color: Colors.green),
+                              tooltip: 'Add stock',
+                              onPressed: () => _showAdjustDialog(
+                                  ctx, product, qty,
+                                  isAdd: true),
+                            ),
+                          if (allowRemove)
+                            IconButton(
+                              icon: const Icon(Icons.remove_circle,
+                                  color: Colors.red),
+                              tooltip: 'Remove stock',
+                              onPressed: qty == 0
+                                  ? null
+                                  : () => _showAdjustDialog(
+                                      ctx, product, qty,
+                                      isAdd: false),
+                            ),
+                          if (showHistory)
+                            IconButton(
+                              icon: const Icon(Icons.history,
+                                  color: Colors.blueGrey),
+                              tooltip: 'Transaction history',
+                              onPressed: () =>
+                                  _showHistoryDialog(ctx, product),
+                            ),
                         ],
                       ),
                     );
                   },
                 );
-              },
-            ),
+              }),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _showHistoryDialog(
+    BuildContext context,
+    Product product,
+  ) async {
+    final dateFmt = DateFormat('MMM dd, yyyy');
+    final movements = await ref
+        .read(stockMovementRepositoryProvider)
+        .getForProduct(product.id);
+
+    if (!mounted) return;
+    await showDialog(
+      context: this.context,
+      builder: (ctx) => AlertDialog(
+        title: Text('History — ${product.name} x ${product.piecesPerBox}'),
+        contentPadding: const EdgeInsets.fromLTRB(0, 12, 0, 0),
+        content: SizedBox(
+          width: 480,
+          child: movements.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text('No transactions recorded.'))
+              : ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: movements.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (_, i) {
+                    final m = movements[i];
+                    final ppb = product.piecesPerBox;
+                    final boxes = ppb > 0 ? m.quantityPieces ~/ ppb : 0;
+                    final pcs   = ppb > 0 ? m.quantityPieces % ppb : m.quantityPieces;
+                    final isIn  = m.movementType == 'in';
+                    return ListTile(
+                      dense: true,
+                      leading: Icon(
+                        isIn ? Icons.add_circle : Icons.remove_circle,
+                        color: isIn ? Colors.green : Colors.red,
+                        size: 20,
+                      ),
+                      title: Text(
+                        '${isIn ? '+' : '-'}$boxes box(es) + $pcs pcs'
+                        ' (${m.quantityPieces} pcs)',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: isIn ? Colors.green.shade700 : Colors.red.shade700,
+                        ),
+                      ),
+                      subtitle: Text([
+                        if (m.referenceDate != null)
+                          dateFmt.format(m.referenceDate!),
+                        if (m.invoiceNumber != null) 'Ref: ${m.invoiceNumber}',
+                        if (m.comments != null) m.comments!,
+                      ].join('  •  ')),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Close')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmClearAllStock() async {
+    final ok = await showConfirmDialog(
+      context,
+      title: 'Clear All Stock',
+      message:
+          'This will set the remaining quantity of every product to 0. '
+          'Transaction history will NOT be affected. Continue?',
+      confirmLabel: 'Clear Stock',
+    );
+    if (!ok) return;
+
+    final items = await ref.read(inventoryListProvider.future);
+    final inventoryRepo = ref.read(inventoryRepositoryProvider);
+    final stockMovementRepo = ref.read(stockMovementRepositoryProvider);
+    final now = DateTime.now();
+
+    try {
+      for (final item in items) {
+        if (item.quantityPieces == 0) continue;
+        await inventoryRepo.adjust(
+            productId: item.productId, deltaPieces: -item.quantityPieces);
+        await stockMovementRepo.save(StockMovement(
+          id: const Uuid().v4(),
+          productId: item.productId,
+          movementType: 'out',
+          quantityPieces: item.quantityPieces,
+          referenceDate: now,
+          comments: 'Bulk clear all stock',
+          createdAt: now,
+        ));
+      }
+    } on InsufficientStockException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    }
+
+    ref.invalidate(inventoryListProvider);
   }
 
   Future<void> _showAdjustDialog(
@@ -179,14 +317,23 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     int currentQty, {
     required bool isAdd,
   }) async {
-    final qtyCtrl     = TextEditingController();
+    final boxesCtrl   = TextEditingController();
+    final piecesCtrl  = TextEditingController();
     final invCtrl     = TextEditingController();
     final commentCtrl = TextEditingController();
-    String unitType   = 'piece';
-    DateTime refDate  = DateTime.now();
+    DateTime refDate  = _lastRefDate;
 
+    // Fetch withdrawal price for price-per-box display
+    final price = isAdd
+        ? await ref.read(productRepositoryProvider).getCurrentPrice(product.id)
+        : null;
+    final pricePerBox = price != null
+        ? price.withdrawalPrice * product.piecesPerBox
+        : null;
+
+    if (!mounted) return;
     await showDialog(
-      context: context,
+      context: this.context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
           title: Text(isAdd ? 'Add Stock' : 'Remove Stock'),
@@ -195,37 +342,68 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(product.name,
+                Text('${product.name} x ${product.piecesPerBox}',
                     style:
                         const TextStyle(fontWeight: FontWeight.bold)),
                 Text('Current: ${formatNumber(currentQty)} pcs',
                     style: const TextStyle(color: Colors.grey)),
-                const SizedBox(height: 8),
-                SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(value: 'piece', label: Text('Pieces')),
-                    ButtonSegment(value: 'box', label: Text('Boxes')),
-                  ],
-                  selected: {unitType},
-                  onSelectionChanged: (s) =>
-                      setState(() => unitType = s.first),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: qtyCtrl,
-                  decoration: InputDecoration(
-                    labelText:
-                        'Quantity (${unitType == 'box' ? 'boxes' : 'pcs'})',
+                if (pricePerBox != null)
+                  Text(
+                    'Price/box: ${formatCurrency(pricePerBox)}',
+                    style: TextStyle(
+                        color: Colors.blue.shade700, fontSize: 13),
                   ),
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  autofocus: true,
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: boxesCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Boxes',
+                        ),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly
+                        ],
+                        autofocus: true,
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: piecesCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Pieces',
+                        ),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly
+                        ],
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                  ],
                 ),
-                if (isAdd) ...[
-                  const SizedBox(height: 16),
-                  const Divider(),
+                if (isAdd && price != null) ...[
                   const SizedBox(height: 4),
-                  const Text('Reference',
+                  Builder(builder: (_) {
+                    final boxes = int.tryParse(boxesCtrl.text) ?? 0;
+                    final pcs = int.tryParse(piecesCtrl.text) ?? 0;
+                    final total = boxes * pricePerBox! +
+                        pcs * price.withdrawalPrice;
+                    return Text(
+                      'Total: ${formatCurrency(total)}',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 14),
+                    );
+                  }),
+                ],
+                const SizedBox(height: 16),
+                const Divider(),
+                const SizedBox(height: 4),
+                const Text('Reference',
                       style: TextStyle(
                           fontWeight: FontWeight.w600, fontSize: 13)),
                   const SizedBox(height: 8),
@@ -239,6 +417,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       );
                       if (picked != null) {
                         setState(() => refDate = picked);
+                        _lastRefDate = picked;
                       }
                     },
                     child: InputDecorator(
@@ -273,7 +452,6 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     ),
                     maxLines: 2,
                   ),
-                ],
               ],
             ),
           ),
@@ -283,32 +461,42 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 child: const Text('Cancel')),
             FilledButton(
               onPressed: () async {
-                final qty = int.tryParse(qtyCtrl.text) ?? 0;
-                if (qty <= 0) return;
-                final pieces =
-                    unitType == 'box' ? qty * product.piecesPerBox : qty;
+                final boxes = int.tryParse(boxesCtrl.text) ?? 0;
+                final pcs = int.tryParse(piecesCtrl.text) ?? 0;
+                final pieces = boxes * product.piecesPerBox + pcs;
+                if (pieces <= 0) return;
                 final delta = isAdd ? pieces : -pieces;
-                await ref
-                    .read(inventoryRepositoryProvider)
-                    .adjust(productId: product.id, deltaPieces: delta);
-                if (isAdd) {
+                try {
                   await ref
-                      .read(stockMovementRepositoryProvider)
-                      .save(StockMovement(
-                        id: const Uuid().v4(),
-                        productId: product.id,
-                        movementType: 'in',
-                        quantityPieces: pieces,
-                        referenceDate: refDate,
-                        invoiceNumber: invCtrl.text.trim().isEmpty
-                            ? null
-                            : invCtrl.text.trim(),
-                        comments: commentCtrl.text.trim().isEmpty
-                            ? null
-                            : commentCtrl.text.trim(),
-                        createdAt: DateTime.now(),
-                      ));
+                      .read(inventoryRepositoryProvider)
+                      .adjust(productId: product.id, deltaPieces: delta);
+                } on InsufficientStockException catch (e) {
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(
+                        content: Text(e.toString()),
+                        backgroundColor: Theme.of(ctx).colorScheme.error,
+                      ),
+                    );
+                  }
+                  return;
                 }
+                await ref
+                    .read(stockMovementRepositoryProvider)
+                    .save(StockMovement(
+                      id: const Uuid().v4(),
+                      productId: product.id,
+                      movementType: isAdd ? 'in' : 'out',
+                      quantityPieces: pieces,
+                      referenceDate: refDate,
+                      invoiceNumber: invCtrl.text.trim().isEmpty
+                          ? null
+                          : invCtrl.text.trim(),
+                      comments: commentCtrl.text.trim().isEmpty
+                          ? null
+                          : commentCtrl.text.trim(),
+                      createdAt: DateTime.now(),
+                    ));
                 if (ctx.mounted) Navigator.pop(ctx);
                 ref.invalidate(inventoryListProvider);
               },

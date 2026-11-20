@@ -75,3 +75,9 @@ Adding a new price for a product always **inserts** a new row in `product_prices
 1. Create (`invoice_create_screen.dart`) — validates stock before allowing Print. On Print: saves invoice + items to DB, deducts inventory, generates PDF via `lib/utils/pdf_generator.dart`.
 2. `invoice_items.quantity` is always stored in **pieces**, regardless of whether the user selected box or piece units.
 3. Status lifecycle: `draft` → `printed` → `cancelled`. Cancelled invoices are excluded from all list queries.
+
+
+## Verification
+- Never launch gel_inventory.exe to verify a change. Do not use PowerShell mouse/keyboard automation against the running app.
+- Verify with: `flutter analyze`, `flutter test`, and unit tests covering calculation logic (discount cascading, VAT, totals).
+- If a UI flow genuinely needs manual verification, stop and ask me to test it myself rather than driving the live app.

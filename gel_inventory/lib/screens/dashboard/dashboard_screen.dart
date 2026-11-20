@@ -1,16 +1,27 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/services/app_settings_service.dart';
 import '../../widgets/common/app_scaffold.dart';
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final showOffSiteLoading =
+        ref.watch(showOffSiteLoadingProvider).valueOrNull ?? true;
+    final showImportCsv =
+        ref.watch(showImportCsvProvider).valueOrNull ?? true;
+    final showPreOrderDrafts =
+        ref.watch(showPreOrderDraftsProvider).valueOrNull ?? true;
+    final showVerifyPreOrder =
+        ref.watch(showVerifyPreOrderProvider).valueOrNull ?? true;
+
     return AppScaffold(
       title: "GEL's Inventory",
       body: GridView.count(
-        crossAxisCount: 4,
+        crossAxisCount: 5,
         childAspectRatio: 1.4,
         padding: const EdgeInsets.all(16),
         mainAxisSpacing: 8,
@@ -37,9 +48,46 @@ class DashboardScreen extends StatelessWidget {
             route: '/inventory',
           ),
           _NavCard(
+            icon: Icons.move_to_inbox,
+            label: 'Supplier Deliveries',
+            route: '/supplier-deliveries',
+          ),
+          _NavCard(
+            icon: Icons.shopping_cart,
+            label: 'Purchase Orders',
+            route: '/purchase-orders',
+          ),
+          _NavCard(
             icon: Icons.receipt_long,
             label: 'Invoices',
             route: '/invoices',
+          ),
+          if (showPreOrderDrafts)
+            _NavCard(
+              icon: Icons.edit_note,
+              label: 'Pre-Order Drafts',
+              route: '/pre-orders',
+            ),
+          if (showVerifyPreOrder)
+            _NavCard(
+              icon: Icons.file_open,
+              label: 'Verify Pre-Order',
+              route: '/pre-order-import',
+            ),
+          _NavCard(
+            icon: Icons.summarize,
+            label: 'Layout',
+            route: '/layout',
+          ),
+          _NavCard(
+            icon: Icons.account_balance_wallet,
+            label: 'Remittance',
+            route: '/collectibles',
+          ),
+          _NavCard(
+            icon: Icons.remove_shopping_cart,
+            label: 'Returns/Bad Orders',
+            route: '/bad-orders',
           ),
           _NavCard(
             icon: Icons.bar_chart,
@@ -47,19 +95,36 @@ class DashboardScreen extends StatelessWidget {
             route: '/reports',
           ),
           _NavCard(
-            icon: Icons.summarize,
-            label: 'Layout',
-            route: '/layout',
+            icon: Icons.groups,
+            label: 'Client Purchases',
+            route: '/client-purchases',
+          ),
+          if (showOffSiteLoading)
+            _NavCard(
+              icon: Icons.local_shipping,
+              label: 'Off-site Loading',
+              route: '/van-selling',
+            ),
+          _NavCard(
+            icon: Icons.inventory,
+            label: 'Stocks for Sale Loading',
+            route: '/stocks-loading',
           ),
           _NavCard(
-            icon: Icons.remove_shopping_cart,
-            label: 'Bad Orders',
-            route: '/bad-orders',
+            icon: Icons.star_rate,
+            label: 'Incentives',
+            route: '/incentives',
           ),
+          if (showImportCsv)
+            _NavCard(
+              icon: Icons.upload_file,
+              label: 'Import CSV',
+              route: '/import-csv',
+            ),
           _NavCard(
-            icon: Icons.local_shipping,
-            label: 'Van Selling',
-            route: '/van-selling',
+            icon: Icons.settings,
+            label: 'Settings',
+            route: '/settings',
           ),
         ],
       ),

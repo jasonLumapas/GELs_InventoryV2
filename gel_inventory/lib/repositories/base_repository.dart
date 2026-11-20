@@ -1,3 +1,4 @@
+import '../core/constants.dart';
 import '../core/services/connectivity_service.dart';
 import '../core/services/sync_service.dart';
 import '../core/database/local_db.dart';
@@ -13,7 +14,7 @@ abstract class BaseRepository {
     required this.syncService,
   });
 
-  bool get isOnline => connectivity.isOnline;
+  bool get isOnline => !AppConstants.offlineOnly && connectivity.isOnline;
 
   /// Runs a local cache write and silently swallows any SQLite error.
   /// When online, Supabase is the source of truth, so a cache failure

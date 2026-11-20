@@ -1,23 +1,39 @@
+import 'dart:io';
+
+import 'package:excel/excel.dart' as xlsx;
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../../core/services/app_settings_service.dart';
 import '../../models/product.dart';
+import '../../models/supplier.dart';
+import '../../models/inventory_item.dart';
+import '../../models/supplier_received_invoice.dart';
+import '../../models/supplier_received_invoice_item.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../repositories/stock_movement_repository.dart';
+import '../../repositories/supplier_received_invoice_repository.dart';
 import '../../repositories/supplier_repository.dart';
+import '../../repositories/van_stock_repository.dart';
 import '../../utils/currency_format.dart';
+import '../../utils/pdf_generator.dart';
 import '../../widgets/common/app_scaffold.dart';
 
 class _SummaryRow {
   final String productName;
+  final String supplierId;
+  final String supplierName;
   int totalPieces;
   double totalAmount;
   int piecesPerBox;
 
   _SummaryRow({
     required this.productName,
+    required this.supplierId,
+    required this.supplierName,
     required this.totalPieces,
     required this.totalAmount,
     required this.piecesPerBox,
@@ -37,18 +53,21 @@ class ReportsScreen extends ConsumerStatefulWidget {
 class _ReportsScreenState extends ConsumerState<ReportsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabs;
-  DateTime _selectedDate = DateTime.now();
+  DateTime _selectedDate = DateTime.now().add(const Duration(days: 1));
+  String? _selectedSupplierId;
   bool _loading = false;
   List<_SummaryRow> _summary = [];
   double _grandTotal = 0;
   double _capital = 0;
+  String? _sortColumn; // 'amount' | 'quantity'
+  bool _sortAscending = false;
 
   double get _profit => _grandTotal - _capital;
 
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 3, vsync: this);
+    _tabs = TabController(length: 6, vsync: this);
     _loadSummary();
   }
 
@@ -64,21 +83,28 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
         .read(invoiceRepositoryProvider)
         .getAll(
           startDate: DateTime(
-              _selectedDate.year, _selectedDate.month, _selectedDate.day),
+            _selectedDate.year,
+            _selectedDate.month,
+            _selectedDate.day,
+          ),
           endDate: DateTime(
-              _selectedDate.year, _selectedDate.month, _selectedDate.day + 1),
+            _selectedDate.year,
+            _selectedDate.month,
+            _selectedDate.day + 1,
+          ),
         );
 
     final products = await ref.read(productRepositoryProvider).getAll();
+    final suppliers = await ref.read(supplierRepositoryProvider).getAll();
     final productsMap = {for (final p in products) p.id: p};
+    final suppliersById = {for (final s in suppliers) s.id: s.name};
 
     final Map<String, _SummaryRow> rowMap = {};
     double total = 0;
 
     for (final inv in invoices) {
       if (inv.status == 'cancelled') continue;
-      final items =
-          await ref.read(invoiceRepositoryProvider).getItems(inv.id);
+      final items = await ref.read(invoiceRepositoryProvider).getItems(inv.id);
       for (final item in items) {
         final product = productsMap[item.productId];
         if (product == null) continue;
@@ -88,6 +114,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
         } else {
           rowMap[item.productId] = _SummaryRow(
             productName: product.name,
+            supplierId: product.supplierId,
+            supplierName: suppliersById[product.supplierId] ?? 'Unknown',
             totalPieces: item.quantity,
             totalAmount: item.subtotal,
             piecesPerBox: product.piecesPerBox,
@@ -127,7 +155,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
             tabs: const [
               Tab(text: 'Daily Summary'),
               Tab(text: 'Inventory Report'),
-              Tab(text: 'Movements'),
+              Tab(text: 'Top Products'),
+              Tab(text: 'Monthly Sales'),
+              Tab(text: 'Purchase History'),
+              Tab(text: 'Reorder'),
             ],
           ),
           Expanded(
@@ -136,7 +167,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
               children: [
                 _buildDailySummary(context),
                 const _InventoryReportTab(),
-                const _ProductMovementsTab(),
+                const _TopMovingProductsTab(),
+                const _MonthlySalesTab(),
+                const _PurchaseHistoryTab(),
+                const _ReorderSuggestionsTab(),
               ],
             ),
           ),
@@ -145,8 +179,150 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
     );
   }
 
+  List<DailySummaryRow> _buildDailyRows() {
+    final filtered = _selectedSupplierId == null
+        ? _summary
+        : _summary.where((r) => r.supplierId == _selectedSupplierId).toList();
+    final sorted = List<_SummaryRow>.from(filtered);
+    if (_sortColumn == 'amount') {
+      sorted.sort(
+        (a, b) => _sortAscending
+            ? a.totalAmount.compareTo(b.totalAmount)
+            : b.totalAmount.compareTo(a.totalAmount),
+      );
+    } else if (_sortColumn == 'quantity') {
+      sorted.sort(
+        (a, b) => _sortAscending
+            ? a.totalPieces.compareTo(b.totalPieces)
+            : b.totalPieces.compareTo(a.totalPieces),
+      );
+    }
+    return sorted
+        .map(
+          (r) => DailySummaryRow(
+            productName: r.productName,
+            totalBoxes: r.totalBoxes,
+            remainPieces: r.remainPieces,
+            totalAmount: r.totalAmount,
+          ),
+        )
+        .toList();
+  }
+
+  Future<void> _printDailySummary() async {
+    final rows = _buildDailyRows();
+    final grandTotal = rows.fold(0.0, (s, r) => s + r.totalAmount);
+    String? supplierName;
+    if (_selectedSupplierId != null) {
+      final suppliers = ref.read(suppliersListProvider).valueOrNull ?? [];
+      supplierName = suppliers
+          .where((s) => s.id == _selectedSupplierId)
+          .map((s) => s.name)
+          .firstOrNull;
+    }
+    await printDailySummary(
+      date: _selectedDate,
+      supplierName: supplierName,
+      rows: rows,
+      grandTotal: grandTotal,
+    );
+  }
+
+  Future<void> _exportDailySummary() async {
+    final rows = _buildDailyRows();
+    final grandTotal = rows.fold(0.0, (s, r) => s + r.totalAmount);
+    String? supplierName;
+    if (_selectedSupplierId != null) {
+      final suppliers = ref.read(suppliersListProvider).valueOrNull ?? [];
+      supplierName = suppliers
+          .where((s) => s.id == _selectedSupplierId)
+          .map((s) => s.name)
+          .firstOrNull;
+    }
+    final path = await exportDailySummaryReport(
+      date: _selectedDate,
+      supplierName: supplierName,
+      rows: rows,
+      grandTotal: grandTotal,
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Saved to $path')));
+    }
+  }
+
   Widget _buildDailySummary(BuildContext context) {
     final dateFmt = DateFormat('MMMM dd, yyyy');
+    final filtered = _selectedSupplierId == null
+        ? _summary
+        : _summary.where((r) => r.supplierId == _selectedSupplierId).toList();
+
+    final sorted = List<_SummaryRow>.from(filtered);
+    if (_sortColumn == 'amount') {
+      sorted.sort(
+        (a, b) => _sortAscending
+            ? a.totalAmount.compareTo(b.totalAmount)
+            : b.totalAmount.compareTo(a.totalAmount),
+      );
+    } else if (_sortColumn == 'quantity') {
+      sorted.sort(
+        (a, b) => _sortAscending
+            ? a.totalPieces.compareTo(b.totalPieces)
+            : b.totalPieces.compareTo(a.totalPieces),
+      );
+    }
+
+    final filteredTotal = filtered.fold(0.0, (s, r) => s + r.totalAmount);
+
+    const colWidths = {
+      0: FlexColumnWidth(4),
+      1: FlexColumnWidth(2),
+      2: FlexColumnWidth(2),
+      3: FlexColumnWidth(2),
+    };
+    final borderAll = TableBorder.all(color: Colors.grey.shade300);
+    final borderNoTop = TableBorder(
+      left: BorderSide(color: Colors.grey.shade300),
+      right: BorderSide(color: Colors.grey.shade300),
+      bottom: BorderSide(color: Colors.grey.shade300),
+      horizontalInside: BorderSide(color: Colors.grey.shade300),
+      verticalInside: BorderSide(color: Colors.grey.shade300),
+    );
+
+    Widget sortableHeader(String label, String col) {
+      final active = _sortColumn == col;
+      return GestureDetector(
+        onTap: () => setState(() {
+          if (_sortColumn == col) {
+            _sortAscending = !_sortAscending;
+          } else {
+            _sortColumn = col;
+            _sortAscending = false;
+          }
+        }),
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(width: 2),
+              Icon(
+                active
+                    ? (_sortAscending
+                          ? Icons.arrow_upward
+                          : Icons.arrow_downward)
+                    : Icons.unfold_more,
+                size: 14,
+                color: active ? Colors.blue.shade700 : Colors.grey,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Column(
       children: [
         // Date picker row
@@ -156,16 +332,19 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
             children: [
               const Icon(Icons.calendar_today),
               const SizedBox(width: 8),
-              Text(dateFmt.format(_selectedDate),
-                  style: const TextStyle(fontSize: 16)),
-              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  dateFmt.format(_selectedDate),
+                  style: const TextStyle(fontSize: 16),
+                ),
+              ),
               OutlinedButton(
                 onPressed: () async {
                   final picked = await showDatePicker(
                     context: context,
                     initialDate: _selectedDate,
                     firstDate: DateTime(2020),
-                    lastDate: DateTime.now(),
+                    lastDate: DateTime(2100),
                   );
                   if (picked != null) {
                     setState(() => _selectedDate = picked);
@@ -174,88 +353,177 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
                 },
                 child: const Text('Change Date'),
               ),
+              IconButton(
+                icon: const Icon(Icons.print),
+                tooltip: 'Print daily summary',
+                visualDensity: VisualDensity.compact,
+                onPressed: _summary.isEmpty ? null : _printDailySummary,
+              ),
+              IconButton(
+                icon: const Icon(Icons.file_download),
+                tooltip: 'Save daily summary to Desktop',
+                visualDensity: VisualDensity.compact,
+                onPressed: _summary.isEmpty ? null : _exportDailySummary,
+              ),
             ],
           ),
         ),
+
+        // Supplier filter
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+          child: ref
+              .watch(suppliersListProvider)
+              .maybeWhen(
+                data: (suppliers) => Row(
+                  children: [
+                    const Text(
+                      'Supplier:',
+                      style: TextStyle(fontSize: 13, color: Colors.grey),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: DropdownButton<String?>(
+                        value: _selectedSupplierId,
+                        isDense: true,
+                        isExpanded: true,
+                        underline: const SizedBox(),
+                        items: [
+                          const DropdownMenuItem(
+                            value: null,
+                            child: Text('All Suppliers'),
+                          ),
+                          ...suppliers.map(
+                            (s) => DropdownMenuItem(
+                              value: s.id,
+                              child: Text(s.name),
+                            ),
+                          ),
+                        ],
+                        onChanged: (v) =>
+                            setState(() => _selectedSupplierId = v),
+                      ),
+                    ),
+                  ],
+                ),
+                orElse: () => const SizedBox.shrink(),
+              ),
+        ),
+
+        const Divider(height: 1),
 
         // Table
         Expanded(
           child: _loading
               ? const Center(child: CircularProgressIndicator())
-              : _summary.isEmpty
-                  ? const Center(
-                      child: Text('No invoices for selected date.'))
-                  : SingleChildScrollView(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
+              : filtered.isEmpty
+              ? const Center(child: Text('No invoices for selected date.'))
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Pinned header
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                      child: Table(
+                        border: borderAll,
+                        columnWidths: colWidths,
                         children: [
-                          Table(
-                            border: TableBorder.all(
-                                color: Colors.grey.shade300),
-                            columnWidths: const {
-                              0: FlexColumnWidth(4),
-                              1: FlexColumnWidth(2),
-                              2: FlexColumnWidth(2),
-                              3: FlexColumnWidth(2),
-                            },
+                          TableRow(
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade200,
+                            ),
                             children: [
-                              _tableHeader([
-                                'Product',
-                                'Boxes',
-                                'Pieces',
-                                'Amount'
-                              ]),
-                              ..._summary.map(
-                                (row) => _tableRow([
-                                  row.productName,
-                                  row.totalBoxes > 0 ? '${row.totalBoxes}' : '',
-                                  row.remainPieces > 0 ? '${row.remainPieces}' : '',
-                                  formatCurrency(row.totalAmount),
-                                ]),
+                              const Padding(
+                                padding: EdgeInsets.all(8),
+                                child: Text(
+                                  'Product',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
                               ),
+                              sortableHeader('Boxes', 'quantity'),
+                              const Padding(
+                                padding: EdgeInsets.all(8),
+                                child: Text(
+                                  'Pieces',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              sortableHeader('Amount', 'amount'),
                             ],
                           ),
-                          const Divider(height: 24),
-                          _summaryFooterRow('Grand Total', _grandTotal,
-                              bold: true),
-                          const SizedBox(height: 6),
-                          _summaryFooterRow('Capital', _capital),
-                          const SizedBox(height: 6),
-                          _summaryFooterRow('Profit', _profit,
-                              color: _profit >= 0
-                                  ? Colors.green.shade700
-                                  : Colors.red),
                         ],
                       ),
                     ),
+                    // Scrollable data rows + footer
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Table(
+                              border: borderNoTop,
+                              columnWidths: colWidths,
+                              children: sorted
+                                  .map(
+                                    (row) => _tableRow([
+                                      row.productName,
+                                      row.totalBoxes > 0
+                                          ? '${row.totalBoxes}'
+                                          : '',
+                                      row.remainPieces > 0
+                                          ? '${row.remainPieces}'
+                                          : '',
+                                      formatCurrency(row.totalAmount),
+                                    ]),
+                                  )
+                                  .toList(),
+                            ),
+                            const Divider(height: 24),
+                            _summaryFooterRow(
+                              'Grand Total',
+                              filteredTotal,
+                              bold: true,
+                            ),
+                            if (_selectedSupplierId == null &&
+                                (ref
+                                        .watch(showCapitalProfitProvider)
+                                        .valueOrNull ??
+                                    true)) ...[
+                              const SizedBox(height: 6),
+                              _summaryFooterRow('Capital', _capital),
+                              const SizedBox(height: 6),
+                              _summaryFooterRow(
+                                'Profit',
+                                _profit,
+                                color: _profit >= 0
+                                    ? Colors.green.shade700
+                                    : Colors.red,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
         ),
       ],
     );
   }
 
-  TableRow _tableHeader(List<String> cells) => TableRow(
-        decoration: BoxDecoration(color: Colors.grey.shade200),
-        children: cells
-            .map((c) => Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Text(c,
-                      style:
-                          const TextStyle(fontWeight: FontWeight.bold)),
-                ))
-            .toList(),
-      );
-
   TableRow _tableRow(List<String> cells) => TableRow(
-        children: cells
-            .map((c) => Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Text(c),
-                ))
-            .toList(),
-      );
+    children: cells
+        .map((c) => Padding(padding: const EdgeInsets.all(8), child: Text(c)))
+        .toList(),
+  );
 
-  Widget _summaryFooterRow(String label, double amount,
-      {bool bold = false, Color? color}) {
+  Widget _summaryFooterRow(
+    String label,
+    double amount, {
+    bool bold = false,
+    Color? color,
+  }) {
     final style = TextStyle(
       fontSize: 15,
       fontWeight: bold ? FontWeight.bold : FontWeight.normal,
@@ -282,8 +550,21 @@ class _InventoryReportTab extends ConsumerStatefulWidget {
 class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
   DateTime _selectedDate = DateTime.now();
   String? _selectedSupplierId; // null = all suppliers
+  bool? _endingSortAscending; // null = unsorted (original product order)
+  bool _showOnlyWithEnding = false;
+  bool _showOnlyWithBulkClear = false;
+  bool _showOnlyWithBO = false;
+  bool _showOnlyZeroEnding = false;
+  final _searchCtrl = TextEditingController();
+  String _searchQuery = '';
 
   late Future<_InvData> _future;
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -292,13 +573,43 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
   }
 
   void _reload() => setState(() {
-        _future = _loadData(_selectedDate, _selectedSupplierId);
-      });
+    _future = _loadData(_selectedDate, _selectedSupplierId);
+  });
+
+  Widget _buildFilterToggle(
+    bool value,
+    ValueChanged<bool> onChanged,
+    String label,
+  ) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Switch(
+          value: value,
+          onChanged: onChanged,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        const SizedBox(width: 6),
+        Text(label, style: const TextStyle(fontSize: 13)),
+      ],
+    );
+  }
+
+  Widget _groupBox({required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade400),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: child,
+    );
+  }
 
   void _setDate(DateTime d) => setState(() {
-        _selectedDate = d;
-        _future = _loadData(d, _selectedSupplierId);
-      });
+    _selectedDate = d;
+    _future = _loadData(d, _selectedSupplierId);
+  });
 
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
@@ -310,86 +621,420 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
     if (picked != null) _setDate(picked);
   }
 
+  List<Product> _filteredProducts(_InvData data) {
+    var products = data.products;
+    if (_endingSortAscending != null) {
+      products = List.of(data.products)
+        ..sort((a, b) {
+          final cmp = (data.ending[a.id] ?? 0).compareTo(
+            data.ending[b.id] ?? 0,
+          );
+          return _endingSortAscending! ? cmp : -cmp;
+        });
+    }
+    if (_searchQuery.isNotEmpty) {
+      final q = _searchQuery.toLowerCase();
+      products = products
+          .where((p) => p.name.toLowerCase().contains(q))
+          .toList();
+    }
+    if (_showOnlyWithEnding) {
+      products = products.where((p) => (data.ending[p.id] ?? 0) > 0).toList();
+    }
+    if (_showOnlyWithBulkClear) {
+      products = products
+          .where((p) => (data.stockOutBulkClear[p.id] ?? 0) > 0)
+          .toList();
+    }
+    if (_showOnlyWithBO) {
+      products = products
+          .where((p) => (data.stockOutBO[p.id] ?? 0) > 0)
+          .toList();
+    }
+    if (_showOnlyZeroEnding) {
+      products = products.where((p) => (data.ending[p.id] ?? 0) == 0).toList();
+    }
+    return products;
+  }
+
+  Future<void> _print(_InvData data) async {
+    String? supplierName;
+    if (_selectedSupplierId != null) {
+      final suppliers = ref.read(suppliersListProvider).valueOrNull ?? [];
+      supplierName = suppliers
+          .where((s) => s.id == _selectedSupplierId)
+          .map((s) => s.name)
+          .firstOrNull;
+    }
+
+    final products = _filteredProducts(data);
+
+    final showSelling =
+        ref.read(inventoryReportShowSellingProvider).valueOrNull ?? false;
+
+    await printInventoryReport(
+      date: _selectedDate,
+      supplierName: supplierName,
+      totalEndingValue: showSelling
+          ? data.totalEndingSellingValue
+          : data.totalEndingValue,
+      endingValueLabel: showSelling
+          ? 'Ending Inventory Selling Value'
+          : 'Ending Inventory Capital Value',
+      totalStockInValue: data.totalStockInValue,
+      rows: products
+          .map(
+            (p) => InventoryReportRow(
+              productName: p.name,
+              piecesPerBox: p.piecesPerBox,
+              beginning: data.beginning[p.id] ?? 0,
+              stockIn: data.stockIn[p.id] ?? 0,
+              stockOutInvoices: data.stockOutInvoices[p.id] ?? 0,
+              stockOutVan: data.stockOutVan[p.id] ?? 0,
+              stockOutManual: data.stockOutManual[p.id] ?? 0,
+              stockOutBO: data.stockOutBO[p.id] ?? 0,
+              stockOutBulkClear: data.stockOutBulkClear[p.id] ?? 0,
+              ending: data.ending[p.id] ?? 0,
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  Future<void> _exportBulkClearCsv(_InvData data) async {
+    final products = data.products
+        .where((p) => (data.stockOutBulkClear[p.id] ?? 0) > 0)
+        .toList();
+
+    final buffer = StringBuffer('Product Name,Boxes,Pcs\r\n');
+    for (final p in products) {
+      final qty = data.stockOutBulkClear[p.id] ?? 0;
+      final boxes = qty ~/ p.piecesPerBox;
+      final pcs = qty % p.piecesPerBox;
+      final name = p.name.contains(',') ? '"${p.name}"' : p.name;
+      buffer.write('$name,$boxes,$pcs\r\n');
+    }
+
+    final home =
+        Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        '';
+    final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
+    final file = File('$home\\Desktop\\bulk_clear_$dateStr.csv');
+    await file.writeAsString(buffer.toString());
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Exported to ${file.path}')));
+  }
+
+  Future<void> _exportExcel(_InvData data) async {
+    final products = _filteredProducts(data);
+    final showSelling =
+        ref.read(inventoryReportShowSellingProvider).valueOrNull ?? false;
+    final endingValueLabel = showSelling
+        ? 'Ending Inventory Selling Value'
+        : 'Ending Inventory Capital Value';
+    final endingValueTotal = showSelling
+        ? data.totalEndingSellingValue
+        : data.totalEndingValue;
+
+    final book = xlsx.Excel.createExcel();
+    final sheet = book[book.sheets.keys.first];
+
+    void addRow(int r, List<Object> cells, {bool bold = false}) {
+      for (int c = 0; c < cells.length; c++) {
+        final cell = sheet.cell(
+          xlsx.CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r),
+        );
+        cell.value = cells[c];
+        if (bold) {
+          cell.cellStyle = xlsx.CellStyle(bold: true);
+        }
+      }
+    }
+
+    int r = 0;
+    addRow(r++, [
+      'Product',
+      'Beg Boxes',
+      'Beg Pcs',
+      'In Boxes',
+      'In Pcs',
+      'Invoices Boxes',
+      'Invoices Pcs',
+      'Off-site Boxes',
+      'Off-site Pcs',
+      'BO Boxes',
+      'BO Pcs',
+      'Bulk Clear Boxes',
+      'Bulk Clear Pcs',
+      'Manual Boxes',
+      'Manual Pcs',
+      'End Boxes',
+      'End Pcs',
+    ], bold: true);
+
+    for (final p in products) {
+      final row = InventoryReportRow(
+        productName: p.name,
+        piecesPerBox: p.piecesPerBox,
+        beginning: data.beginning[p.id] ?? 0,
+        stockIn: data.stockIn[p.id] ?? 0,
+        stockOutInvoices: data.stockOutInvoices[p.id] ?? 0,
+        stockOutVan: data.stockOutVan[p.id] ?? 0,
+        stockOutManual: data.stockOutManual[p.id] ?? 0,
+        stockOutBO: data.stockOutBO[p.id] ?? 0,
+        stockOutBulkClear: data.stockOutBulkClear[p.id] ?? 0,
+        ending: data.ending[p.id] ?? 0,
+      );
+      addRow(r++, [
+        row.productName,
+        row.begBoxes,
+        row.begPcs,
+        row.inBoxes,
+        row.inPcs,
+        row.outInvBoxes,
+        row.outInvPcs,
+        row.outVanBoxes,
+        row.outVanPcs,
+        row.outBOBoxes,
+        row.outBOPcs,
+        row.outBCBoxes,
+        row.outBCPcs,
+        row.outManBoxes,
+        row.outManPcs,
+        row.endBoxes,
+        row.endPcs,
+      ]);
+    }
+
+    r++;
+    addRow(r++, ['Stock In Value', data.totalStockInValue], bold: true);
+    addRow(r++, [endingValueLabel, endingValueTotal], bold: true);
+
+    final bytes = book.save();
+    if (bytes == null) return;
+
+    final home =
+        Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        '';
+    final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
+    final file = File('$home\\Desktop\\inventory_report_$dateStr.xlsx');
+    await file.writeAsBytes(bytes);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Exported to ${file.path}')));
+  }
+
   @override
   Widget build(BuildContext context) {
     final dateFmt = DateFormat('MMMM dd, yyyy');
 
     return Column(
       children: [
-        // ── Date navigation bar ───────────────────────────────────────
+        // ── Date navigation + supplier + search, all in one bar ─────────
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          padding: const EdgeInsets.fromLTRB(8, 6, 12, 4),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              IconButton(
-                icon: const Icon(Icons.chevron_left),
-                visualDensity: VisualDensity.compact,
-                onPressed: () => _setDate(
-                    _selectedDate.subtract(const Duration(days: 1))),
-              ),
-              Expanded(
-                child: GestureDetector(
-                  onTap: _pickDate,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.calendar_today,
-                          size: 16, color: Colors.grey),
-                      const SizedBox(width: 6),
-                      Text(
-                        dateFmt.format(_selectedDate),
-                        style: const TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w600),
+              _groupBox(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.chevron_left),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _setDate(
+                        _selectedDate.subtract(const Duration(days: 1)),
                       ),
-                    ],
+                    ),
+                    GestureDetector(
+                      onTap: _pickDate,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.calendar_today,
+                            size: 16,
+                            color: Colors.grey,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            dateFmt.format(_selectedDate),
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () =>
+                          _setDate(_selectedDate.add(const Duration(days: 1))),
+                    ),
+                    TextButton(
+                      onPressed: () => _setDate(DateTime.now()),
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      child: const Text('Today'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: _groupBox(
+                  child: ref
+                      .watch(suppliersListProvider)
+                      .maybeWhen(
+                        data: (suppliers) => Row(
+                          children: [
+                            const Text(
+                              'Supplier:',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: DropdownButton<String?>(
+                                value: _selectedSupplierId,
+                                isDense: true,
+                                isExpanded: true,
+                                underline: const SizedBox.shrink(),
+                                items: [
+                                  const DropdownMenuItem(
+                                    value: null,
+                                    child: Text('All Suppliers'),
+                                  ),
+                                  ...suppliers.map(
+                                    (s) => DropdownMenuItem(
+                                      value: s.id,
+                                      child: Text(s.name),
+                                    ),
+                                  ),
+                                ],
+                                onChanged: (v) {
+                                  _selectedSupplierId = v;
+                                  _reload();
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                        orElse: () => const SizedBox.shrink(),
+                      ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 3,
+                child: SizedBox(
+                  height: 36,
+                  child: TextField(
+                    controller: _searchCtrl,
+                    style: const TextStyle(fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: 'Search product…',
+                      prefixIcon: const Icon(Icons.search, size: 18),
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, size: 18),
+                              onPressed: () => setState(() {
+                                _searchCtrl.clear();
+                                _searchQuery = '';
+                              }),
+                            )
+                          : null,
+                    ),
+                    onChanged: (v) => setState(() => _searchQuery = v.trim()),
                   ),
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.chevron_right),
-                visualDensity: VisualDensity.compact,
-                onPressed: () =>
-                    _setDate(_selectedDate.add(const Duration(days: 1))),
-              ),
-              TextButton(
-                onPressed: () => _setDate(DateTime.now()),
-                style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact),
-                child: const Text('Today'),
+              const SizedBox(width: 10),
+              _groupBox(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.print),
+                      tooltip: 'Print inventory report',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () async {
+                        final data = await _future;
+                        if (mounted) await _print(data);
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.table_chart),
+                      tooltip: 'Download inventory report as Excel (Desktop)',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () async {
+                        final data = await _future;
+                        if (mounted) await _exportExcel(data);
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.file_download),
+                      tooltip: 'Export Bulk Clear to CSV (Desktop)',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () async {
+                        final data = await _future;
+                        if (mounted) await _exportBulkClearCsv(data);
+                      },
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
         ),
-        // ── Supplier filter ───────────────────────────────────────────
+        // ── Row filter toggles ──────────────────────────────────────────
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          child: ref.watch(suppliersListProvider).maybeWhen(
-                data: (suppliers) => Row(
-                  children: [
-                    const Text('Supplier:',
-                        style: TextStyle(fontSize: 13, color: Colors.grey)),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: DropdownButton<String?>(
-                        value: _selectedSupplierId,
-                        isDense: true,
-                        isExpanded: true,
-                        items: [
-                          const DropdownMenuItem(
-                              value: null, child: Text('All Suppliers')),
-                          ...suppliers.map((s) => DropdownMenuItem(
-                              value: s.id, child: Text(s.name))),
-                        ],
-                        onChanged: (v) {
-                          _selectedSupplierId = v;
-                          _reload();
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                orElse: () => const SizedBox.shrink(),
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+          child: Wrap(
+            spacing: 16,
+            runSpacing: 0,
+            children: [
+              _buildFilterToggle(
+                _showOnlyWithEnding,
+                (v) => setState(() => _showOnlyWithEnding = v),
+                'Show only rows with ending inventory',
               ),
+              _buildFilterToggle(
+                _showOnlyWithBulkClear,
+                (v) => setState(() => _showOnlyWithBulkClear = v),
+                'Show only rows with Stock Out - Bulk Clear',
+              ),
+              _buildFilterToggle(
+                _showOnlyWithBO,
+                (v) => setState(() => _showOnlyWithBO = v),
+                'Show only rows with BOs',
+              ),
+              _buildFilterToggle(
+                _showOnlyZeroEnding,
+                (v) => setState(() => _showOnlyZeroEnding = v),
+                'Show only rows with 0 ending inventory',
+              ),
+            ],
+          ),
         ),
         const Divider(height: 1),
 
@@ -405,157 +1050,556 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
                 return Center(child: Text('Error: ${snapshot.error}'));
               }
               final data = snapshot.data!;
-              // Column flex: product=4, each pair=3 (1.5+1.5), total=13
-              return SingleChildScrollView(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  children: [
-                    // ── Group header row (Row widget for true centering) ──
-                    Container(
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade400),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            flex: 4,
-                            child: Container(
-                              color: Colors.grey.shade300,
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 8, horizontal: 8),
-                              child: const Text(''),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 3,
-                            child: Container(
-                              color: _begDark,
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              child: const Text('Beginning',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(fontWeight: FontWeight.bold)),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 3,
-                            child: Container(
-                              color: _inDark,
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              child: const Text('Stock In',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(fontWeight: FontWeight.bold)),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 3,
-                            child: Container(
-                              color: _outDark,
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              child: const Text('Stock Out',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(fontWeight: FontWeight.bold)),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 3,
-                            child: Container(
-                              color: _endDark,
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              child: const Text('Ending',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(fontWeight: FontWeight.bold)),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // ── Column labels + data rows (Table) ──
-                    Table(
-                      border: TableBorder.all(color: Colors.grey.shade400),
-                      columnWidths: const {
-                        0: FlexColumnWidth(4),
-                        1: FlexColumnWidth(1.5),
-                        2: FlexColumnWidth(1.5),
-                        3: FlexColumnWidth(1.5),
-                        4: FlexColumnWidth(1.5),
-                        5: FlexColumnWidth(1.5),
-                        6: FlexColumnWidth(1.5),
-                        7: FlexColumnWidth(1.5),
-                        8: FlexColumnWidth(1.5),
-                      },
+              var sortedProducts = data.products;
+              if (_endingSortAscending != null) {
+                sortedProducts = List.of(data.products)
+                  ..sort((a, b) {
+                    final cmp = (data.ending[a.id] ?? 0).compareTo(
+                      data.ending[b.id] ?? 0,
+                    );
+                    return _endingSortAscending! ? cmp : -cmp;
+                  });
+              }
+              if (_searchQuery.isNotEmpty) {
+                final q = _searchQuery.toLowerCase();
+                sortedProducts = sortedProducts
+                    .where((p) => p.name.toLowerCase().contains(q))
+                    .toList();
+              }
+              if (_showOnlyWithEnding) {
+                sortedProducts = sortedProducts
+                    .where((p) => (data.ending[p.id] ?? 0) > 0)
+                    .toList();
+              }
+              if (_showOnlyWithBulkClear) {
+                sortedProducts = sortedProducts
+                    .where((p) => (data.stockOutBulkClear[p.id] ?? 0) > 0)
+                    .toList();
+              }
+              if (_showOnlyWithBO) {
+                sortedProducts = sortedProducts
+                    .where((p) => (data.stockOutBO[p.id] ?? 0) > 0)
+                    .toList();
+              }
+              if (_showOnlyZeroEnding) {
+                sortedProducts = sortedProducts
+                    .where((p) => (data.ending[p.id] ?? 0) == 0)
+                    .toList();
+              }
+              const colWidths = {
+                0: FlexColumnWidth(4),
+                1: FlexColumnWidth(1.5),
+                2: FlexColumnWidth(1.5),
+                3: FlexColumnWidth(1.5),
+                4: FlexColumnWidth(1.5),
+                5: FlexColumnWidth(1.5),
+                6: FlexColumnWidth(1.5),
+                7: FlexColumnWidth(1.5),
+                8: FlexColumnWidth(1.5),
+                9: FlexColumnWidth(1.5),
+                10: FlexColumnWidth(1.5),
+                11: FlexColumnWidth(1.5),
+                12: FlexColumnWidth(1.5),
+                13: FlexColumnWidth(1.5),
+                14: FlexColumnWidth(1.5),
+                15: FlexColumnWidth(1.5),
+                16: FlexColumnWidth(1.5),
+              };
+              final headerBorder = TableBorder(
+                left: BorderSide(color: Colors.grey.shade400),
+                right: BorderSide(color: Colors.grey.shade400),
+                bottom: BorderSide(color: Colors.grey.shade400),
+                verticalInside: BorderSide(color: Colors.grey.shade400),
+              );
+              final dataBorder = TableBorder(
+                left: BorderSide(color: Colors.grey.shade400),
+                right: BorderSide(color: Colors.grey.shade400),
+                bottom: BorderSide(color: Colors.grey.shade400),
+                horizontalInside: BorderSide(color: Colors.grey.shade400),
+                verticalInside: BorderSide(color: Colors.grey.shade400),
+              );
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // ── Sticky headers ──────────────────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // Column label row (medium shades)
-                        TableRow(children: [
-                          _cell('Product', Colors.grey.shade200, bold: true),
-                          _cell('Boxes', _begMid, bold: true, center: true),
-                          _cell('Pcs',   _begMid, bold: true, center: true),
-                          _cell('Boxes', _inMid,  bold: true, center: true),
-                          _cell('Pcs',   _inMid,  bold: true, center: true),
-                          _cell('Boxes', _outMid, bold: true, center: true),
-                          _cell('Pcs',   _outMid, bold: true, center: true),
-                          _cell('Boxes', _endMid, bold: true, center: true),
-                          _cell('Pcs',   _endMid, bold: true, center: true),
-                        ]),
-                        // Data rows (light shades)
-                        ...data.products.map((p) {
-                          final beg = data.beginning[p.id] ?? 0;
-                          final inn = data.stockIn[p.id]  ?? 0;
-                          final out = data.stockOut[p.id] ?? 0;
-                          final end = data.ending[p.id]   ?? 0;
-                          return TableRow(children: [
-                            _cell(p.name, null),
-                            _cell(_fmt(beg ~/ p.piecesPerBox), _begLight, center: true),
-                            _cell(_fmt(beg % p.piecesPerBox),  _begLight, center: true),
-                            _cell(_fmt(inn ~/ p.piecesPerBox), _inLight,  center: true),
-                            _cell(_fmt(inn % p.piecesPerBox),  _inLight,  center: true),
-                            _cell(_fmt(out ~/ p.piecesPerBox), _outLight, center: true),
-                            _cell(_fmt(out % p.piecesPerBox),  _outLight, center: true),
-                            _cell(_fmt(end ~/ p.piecesPerBox), _endLight, center: true),
-                            _cell(_fmt(end % p.piecesPerBox),  _endLight, center: true),
-                          ]);
-                        }),
+                        // Group header row
+                        Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey.shade400),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 4,
+                                child: Container(
+                                  color: Colors.grey.shade300,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 8,
+                                    horizontal: 8,
+                                  ),
+                                  child: const Text(''),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 3,
+                                child: Container(
+                                  color: _begDark,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 8,
+                                  ),
+                                  child: const Text(
+                                    'Beginning',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 3,
+                                child: Container(
+                                  color: _inDark,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 8,
+                                  ),
+                                  child: const Text(
+                                    'Stock In',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 15,
+                                child: Container(
+                                  color: _outDark,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 8,
+                                  ),
+                                  child: const Text(
+                                    'Stock Out',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 3,
+                                child: InkWell(
+                                  onTap: () => setState(() {
+                                    _endingSortAscending =
+                                        _endingSortAscending == null
+                                        ? true
+                                        : (_endingSortAscending!
+                                              ? false
+                                              : null);
+                                  }),
+                                  child: Container(
+                                    color: _endDark,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 8,
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        const Text(
+                                          'Ending',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Icon(
+                                          _endingSortAscending == null
+                                              ? Icons.unfold_more
+                                              : (_endingSortAscending!
+                                                    ? Icons.arrow_upward
+                                                    : Icons.arrow_downward),
+                                          size: 16,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Stock-out sub-group header row (Invoices / BO)
+                        Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey.shade400),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 4,
+                                child: Container(
+                                  color: Colors.grey.shade300,
+                                  child: const Text(''),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 3,
+                                child: Container(
+                                  color: _begDark,
+                                  child: const Text(''),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 3,
+                                child: Container(
+                                  color: _inDark,
+                                  child: const Text(''),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 3,
+                                child: Container(
+                                  color: _outMid,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 4,
+                                  ),
+                                  child: const Text(
+                                    'Invoices',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 3,
+                                child: Container(
+                                  color: _vanMid,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 4,
+                                  ),
+                                  child: const Text(
+                                    'Off-site',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 3,
+                                child: Container(
+                                  color: _boMid,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 4,
+                                  ),
+                                  child: const Text(
+                                    'BO',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 3,
+                                child: Container(
+                                  color: _bcMid,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 4,
+                                  ),
+                                  child: const Text(
+                                    'Bulk Clear',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 3,
+                                child: Container(
+                                  color: _manMid,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 4,
+                                  ),
+                                  child: const Text(
+                                    'Manual',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 3,
+                                child: Container(
+                                  color: _endDark,
+                                  child: const Text(''),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Column labels row
+                        Table(
+                          border: headerBorder,
+                          columnWidths: colWidths,
+                          children: [
+                            TableRow(
+                              children: [
+                                _cell(
+                                  'Product',
+                                  Colors.grey.shade200,
+                                  bold: true,
+                                ),
+                                _cell(
+                                  'Boxes',
+                                  _begMid,
+                                  bold: true,
+                                  center: true,
+                                ),
+                                _cell('Pcs', _begMid, bold: true, center: true),
+                                _cell(
+                                  'Boxes',
+                                  _inMid,
+                                  bold: true,
+                                  center: true,
+                                ),
+                                _cell('Pcs', _inMid, bold: true, center: true),
+                                _cell(
+                                  'Boxes',
+                                  _outMid,
+                                  bold: true,
+                                  center: true,
+                                ),
+                                _cell('Pcs', _outMid, bold: true, center: true),
+                                _cell(
+                                  'Boxes',
+                                  _vanMid,
+                                  bold: true,
+                                  center: true,
+                                ),
+                                _cell('Pcs', _vanMid, bold: true, center: true),
+                                _cell(
+                                  'Boxes',
+                                  _boMid,
+                                  bold: true,
+                                  center: true,
+                                ),
+                                _cell('Pcs', _boMid, bold: true, center: true),
+                                _cell(
+                                  'Boxes',
+                                  _bcMid,
+                                  bold: true,
+                                  center: true,
+                                ),
+                                _cell('Pcs', _bcMid, bold: true, center: true),
+                                _cell(
+                                  'Boxes',
+                                  _manMid,
+                                  bold: true,
+                                  center: true,
+                                ),
+                                _cell('Pcs', _manMid, bold: true, center: true),
+                                _cell(
+                                  'Boxes',
+                                  _endMid,
+                                  bold: true,
+                                  center: true,
+                                ),
+                                _cell('Pcs', _endMid, bold: true, center: true),
+                              ],
+                            ),
+                          ],
+                        ),
                       ],
                     ),
-
-                    // ── Stock-in value aligned under the Stock In group ──
-                    if (data.totalStockInValue > 0)
-                      Row(
+                  ),
+                  // ── Scrollable data rows + footer ───────────────────────
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Expanded(flex: 4, child: const SizedBox()),
-                          Expanded(flex: 3, child: const SizedBox()),
-                          Expanded(
-                            flex: 3,
-                            child: Container(
-                              color: _inLight,
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 4, horizontal: 6),
-                              child: Text(
-                                formatCurrency(data.totalStockInValue),
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12),
-                              ),
-                            ),
+                          Table(
+                            border: dataBorder,
+                            columnWidths: colWidths,
+                            children: [
+                              ...sortedProducts.map((p) {
+                                final beg = data.beginning[p.id] ?? 0;
+                                final inn = data.stockIn[p.id] ?? 0;
+                                final outInv = data.stockOutInvoices[p.id] ?? 0;
+                                final outVan = data.stockOutVan[p.id] ?? 0;
+                                final outBO = data.stockOutBO[p.id] ?? 0;
+                                final outBC = data.stockOutBulkClear[p.id] ?? 0;
+                                final outMan = data.stockOutManual[p.id] ?? 0;
+                                final end = data.ending[p.id] ?? 0;
+                                return TableRow(
+                                  children: [
+                                    _cell(p.name, null),
+                                    _cell(
+                                      _fmt(beg ~/ p.piecesPerBox),
+                                      _begLight,
+                                      center: true,
+                                    ),
+                                    _cell(
+                                      _fmt(beg % p.piecesPerBox),
+                                      _begLight,
+                                      center: true,
+                                    ),
+                                    _cell(
+                                      _fmt(inn ~/ p.piecesPerBox),
+                                      _inLight,
+                                      center: true,
+                                    ),
+                                    _cell(
+                                      _fmt(inn % p.piecesPerBox),
+                                      _inLight,
+                                      center: true,
+                                    ),
+                                    _cell(
+                                      _fmt(outInv ~/ p.piecesPerBox),
+                                      _outLight,
+                                      center: true,
+                                    ),
+                                    _cell(
+                                      _fmt(outInv % p.piecesPerBox),
+                                      _outLight,
+                                      center: true,
+                                    ),
+                                    _cell(
+                                      _fmt(outVan ~/ p.piecesPerBox),
+                                      _vanLight,
+                                      center: true,
+                                    ),
+                                    _cell(
+                                      _fmt(outVan % p.piecesPerBox),
+                                      _vanLight,
+                                      center: true,
+                                    ),
+                                    _cell(
+                                      _fmt(outBO ~/ p.piecesPerBox),
+                                      _boLight,
+                                      center: true,
+                                    ),
+                                    _cell(
+                                      _fmt(outBO % p.piecesPerBox),
+                                      _boLight,
+                                      center: true,
+                                    ),
+                                    _cell(
+                                      _fmt(outBC ~/ p.piecesPerBox),
+                                      _bcLight,
+                                      center: true,
+                                    ),
+                                    _cell(
+                                      _fmt(outBC % p.piecesPerBox),
+                                      _bcLight,
+                                      center: true,
+                                    ),
+                                    _cell(
+                                      _fmt(outMan ~/ p.piecesPerBox),
+                                      _manLight,
+                                      center: true,
+                                    ),
+                                    _cell(
+                                      _fmt(outMan % p.piecesPerBox),
+                                      _manLight,
+                                      center: true,
+                                    ),
+                                    _cell(
+                                      _fmt(end ~/ p.piecesPerBox),
+                                      _endLight,
+                                      center: true,
+                                    ),
+                                    _cell(
+                                      _fmt(end % p.piecesPerBox),
+                                      _endLight,
+                                      center: true,
+                                    ),
+                                  ],
+                                );
+                              }),
+                            ],
                           ),
-                          Expanded(flex: 3, child: const SizedBox()),
-                          Expanded(flex: 3, child: const SizedBox()),
+                          // ── Stock-in value aligned under the Stock In group ──
+                          if (data.totalStockInValue > 0)
+                            Row(
+                              children: [
+                                Expanded(flex: 4, child: const SizedBox()),
+                                Expanded(flex: 3, child: const SizedBox()),
+                                Expanded(
+                                  flex: 3,
+                                  child: Container(
+                                    color: _inLight,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 4,
+                                      horizontal: 6,
+                                    ),
+                                    child: Text(
+                                      formatCurrency(data.totalStockInValue),
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Expanded(flex: 15, child: const SizedBox()),
+                                Expanded(flex: 3, child: const SizedBox()),
+                              ],
+                            ),
+                          // ── Ending inventory total footer ──
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Text(
+                                '${sortedProducts.length} product(s)',
+                                style: const TextStyle(color: Colors.grey),
+                              ),
+                              const Spacer(),
+                              Text(
+                                (ref
+                                            .watch(
+                                              inventoryReportShowSellingProvider,
+                                            )
+                                            .valueOrNull ??
+                                        false)
+                                    ? 'Ending Inventory Selling Value: ${formatCurrency(data.totalEndingSellingValue)}'
+                                    : 'Ending Inventory Capital Value: ${formatCurrency(data.totalEndingValue)}',
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
                         ],
                       ),
-
-                    // ── Ending inventory total footer ──
-                    const SizedBox(height: 12),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        'Ending Inventory Value: ${formatCurrency(data.totalEndingValue)}',
-                        style: const TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.bold),
-                      ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               );
             },
           ),
@@ -565,36 +1609,50 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
   }
 
   // ── Group colour palette ──────────────────────────────────────────
-  static final _begDark  = Colors.blue.shade200;
-  static final _begMid   = Colors.blue.shade100;
+  static final _begDark = Colors.blue.shade200;
+  static final _begMid = Colors.blue.shade100;
   static final _begLight = Colors.blue.shade50;
 
-  static final _inDark   = Colors.teal.shade200;
-  static final _inMid    = Colors.teal.shade100;
-  static final _inLight  = Colors.teal.shade50;
+  static final _inDark = Colors.teal.shade200;
+  static final _inMid = Colors.teal.shade100;
+  static final _inLight = Colors.teal.shade50;
 
-  static final _outDark  = Colors.orange.shade200;
-  static final _outMid   = Colors.orange.shade100;
+  static final _outDark = Colors.orange.shade200;
+  static final _outMid = Colors.orange.shade100;
   static final _outLight = Colors.orange.shade50;
 
-  static final _endDark  = Colors.green.shade200;
-  static final _endMid   = Colors.green.shade100;
+  static final _boMid = Colors.amber.shade100;
+  static final _boLight = Colors.amber.shade50;
+
+  static final _bcMid = const Color.fromARGB(255, 250, 228, 149);
+  static final _bcLight = const Color.fromARGB(255, 247, 234, 195);
+
+  static final _vanMid = Colors.purple.shade100;
+  static final _vanLight = Colors.purple.shade50;
+
+  static final _manMid = Colors.pink.shade100;
+  static final _manLight = Colors.pink.shade50;
+
+  static final _endDark = Colors.green.shade200;
+  static final _endMid = Colors.green.shade100;
   static final _endLight = Colors.green.shade50;
 
   String _fmt(int v) => v > 0 ? '$v' : '';
 
-  Widget _cell(String text, Color? bg,
-      {bool bold = false, bool center = false}) =>
-      Container(
-        color: bg,
-        padding: const EdgeInsets.all(8),
-        child: Text(
-          text,
-          textAlign: center ? TextAlign.center : TextAlign.start,
-          style: TextStyle(
-              fontWeight: bold ? FontWeight.bold : FontWeight.normal),
-        ),
-      );
+  Widget _cell(
+    String text,
+    Color? bg, {
+    bool bold = false,
+    bool center = false,
+  }) => Container(
+    color: bg,
+    padding: const EdgeInsets.all(8),
+    child: Text(
+      text,
+      textAlign: center ? TextAlign.center : TextAlign.start,
+      style: TextStyle(fontWeight: bold ? FontWeight.bold : FontWeight.normal),
+    ),
+  );
 
   /// Computes beginning and ending inventory for [date] relative to the
   /// current physical stock.
@@ -602,108 +1660,207 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
   /// Ending   = current + pieces sold AFTER selected date
   /// Beginning = ending + pieces sold ON selected date
   Future<_InvData> _loadData(DateTime date, String? supplierId) async {
-    var products = await ref.read(productRepositoryProvider).getAll();
+    final productRepo = ref.read(productRepositoryProvider);
+    final supplierRepo = ref.read(supplierRepositoryProvider);
+    final inventoryRepo = ref.read(inventoryRepositoryProvider);
+
+    final initialData = await Future.wait([
+      productRepo.getAll(),
+      supplierRepo.getAll(),
+      inventoryRepo.getAll(),
+    ]);
+    var products = initialData[0] as List<Product>;
+    final suppliers = initialData[1] as List<Supplier>;
+    final inventoryItems = initialData[2] as List<InventoryItem>;
     if (supplierId != null) {
       products = products.where((p) => p.supplierId == supplierId).toList();
     }
 
-    final inventoryItems =
-        await ref.read(inventoryRepositoryProvider).getAll();
+    // Sort by supplier name, then alphabetically by product name.
+    final supplierNames = {for (final s in suppliers) s.id: s.name};
+    products = List.of(products)
+      ..sort((a, b) {
+        final cmp = (supplierNames[a.supplierId] ?? '').compareTo(
+          supplierNames[b.supplierId] ?? '',
+        );
+        return cmp != 0 ? cmp : a.name.compareTo(b.name);
+      });
+
     final currentInv = <String, int>{
-      for (final i in inventoryItems) i.productId: i.quantityPieces
+      for (final i in inventoryItems) i.productId: i.quantityPieces,
     };
 
     final dayStart = DateTime(date.year, date.month, date.day);
     final dayEnd = dayStart.add(const Duration(days: 1));
     final now = DateTime.now();
-    final nowEnd =
-        DateTime(now.year, now.month, now.day + 1);
+    // +2 days so that invoices dated tomorrow (the new default) are always
+    // captured in the "after" window for today's report.
+    final nowEnd = DateTime(now.year, now.month, now.day + 2);
 
-    // Pieces sold ON the selected date
-    final onDate = await _sumSold(ref, dayStart, dayEnd);
-
-    // Pieces sold AFTER the selected date (day+1 → today)
-    final Map<String, int> afterDate;
-    if (dayEnd.isBefore(nowEnd)) {
-      afterDate = await _sumSold(ref, dayEnd, nowEnd);
-    } else {
-      afterDate = {};
+    // Helper: sum van stock transactions by type for a date range
+    Future<Map<String, int>> sumVan(
+      String type,
+      DateTime from,
+      DateTime to,
+    ) async {
+      final txs = await ref
+          .read(vanStockRepositoryProvider)
+          .getForRange(from, to);
+      final totals = <String, int>{};
+      for (final t in txs.where((t) => t.type == type)) {
+        totals[t.productId] = (totals[t.productId] ?? 0) + t.quantityPieces;
+      }
+      return totals;
     }
 
-    // Stock-in ON the selected date
-    final stockIn = await ref
+    Map<String, int> merge(Map<String, int> a, Map<String, int> b) {
+      final r = Map<String, int>.from(a);
+      for (final e in b.entries) {
+        r[e.key] = (r[e.key] ?? 0) + e.value;
+      }
+      return r;
+    }
+
+    // Pieces sold + van-out + manually-removed stock ON the selected date → Stock Out
+    final invoiceOut = await _sumSold(ref, dayStart, dayEnd);
+    final vanOutOnDate = await sumVan('out', dayStart, dayEnd);
+    final (movOutOnDate, badOrderOutOnDate, bulkClearOutOnDate) = await ref
+        .read(stockMovementRepositoryProvider)
+        .sumOutSplitForDate(date);
+    final stockOutInvoices = invoiceOut;
+    final stockOutVan = vanOutOnDate;
+    final stockOutManual = movOutOnDate;
+    final stockOutBO = badOrderOutOnDate;
+    final stockOutBulkClear = bulkClearOutOnDate;
+    final onDate = merge(
+      merge(
+        merge(merge(stockOutInvoices, stockOutVan), stockOutManual),
+        stockOutBO,
+      ),
+      stockOutBulkClear,
+    );
+
+    // Pieces sold + van-out + manually-removed stock AFTER the selected date
+    final Map<String, int> invoiceOutAfter;
+    final Map<String, int> vanOutAfter;
+    final Map<String, int> movOutAfter;
+    if (dayEnd.isBefore(nowEnd)) {
+      invoiceOutAfter = await _sumSold(ref, dayEnd, nowEnd);
+      vanOutAfter = await sumVan('out', dayEnd, nowEnd);
+      final (nonBOAfter, boAfter, bulkClearAfter) = await ref
+          .read(stockMovementRepositoryProvider)
+          .sumOutSplitForRange(dayEnd, nowEnd);
+      movOutAfter = merge(merge(nonBOAfter, boAfter), bulkClearAfter);
+    } else {
+      invoiceOutAfter = {};
+      vanOutAfter = {};
+      movOutAfter = {};
+    }
+    final afterDate = merge(merge(invoiceOutAfter, vanOutAfter), movOutAfter);
+
+    // Stock-in (movements) + van-in ON the selected date → Stock In
+    final movIn = await ref
         .read(stockMovementRepositoryProvider)
         .sumInForDate(date);
+    final vanInOnDate = await sumVan('in', dayStart, dayEnd);
+    final stockIn = merge(movIn, vanInOnDate);
 
-    // Stock-in AFTER the selected date (needed to back-calculate ending correctly)
-    final Map<String, int> stockInAfter;
+    // Stock-in + van-in AFTER the selected date
+    final Map<String, int> movInAfter;
+    final Map<String, int> vanInAfter;
     if (dayEnd.isBefore(nowEnd)) {
-      stockInAfter = await ref
+      movInAfter = await ref
           .read(stockMovementRepositoryProvider)
           .sumInForRange(dayEnd, nowEnd);
+      vanInAfter = await sumVan('in', dayEnd, nowEnd);
     } else {
-      stockInAfter = {};
+      movInAfter = {};
+      vanInAfter = {};
     }
+    final stockInAfter = merge(movInAfter, vanInAfter);
 
     // Reconstruct ending and beginning by working backwards from current stock.
-    // ending   = current + sold_after  - stockIn_after   (undo post-date changes)
-    // beginning = ending  + sold_on_date - stockIn_on_date (undo same-day changes)
+    // ending   = current + (sold+vanOut)_after  - (movIn+vanIn)_after
+    // beginning = ending  + (sold+vanOut)_on_date - (movIn+vanIn)_on_date
     final ending = <String, int>{};
     final beginning = <String, int>{};
     for (final p in products) {
-      final end = (currentInv[p.id] ?? 0)
-          + (afterDate[p.id] ?? 0)
-          - (stockInAfter[p.id] ?? 0);
+      final end =
+          (currentInv[p.id] ?? 0) +
+          (afterDate[p.id] ?? 0) -
+          (stockInAfter[p.id] ?? 0);
       ending[p.id] = end.clamp(0, 999999);
       final beg = end + (onDate[p.id] ?? 0) - (stockIn[p.id] ?? 0);
       beginning[p.id] = beg.clamp(0, 999999);
     }
 
+    // A "Bulk clear restock import" merely undoes a same-date "Bulk clear all
+    // stock" out-movement, so for *display* purposes the two cancel each
+    // other out (up to their overlap) — otherwise Stock In would appear to
+    // double-count stock that was only ever cleared and restored the same
+    // day. Beginning/Ending above are computed from the raw totals and are
+    // unaffected.
+    final bcRestockOnDate = await ref
+        .read(stockMovementRepositoryProvider)
+        .sumBulkClearRestockForDate(date);
+    final stockInDisplay = <String, int>{};
+    final stockOutBulkClearDisplay = <String, int>{};
+    for (final p in products) {
+      final restock = bcRestockOnDate[p.id] ?? 0;
+      final bulkClear = stockOutBulkClear[p.id] ?? 0;
+      final overlap = restock < bulkClear ? restock : bulkClear;
+      stockInDisplay[p.id] = (stockIn[p.id] ?? 0) - overlap;
+      stockOutBulkClearDisplay[p.id] = bulkClear - overlap;
+    }
+
     // Total ending inventory value = ending pieces × withdrawal price
     // Total stock-in value = stock-in pieces × withdrawal price
-    double totalEndingValue  = 0;
+    double totalEndingValue = 0;
+    double totalEndingSellingValue = 0;
     double totalStockInValue = 0;
+    final priceData = await Future.wait([
+      productRepo.getAllCurrentPrices(),
+      productRepo.getAllCurrentCostPrices(),
+    ]);
+    final withdrawalPrices = priceData[1];
+    final sellingPrices = priceData[0];
     for (final p in products) {
-      final price = await ref
-          .read(productRepositoryProvider)
-          .getCurrentPrice(p.id);
-      if (price == null) continue;
+      final withdrawalPrice = withdrawalPrices[p.id];
+      final sellingPrice = sellingPrices[p.id];
+      if (withdrawalPrice == null || sellingPrice == null) continue;
       final endPieces = ending[p.id] ?? 0;
       if (endPieces > 0) {
-        totalEndingValue += price.withdrawalPrice * endPieces;
+        totalEndingValue += withdrawalPrice * endPieces;
+        totalEndingSellingValue += sellingPrice * endPieces;
       }
-      final inPieces = stockIn[p.id] ?? 0;
+      final inPieces = stockInDisplay[p.id] ?? 0;
       if (inPieces > 0) {
-        totalStockInValue += price.withdrawalPrice * inPieces;
+        totalStockInValue += withdrawalPrice * inPieces;
       }
     }
 
     return _InvData(
-        products: products,
-        beginning: beginning,
-        stockIn: stockIn,
-        stockOut: onDate,
-        ending: ending,
-        totalEndingValue: totalEndingValue,
-        totalStockInValue: totalStockInValue);
+      products: products,
+      beginning: beginning,
+      stockIn: stockInDisplay,
+      stockOutInvoices: stockOutInvoices,
+      stockOutVan: stockOutVan,
+      stockOutManual: stockOutManual,
+      stockOutBO: stockOutBO,
+      stockOutBulkClear: stockOutBulkClearDisplay,
+      ending: ending,
+      totalEndingValue: totalEndingValue,
+      totalEndingSellingValue: totalEndingSellingValue,
+      totalStockInValue: totalStockInValue,
+    );
   }
 
   Future<Map<String, int>> _sumSold(
-      WidgetRef ref, DateTime from, DateTime to) async {
-    final invoices = await ref
-        .read(invoiceRepositoryProvider)
-        .getAll(startDate: from, endDate: to);
-    final sold = <String, int>{};
-    for (final inv in invoices) {
-      if (inv.status == 'cancelled') continue;
-      final items =
-          await ref.read(invoiceRepositoryProvider).getItems(inv.id);
-      for (final item in items) {
-        sold[item.productId] =
-            (sold[item.productId] ?? 0) + item.quantity;
-      }
-    }
-    return sold;
+    WidgetRef ref,
+    DateTime from,
+    DateTime to,
+  ) async {
+    return ref.read(invoiceRepositoryProvider).sumSoldPieces(from, to);
   }
 }
 
@@ -711,38 +1868,134 @@ class _InvData {
   final List<Product> products;
   final Map<String, int> beginning;
   final Map<String, int> stockIn;
-  final Map<String, int> stockOut;
+  final Map<String, int> stockOutInvoices;
+  final Map<String, int> stockOutVan;
+  final Map<String, int> stockOutManual;
+  final Map<String, int> stockOutBO;
+  final Map<String, int> stockOutBulkClear;
   final Map<String, int> ending;
   final double totalEndingValue;
+  final double totalEndingSellingValue;
   final double totalStockInValue;
 
   const _InvData({
     required this.products,
     required this.beginning,
     required this.stockIn,
-    required this.stockOut,
+    required this.stockOutInvoices,
+    required this.stockOutVan,
+    required this.stockOutManual,
+    required this.stockOutBO,
+    required this.stockOutBulkClear,
     required this.ending,
     required this.totalEndingValue,
+    required this.totalEndingSellingValue,
     required this.totalStockInValue,
   });
 }
 
-// ── Product Movements Tab ─────────────────────────────────────────────────────
+// ── Top Moving Products Tab ───────────────────────────────────────────────────
 
 enum _MovementPeriod { day, week, month, year }
 
-class _ProductMovementsTab extends ConsumerStatefulWidget {
-  const _ProductMovementsTab();
+class _TopProductRow {
+  final String productId;
+  final String productName;
+  final String supplierName;
+  final String supplierId;
+  final int piecesPerBox;
+  int soldPieces;
+  double totalAmount;
+  double totalCapital;
 
-  @override
-  ConsumerState<_ProductMovementsTab> createState() =>
-      _ProductMovementsTabState();
+  _TopProductRow({
+    required this.productId,
+    required this.productName,
+    required this.supplierName,
+    required this.supplierId,
+    required this.piecesPerBox,
+    required this.soldPieces,
+    required this.totalAmount,
+    this.totalCapital = 0,
+  });
+
+  int get soldBoxes => soldPieces ~/ piecesPerBox;
+  int get soldRemain => soldPieces % piecesPerBox;
+  double get profit => totalAmount - totalCapital;
 }
 
-class _ProductMovementsTabState extends ConsumerState<_ProductMovementsTab> {
+enum _TopSortField { sales, boxes, pieces, profit }
+
+class _TopMovingProductsTab extends ConsumerStatefulWidget {
+  const _TopMovingProductsTab();
+
+  @override
+  ConsumerState<_TopMovingProductsTab> createState() =>
+      _TopMovingProductsTabState();
+}
+
+class _TopMovingProductsTabState extends ConsumerState<_TopMovingProductsTab> {
   _MovementPeriod _period = _MovementPeriod.month;
   DateTime _anchor = DateTime.now();
-  late Future<List<_MovementRow>> _future;
+  String? _selectedSupplierId;
+  _TopSortField _sortField = _TopSortField.sales;
+  bool _sortAscending = false;
+  late Future<List<_TopProductRow>> _future;
+  final Set<String> _excludedProductIds = {};
+
+  void _toggleExcluded(String productId) => setState(() {
+    if (!_excludedProductIds.add(productId)) {
+      _excludedProductIds.remove(productId);
+    }
+  });
+
+  void _setSortField(_TopSortField field) => setState(() {
+    if (_sortField == field) {
+      _sortAscending = !_sortAscending;
+    } else {
+      _sortField = field;
+      _sortAscending = false;
+    }
+  });
+
+  List<_TopProductRow> _sortRows(List<_TopProductRow> rows) {
+    final sorted = List<_TopProductRow>.from(rows);
+    int Function(_TopProductRow, _TopProductRow) cmp;
+    switch (_sortField) {
+      case _TopSortField.sales:
+        cmp = (a, b) => a.totalAmount.compareTo(b.totalAmount);
+      case _TopSortField.boxes:
+        cmp = (a, b) => a.soldBoxes.compareTo(b.soldBoxes);
+      case _TopSortField.pieces:
+        cmp = (a, b) => a.soldPieces.compareTo(b.soldPieces);
+      case _TopSortField.profit:
+        cmp = (a, b) => a.profit.compareTo(b.profit);
+    }
+    sorted.sort((a, b) => _sortAscending ? cmp(a, b) : cmp(b, a));
+    return sorted;
+  }
+
+  Widget _sortChip(String label, _TopSortField field) {
+    final active = _sortField == field;
+    return ChoiceChip(
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label),
+          if (active) ...[
+            const SizedBox(width: 4),
+            Icon(
+              _sortAscending ? Icons.arrow_upward : Icons.arrow_downward,
+              size: 14,
+            ),
+          ],
+        ],
+      ),
+      selected: active,
+      visualDensity: VisualDensity.compact,
+      onSelected: (_) => _setSortField(field),
+    );
+  }
 
   @override
   void initState() {
@@ -750,17 +2003,19 @@ class _ProductMovementsTabState extends ConsumerState<_ProductMovementsTab> {
     _future = _load();
   }
 
-  void _setPeriod(_MovementPeriod p) =>
-      setState(() {
-        _period = p;
-        _future = _load();
-      });
+  void _reload() => setState(() {
+    _future = _load();
+  });
 
-  void _setAnchor(DateTime d) =>
-      setState(() {
-        _anchor = d;
-        _future = _load();
-      });
+  void _setPeriod(_MovementPeriod p) => setState(() {
+    _period = p;
+    _future = _load();
+  });
+
+  void _setAnchor(DateTime d) => setState(() {
+    _anchor = d;
+    _future = _load();
+  });
 
   DateTime get _startDate {
     switch (_period) {
@@ -795,7 +2050,8 @@ class _ProductMovementsTabState extends ConsumerState<_ProductMovementsTab> {
       case _MovementPeriod.day:
         return DateFormat('EEE, MMM d, y').format(_startDate);
       case _MovementPeriod.week:
-        return '${fmt.format(_startDate)} – ${fmt.format(_endDate.subtract(const Duration(days: 1)))}';
+        return '${fmt.format(_startDate)} – '
+            '${fmt.format(_endDate.subtract(const Duration(days: 1)))}';
       case _MovementPeriod.month:
         return DateFormat('MMMM y').format(_startDate);
       case _MovementPeriod.year:
@@ -803,66 +2059,63 @@ class _ProductMovementsTabState extends ConsumerState<_ProductMovementsTab> {
     }
   }
 
-  Future<List<_MovementRow>> _load() async {
+  Future<List<_TopProductRow>> _load() async {
     final products = await ref.read(productRepositoryProvider).getAll();
+    final suppliers = await ref.read(supplierRepositoryProvider).getAll();
+    final suppMap = {for (final s in suppliers) s.id: s.name};
     final productsById = {for (final p in products) p.id: p};
-    final Map<String, _MovementRow> rows = {};
 
-    // Stock-out from invoices
     final invoices = await ref
         .read(invoiceRepositoryProvider)
         .getAll(startDate: _startDate, endDate: _endDate);
+
+    final Map<String, _TopProductRow> rows = {};
     for (final inv in invoices) {
       if (inv.status == 'cancelled') continue;
-      final items =
-          await ref.read(invoiceRepositoryProvider).getItems(inv.id);
+      final items = await ref.read(invoiceRepositoryProvider).getItems(inv.id);
       for (final item in items) {
         final p = productsById[item.productId];
         if (p == null) continue;
+        if (_selectedSupplierId != null &&
+            p.supplierId != _selectedSupplierId) {
+          continue;
+        }
         if (rows.containsKey(item.productId)) {
-          rows[item.productId]!.outPieces += item.quantity;
+          rows[item.productId]!.soldPieces += item.quantity;
           rows[item.productId]!.totalAmount += item.subtotal;
         } else {
-          rows[item.productId] = _MovementRow(
+          rows[item.productId] = _TopProductRow(
+            productId: item.productId,
             productName: p.name,
+            supplierName: suppMap[p.supplierId] ?? 'Unknown',
+            supplierId: p.supplierId,
             piecesPerBox: p.piecesPerBox,
-            outPieces: item.quantity,
+            soldPieces: item.quantity,
             totalAmount: item.subtotal,
           );
         }
       }
     }
 
-    // Stock-in from manual stock movements
-    final stockIn = await ref
-        .read(stockMovementRepositoryProvider)
-        .sumInForRange(_startDate, _endDate);
-    for (final entry in stockIn.entries) {
-      final p = productsById[entry.key];
-      if (p == null) continue;
-      if (rows.containsKey(entry.key)) {
-        rows[entry.key]!.inPieces += entry.value;
-      } else {
-        rows[entry.key] = _MovementRow(
-          productName: p.name,
-          piecesPerBox: p.piecesPerBox,
-          outPieces: 0,
-          totalAmount: 0,
-          inPieces: entry.value,
-        );
+    for (final entry in rows.entries) {
+      final price = await ref
+          .read(productRepositoryProvider)
+          .getCurrentPrice(entry.key);
+      if (price != null) {
+        entry.value.totalCapital =
+            price.withdrawalPrice * entry.value.soldPieces;
       }
     }
 
-    final sorted = rows.values.toList()
-      ..sort((a, b) => b.totalMoved.compareTo(a.totalMoved));
-    return sorted;
+    return rows.values.toList()
+      ..sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
   }
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Period filter bar
+        // Period segmented button
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
           child: Row(
@@ -871,11 +2124,17 @@ class _ProductMovementsTabState extends ConsumerState<_ProductMovementsTab> {
                 segments: const [
                   ButtonSegment(value: _MovementPeriod.day, label: Text('Day')),
                   ButtonSegment(
-                      value: _MovementPeriod.week, label: Text('Week')),
+                    value: _MovementPeriod.week,
+                    label: Text('Week'),
+                  ),
                   ButtonSegment(
-                      value: _MovementPeriod.month, label: Text('Month')),
+                    value: _MovementPeriod.month,
+                    label: Text('Month'),
+                  ),
                   ButtonSegment(
-                      value: _MovementPeriod.year, label: Text('Year')),
+                    value: _MovementPeriod.year,
+                    label: Text('Year'),
+                  ),
                 ],
                 selected: {_period},
                 onSelectionChanged: (s) => _setPeriod(s.first),
@@ -887,6 +2146,8 @@ class _ProductMovementsTabState extends ConsumerState<_ProductMovementsTab> {
             ],
           ),
         ),
+
+        // Period navigation
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
           child: Row(
@@ -897,23 +2158,22 @@ class _ProductMovementsTabState extends ConsumerState<_ProductMovementsTab> {
                 onPressed: () {
                   switch (_period) {
                     case _MovementPeriod.day:
-                      _setAnchor(
-                          _anchor.subtract(const Duration(days: 1)));
+                      _setAnchor(_anchor.subtract(const Duration(days: 1)));
                     case _MovementPeriod.week:
-                      _setAnchor(
-                          _anchor.subtract(const Duration(days: 7)));
+                      _setAnchor(_anchor.subtract(const Duration(days: 7)));
                     case _MovementPeriod.month:
-                      _setAnchor(
-                          DateTime(_anchor.year, _anchor.month - 1));
+                      _setAnchor(DateTime(_anchor.year, _anchor.month - 1));
                     case _MovementPeriod.year:
                       _setAnchor(DateTime(_anchor.year - 1));
                   }
                 },
               ),
               Expanded(
-                child: Text(_periodLabel,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                child: Text(
+                  _periodLabel,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
               ),
               IconButton(
                 icon: const Icon(Icons.chevron_right),
@@ -925,8 +2185,7 @@ class _ProductMovementsTabState extends ConsumerState<_ProductMovementsTab> {
                     case _MovementPeriod.week:
                       _setAnchor(_anchor.add(const Duration(days: 7)));
                     case _MovementPeriod.month:
-                      _setAnchor(
-                          DateTime(_anchor.year, _anchor.month + 1));
+                      _setAnchor(DateTime(_anchor.year, _anchor.month + 1));
                     case _MovementPeriod.year:
                       _setAnchor(DateTime(_anchor.year + 1));
                   }
@@ -935,17 +2194,1523 @@ class _ProductMovementsTabState extends ConsumerState<_ProductMovementsTab> {
               TextButton(
                 onPressed: () => _setAnchor(DateTime.now()),
                 style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact),
+                  visualDensity: VisualDensity.compact,
+                ),
                 child: const Text('Today'),
               ),
             ],
           ),
         ),
+
+        // Supplier filter
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          child: ref
+              .watch(suppliersListProvider)
+              .maybeWhen(
+                data: (suppliers) => Row(
+                  children: [
+                    const Text(
+                      'Supplier:',
+                      style: TextStyle(fontSize: 13, color: Colors.grey),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: DropdownButton<String?>(
+                        value: _selectedSupplierId,
+                        isDense: true,
+                        isExpanded: true,
+                        underline: const SizedBox(),
+                        items: [
+                          const DropdownMenuItem(
+                            value: null,
+                            child: Text('All Suppliers'),
+                          ),
+                          ...suppliers.map(
+                            (s) => DropdownMenuItem(
+                              value: s.id,
+                              child: Text(s.name),
+                            ),
+                          ),
+                        ],
+                        onChanged: (v) {
+                          _selectedSupplierId = v;
+                          _reload();
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                orElse: () => const SizedBox.shrink(),
+              ),
+        ),
+
+        // Sort controls
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+          child: Row(
+            children: [
+              const Text(
+                'Sort by:',
+                style: TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+              const SizedBox(width: 8),
+              _sortChip('Sales', _TopSortField.sales),
+              const SizedBox(width: 6),
+              _sortChip('Boxes', _TopSortField.boxes),
+              const SizedBox(width: 6),
+              _sortChip('Pieces', _TopSortField.pieces),
+              const SizedBox(width: 6),
+              _sortChip('Profit', _TopSortField.profit),
+            ],
+          ),
+        ),
         const Divider(height: 1),
 
-        // Results
+        // Ranked list
         Expanded(
-          child: FutureBuilder<List<_MovementRow>>(
+          child: FutureBuilder<List<_TopProductRow>>(
+            future: _future,
+            builder: (ctx, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final rows = _sortRows(snap.data ?? []);
+              if (rows.isEmpty) {
+                return const Center(
+                  child: Text('No sales data for this period.'),
+                );
+              }
+              final includedRows = rows.where(
+                (r) => !_excludedProductIds.contains(r.productId),
+              );
+              final grandTotalAmount = includedRows.fold<double>(
+                0,
+                (sum, r) => sum + r.totalAmount,
+              );
+              final grandTotalProfit = includedRows.fold<double>(
+                0,
+                (sum, r) => sum + r.profit,
+              );
+              return Column(
+                children: [
+                  Expanded(
+                    child: ListView.separated(
+                      padding: const EdgeInsets.all(8),
+                      itemCount: rows.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1),
+                      itemBuilder: (ctx, i) {
+                        final row = rows[i];
+                        final isTop = i < 3;
+                        final excluded = _excludedProductIds.contains(
+                          row.productId,
+                        );
+                        return Opacity(
+                          opacity: excluded ? 0.45 : 1,
+                          child: ListTile(
+                            leading: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Checkbox(
+                                  value: excluded,
+                                  onChanged: (_) =>
+                                      _toggleExcluded(row.productId),
+                                ),
+                                CircleAvatar(
+                                  backgroundColor: isTop
+                                      ? Colors.green.shade100
+                                      : Colors.grey.shade100,
+                                  child: Text(
+                                    '${i + 1}',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: isTop
+                                          ? Colors.green.shade800
+                                          : Colors.grey.shade600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            title: Text(
+                              row.productName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            subtitle: Text(
+                              '${row.supplierName}  •  '
+                              '${row.soldBoxes > 0 ? "${row.soldBoxes} box(es)" : ""}'
+                              '${row.soldBoxes > 0 && row.soldRemain > 0 ? " + " : ""}'
+                              '${row.soldRemain > 0 ? "${row.soldRemain} pcs" : ""}'
+                              '${row.soldBoxes == 0 && row.soldRemain == 0 ? "—" : ""}',
+                            ),
+                            trailing: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerRight,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    formatCurrency(row.totalAmount),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                      color: isTop
+                                          ? Colors.green.shade700
+                                          : null,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Profit: ${formatCurrency(row.profit)}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: row.profit >= 0
+                                          ? Colors.green.shade700
+                                          : Colors.red,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest
+                        .withValues(alpha: 0.5),
+                    child: Row(
+                      children: [
+                        const Text(
+                          'Grand Total',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const Spacer(),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              formatCurrency(grandTotalAmount),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                            Text(
+                              'Profit: ${formatCurrency(grandTotalProfit)}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: grandTotalProfit >= 0
+                                    ? Colors.green.shade700
+                                    : Colors.red,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Monthly Sales Tab ───────────────────────────────────────────────────────
+
+class _MonthlySalesTab extends ConsumerStatefulWidget {
+  const _MonthlySalesTab();
+
+  @override
+  ConsumerState<_MonthlySalesTab> createState() => _MonthlySalesTabState();
+}
+
+enum _DrillLevel { month, week, day }
+
+class _MonthlySalesTabState extends ConsumerState<_MonthlySalesTab> {
+  int _year = DateTime.now().year;
+  String? _selectedSupplierId;
+  String? _selectedProductId;
+  late Future<List<double>> _future;
+
+  _DrillLevel _level = _DrillLevel.month;
+  int? _selectedMonth; // 0-based; set once drilled to week/day level
+  int? _selectedWeek; // 0-based, within _selectedMonth; set at day level
+
+  static const _monthLabels = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  void _reload() => setState(() => _future = _load());
+
+  void _setYear(int y) => setState(() {
+    _year = y;
+    _level = _DrillLevel.month;
+    _selectedMonth = null;
+    _selectedWeek = null;
+    _future = _load();
+  });
+
+  void _drillToWeek(int monthIndex) => setState(() {
+    _level = _DrillLevel.week;
+    _selectedMonth = monthIndex;
+    _future = _load();
+  });
+
+  void _drillToDay(int weekIndex) => setState(() {
+    _level = _DrillLevel.day;
+    _selectedWeek = weekIndex;
+    _future = _load();
+  });
+
+  void _backToMonth() => setState(() {
+    _level = _DrillLevel.month;
+    _selectedMonth = null;
+    _selectedWeek = null;
+    _future = _load();
+  });
+
+  void _backToWeek() => setState(() {
+    _level = _DrillLevel.week;
+    _selectedWeek = null;
+    _future = _load();
+  });
+
+  int _weeksInMonth(int monthIndex) {
+    final daysInMonth = DateUtils.getDaysInMonth(_year, monthIndex + 1);
+    return ((daysInMonth - 1) ~/ 7) + 1;
+  }
+
+  List<String> get _labels {
+    switch (_level) {
+      case _DrillLevel.month:
+        return _monthLabels;
+      case _DrillLevel.week:
+        final weekCount = _weeksInMonth(_selectedMonth!);
+        return [for (var i = 0; i < weekCount; i++) 'Wk ${i + 1}'];
+      case _DrillLevel.day:
+        final daysInMonth = DateUtils.getDaysInMonth(
+          _year,
+          _selectedMonth! + 1,
+        );
+        final startDay = _selectedWeek! * 7 + 1;
+        final endDayExclusive = (startDay + 7).clamp(1, daysInMonth + 1);
+        return [for (var d = startDay; d < endDayExclusive; d++) '$d'];
+    }
+  }
+
+  String get _chartTitle {
+    switch (_level) {
+      case _DrillLevel.month:
+        return 'Monthly Sales Trend — $_year';
+      case _DrillLevel.week:
+        return 'Weekly Sales Trend — ${_monthLabels[_selectedMonth!]} $_year';
+      case _DrillLevel.day:
+        return 'Daily Sales Trend — Week ${_selectedWeek! + 1}, '
+            '${_monthLabels[_selectedMonth!]} $_year';
+    }
+  }
+
+  String get _totalLabel {
+    switch (_level) {
+      case _DrillLevel.month:
+        return 'Total for Year: ';
+      case _DrillLevel.week:
+        return 'Total for Month: ';
+      case _DrillLevel.day:
+        return 'Total for Week: ';
+    }
+  }
+
+  Future<List<double>> _load() {
+    switch (_level) {
+      case _DrillLevel.month:
+        return _sumSalesByBucket(
+          start: DateTime(_year),
+          end: DateTime(_year + 1),
+          bucketCount: 12,
+          bucketOf: (d) => d.month - 1,
+        );
+      case _DrillLevel.week:
+        final monthIndex = _selectedMonth!;
+        final weekCount = _weeksInMonth(monthIndex);
+        return _sumSalesByBucket(
+          start: DateTime(_year, monthIndex + 1, 1),
+          end: DateTime(_year, monthIndex + 2, 1),
+          bucketCount: weekCount,
+          bucketOf: (d) => ((d.day - 1) ~/ 7).clamp(0, weekCount - 1),
+        );
+      case _DrillLevel.day:
+        final monthIndex = _selectedMonth!;
+        final daysInMonth = DateUtils.getDaysInMonth(_year, monthIndex + 1);
+        final startDay = _selectedWeek! * 7 + 1;
+        final endDayExclusive = (startDay + 7).clamp(1, daysInMonth + 1);
+        return _sumSalesByBucket(
+          start: DateTime(_year, monthIndex + 1, startDay),
+          end: DateTime(_year, monthIndex + 1, endDayExclusive),
+          bucketCount: endDayExclusive - startDay,
+          bucketOf: (d) => d.day - startDay,
+        );
+    }
+  }
+
+  Future<List<double>> _sumSalesByBucket({
+    required DateTime start,
+    required DateTime end,
+    required int bucketCount,
+    required int Function(DateTime date) bucketOf,
+  }) async {
+    final products = await ref.read(productRepositoryProvider).getAll();
+    final productsById = {for (final p in products) p.id: p};
+
+    final invoices = await ref
+        .read(invoiceRepositoryProvider)
+        .getAll(startDate: start, endDate: end);
+
+    final totals = List<double>.filled(bucketCount, 0);
+    for (final inv in invoices) {
+      if (inv.status == 'cancelled') continue;
+      final items = await ref.read(invoiceRepositoryProvider).getItems(inv.id);
+      // inv.totalAmount is net of any adjustment (e.g. swap amount) applied
+      // to the invoice as a whole; distribute that adjustment proportionally
+      // across items so filtered sums still foot to the invoice total.
+      final grossTotal = items.fold(0.0, (s, it) => s + it.subtotal);
+      final netFactor = grossTotal > 0 ? inv.totalAmount / grossTotal : 1.0;
+      final bucket = bucketOf(inv.invoiceDate);
+      if (bucket < 0 || bucket >= bucketCount) continue;
+      for (final item in items) {
+        final product = productsById[item.productId];
+        if (product == null) continue;
+        if (_selectedSupplierId != null &&
+            product.supplierId != _selectedSupplierId) {
+          continue;
+        }
+        if (_selectedProductId != null &&
+            item.productId != _selectedProductId) {
+          continue;
+        }
+        totals[bucket] += item.subtotal * netFactor;
+      }
+    }
+    return totals;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // ── Year navigation / drill-down breadcrumb ──────────────────
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: _level == _DrillLevel.month
+                ? [
+                    IconButton(
+                      icon: const Icon(Icons.chevron_left),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _setYear(_year - 1),
+                    ),
+                    Text(
+                      '$_year',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _setYear(_year + 1),
+                    ),
+                    const SizedBox(width: 16),
+                    TextButton(
+                      onPressed: () => _setYear(DateTime.now().year),
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      child: const Text('This Year'),
+                    ),
+                  ]
+                : [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: _level == _DrillLevel.day
+                          ? _backToWeek
+                          : _backToMonth,
+                    ),
+                    Text(
+                      _level == _DrillLevel.week
+                          ? '${_monthLabels[_selectedMonth!]} $_year'
+                          : 'Week ${_selectedWeek! + 1} • '
+                                '${_monthLabels[_selectedMonth!]} $_year',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+          ),
+        ),
+        // ── Supplier filter ─────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          child: ref
+              .watch(suppliersListProvider)
+              .maybeWhen(
+                data: (suppliers) => Row(
+                  children: [
+                    const Text(
+                      'Supplier:',
+                      style: TextStyle(fontSize: 13, color: Colors.grey),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: DropdownButton<String?>(
+                        value: _selectedSupplierId,
+                        isDense: true,
+                        isExpanded: true,
+                        underline: const SizedBox(),
+                        items: [
+                          const DropdownMenuItem(
+                            value: null,
+                            child: Text('All Suppliers'),
+                          ),
+                          ...suppliers.map(
+                            (s) => DropdownMenuItem(
+                              value: s.id,
+                              child: Text(s.name),
+                            ),
+                          ),
+                        ],
+                        onChanged: (v) {
+                          setState(() {
+                            _selectedSupplierId = v;
+                            _selectedProductId = null;
+                          });
+                          _reload();
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                orElse: () => const SizedBox.shrink(),
+              ),
+        ),
+        // ── Product filter ──────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+          child: ref
+              .watch(productsListProvider)
+              .maybeWhen(
+                data: (products) {
+                  final filtered = _selectedSupplierId == null
+                      ? products
+                      : products
+                            .where((p) => p.supplierId == _selectedSupplierId)
+                            .toList();
+                  return Row(
+                    children: [
+                      const Text(
+                        'Product:',
+                        style: TextStyle(fontSize: 13, color: Colors.grey),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: DropdownButton<String?>(
+                          value: _selectedProductId,
+                          isDense: true,
+                          isExpanded: true,
+                          underline: const SizedBox(),
+                          items: [
+                            const DropdownMenuItem(
+                              value: null,
+                              child: Text('All Products'),
+                            ),
+                            ...filtered.map(
+                              (p) => DropdownMenuItem(
+                                value: p.id,
+                                child: Text(p.name),
+                              ),
+                            ),
+                          ],
+                          onChanged: (v) {
+                            setState(() => _selectedProductId = v);
+                            _reload();
+                          },
+                        ),
+                      ),
+                    ],
+                  );
+                },
+                orElse: () => const SizedBox.shrink(),
+              ),
+        ),
+        const Divider(height: 1),
+        // ── Chart ────────────────────────────────────────────────────
+        Expanded(
+          child: FutureBuilder<List<double>>(
+            future: _future,
+            builder: (ctx, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final labels = _labels;
+              final totals = snapshot.data ?? List.filled(labels.length, 0);
+              final grandTotal = totals.fold(0.0, (s, v) => s + v);
+              final maxValue = totals.fold(0.0, (m, v) => v > m ? v : m);
+              final maxY = maxValue <= 0 ? 100.0 : maxValue * 1.25;
+              final canDrill = _level != _DrillLevel.day;
+
+              final spots = [
+                for (var i = 0; i < labels.length; i++)
+                  FlSpot(i.toDouble(), totals[i]),
+              ];
+
+              return Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      _chartTitle,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    if (canDrill) ...[
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Tap a point to drill down',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 11, color: Colors.grey),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.fromLTRB(8, 24, 16, 8),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.blue.shade400),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: LineChart(
+                          LineChartData(
+                            minX: 0,
+                            maxX: (labels.length - 1).toDouble(),
+                            minY: 0,
+                            maxY: maxY,
+                            gridData: FlGridData(
+                              show: true,
+                              drawVerticalLine: false,
+                              horizontalInterval: maxY / 5,
+                              getDrawingHorizontalLine: (_) => FlLine(
+                                color: Colors.grey.shade300,
+                                strokeWidth: 1,
+                              ),
+                            ),
+                            borderData: FlBorderData(
+                              show: true,
+                              border: Border.all(color: Colors.grey.shade400),
+                            ),
+                            titlesData: FlTitlesData(
+                              topTitles: const AxisTitles(
+                                sideTitles: SideTitles(showTitles: false),
+                              ),
+                              rightTitles: const AxisTitles(
+                                sideTitles: SideTitles(showTitles: false),
+                              ),
+                              bottomTitles: AxisTitles(
+                                sideTitles: SideTitles(
+                                  showTitles: true,
+                                  reservedSize: 28,
+                                  interval: 1,
+                                  getTitlesWidget: (value, meta) {
+                                    final i = value.round();
+                                    if (i < 0 ||
+                                        i >= labels.length ||
+                                        (value - i).abs() > 0.01) {
+                                      return const SizedBox.shrink();
+                                    }
+                                    return Padding(
+                                      padding: const EdgeInsets.only(top: 6),
+                                      child: Text(
+                                        labels[i],
+                                        style: const TextStyle(fontSize: 11),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                              leftTitles: AxisTitles(
+                                sideTitles: SideTitles(
+                                  showTitles: true,
+                                  reservedSize: 56,
+                                  interval: maxY / 5,
+                                  getTitlesWidget: (value, meta) => Padding(
+                                    padding: const EdgeInsets.only(right: 4),
+                                    child: Text(
+                                      NumberFormat.compact().format(value),
+                                      style: const TextStyle(fontSize: 11),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            lineTouchData: LineTouchData(
+                              enabled: true,
+                              touchTooltipData: LineTouchTooltipData(
+                                getTooltipColor: (_) => Colors.transparent,
+                                tooltipBorder: BorderSide.none,
+                                tooltipPadding: EdgeInsets.zero,
+                                tooltipMargin: 12,
+                                getTooltipItems: (touchedSpots) => touchedSpots
+                                    .map(
+                                      (s) => LineTooltipItem(
+                                        formatNumber(s.y),
+                                        const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                          color: Colors.black87,
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                              ),
+                              touchCallback: (event, response) {
+                                if (!canDrill || event is! FlTapUpEvent) {
+                                  return;
+                                }
+                                final touchedSpots = response?.lineBarSpots;
+                                if (touchedSpots == null ||
+                                    touchedSpots.isEmpty) {
+                                  return;
+                                }
+                                final index = touchedSpots.first.spotIndex;
+                                if (totals[index] <= 0) return;
+                                if (_level == _DrillLevel.month) {
+                                  _drillToWeek(index);
+                                } else {
+                                  _drillToDay(index);
+                                }
+                              },
+                            ),
+                            lineBarsData: [
+                              LineChartBarData(
+                                spots: spots,
+                                isCurved: false,
+                                color: Colors.orange,
+                                barWidth: 3,
+                                dotData: FlDotData(
+                                  show: true,
+                                  getDotPainter: (spot, percent, bar, index) =>
+                                      FlDotCirclePainter(
+                                        radius: 4,
+                                        color: Colors.orange,
+                                        strokeWidth: 2,
+                                        strokeColor: Colors.white,
+                                      ),
+                                ),
+                              ),
+                            ],
+                            showingTooltipIndicators: [
+                              for (var i = 0; i < labels.length; i++)
+                                if (totals[i] > 0)
+                                  ShowingTooltipIndicators([
+                                    LineBarSpot(
+                                      LineChartBarData(spots: spots),
+                                      0,
+                                      spots[i],
+                                    ),
+                                  ]),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Text(
+                          _totalLabel,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          formatCurrency(grandTotal),
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Purchase History Tab ───────────────────────────────────────────────────
+
+class _PurchaseHistoryTab extends ConsumerStatefulWidget {
+  const _PurchaseHistoryTab();
+
+  @override
+  ConsumerState<_PurchaseHistoryTab> createState() =>
+      _PurchaseHistoryTabState();
+}
+
+class _PurchaseHistoryTabState extends ConsumerState<_PurchaseHistoryTab> {
+  String? _selectedSupplierId;
+  DateTime? _fromDate;
+  DateTime? _toDate;
+
+  Future<void> _pickFromDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _fromDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
+      setState(
+        () => _fromDate = DateTime(picked.year, picked.month, picked.day),
+      );
+    }
+  }
+
+  Future<void> _pickToDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _toDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
+      setState(() => _toDate = DateTime(picked.year, picked.month, picked.day));
+    }
+  }
+
+  void _clearDates() => setState(() {
+    _fromDate = null;
+    _toDate = null;
+  });
+
+  Future<void> _downloadReport() async {
+    final endExclusive = _toDate?.add(const Duration(days: 1));
+    final allInvoices = await ref.read(
+      filteredSupplierReceivedInvoicesProvider((
+        _fromDate,
+        endExclusive,
+      )).future,
+    );
+    final suppliers =
+        ref.read(suppliersListProvider).valueOrNull ??
+        await ref.read(supplierRepositoryProvider).getAll();
+    final suppliersMap = {for (final s in suppliers) s.id: s};
+
+    final invoices = _selectedSupplierId == null
+        ? allInvoices
+        : allInvoices
+              .where((i) => i.supplierId == _selectedSupplierId)
+              .toList();
+
+    if (invoices.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No purchase history to export.')),
+      );
+      return;
+    }
+
+    final rows = invoices
+        .map(
+          (inv) => PurchaseHistoryReportRow(
+            referenceNumber: inv.displayNumber,
+            supplierName:
+                suppliersMap[inv.supplierId]?.name ?? 'Unknown supplier',
+            date: inv.receivedDate,
+            status: inv.status,
+            totalAmountSystem: inv.totalAmountSystem,
+            totalAmountSupplier: inv.totalAmountSupplier,
+          ),
+        )
+        .toList();
+
+    final path = await exportPurchaseHistoryReport(
+      supplierName: _selectedSupplierId == null
+          ? null
+          : suppliersMap[_selectedSupplierId]?.name,
+      fromDate: _fromDate,
+      toDate: _toDate,
+      rows: rows,
+    );
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Saved to $path')));
+  }
+
+  Future<void> _showDetail(
+    SupplierReceivedInvoice invoice,
+    String supplierName,
+  ) async {
+    final items = await ref
+        .read(supplierReceivedInvoiceRepositoryProvider)
+        .getItems(invoice.id);
+    final products = await ref.read(productRepositoryProvider).getAll();
+    final productsById = {for (final p in products) p.id: p};
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      builder: (ctx) => _PurchaseHistoryDetailDialog(
+        invoice: invoice,
+        supplierName: supplierName,
+        items: items,
+        productsById: productsById,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dateFmt = DateFormat('MMM dd, yyyy');
+    final endExclusive = _toDate?.add(const Duration(days: 1));
+    final invoicesAsync = ref.watch(
+      filteredSupplierReceivedInvoicesProvider((_fromDate, endExclusive)),
+    );
+    final suppliersAsync = ref.watch(suppliersListProvider);
+
+    return Column(
+      children: [
+        // Supplier filter
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+          child: suppliersAsync.maybeWhen(
+            data: (suppliers) => Row(
+              children: [
+                const Text(
+                  'Supplier:',
+                  style: TextStyle(fontSize: 13, color: Colors.grey),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: DropdownButton<String?>(
+                    value: _selectedSupplierId,
+                    isDense: true,
+                    isExpanded: true,
+                    underline: const SizedBox(),
+                    items: [
+                      const DropdownMenuItem(
+                        value: null,
+                        child: Text('All Suppliers'),
+                      ),
+                      ...suppliers.map(
+                        (s) =>
+                            DropdownMenuItem(value: s.id, child: Text(s.name)),
+                      ),
+                    ],
+                    onChanged: (v) => setState(() => _selectedSupplierId = v),
+                  ),
+                ),
+              ],
+            ),
+            orElse: () => const SizedBox.shrink(),
+          ),
+        ),
+
+        // Date range filter
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+          child: Row(
+            children: [
+              const Icon(Icons.calendar_today, size: 18, color: Colors.grey),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _pickFromDate,
+                  child: Text(
+                    _fromDate == null
+                        ? 'From date'
+                        : dateFmt.format(_fromDate!),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text('–'),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _pickToDate,
+                  child: Text(
+                    _toDate == null ? 'To date' : dateFmt.format(_toDate!),
+                  ),
+                ),
+              ),
+              if (_fromDate != null || _toDate != null)
+                IconButton(
+                  icon: const Icon(Icons.clear, size: 18),
+                  tooltip: 'Clear date filter',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: _clearDates,
+                ),
+              IconButton(
+                icon: const Icon(Icons.file_download, size: 20),
+                tooltip: 'Download purchase history as PDF',
+                visualDensity: VisualDensity.compact,
+                onPressed: _downloadReport,
+              ),
+            ],
+          ),
+        ),
+
+        const Divider(height: 1),
+
+        // List
+        Expanded(
+          child: invoicesAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => Center(child: Text('Error: $e')),
+            data: (allInvoices) {
+              final suppliersMap = {
+                for (final s in suppliersAsync.valueOrNull ?? []) s.id: s,
+              };
+              final invoices = _selectedSupplierId == null
+                  ? allInvoices
+                  : allInvoices
+                        .where((i) => i.supplierId == _selectedSupplierId)
+                        .toList();
+
+              if (invoices.isEmpty) {
+                return const Center(child: Text('No purchase history found.'));
+              }
+
+              final activeInvoices = invoices.where(
+                (i) => i.status != 'cancelled',
+              );
+              final totalSupplier = activeInvoices.fold(
+                0.0,
+                (s, i) => s + i.totalAmountSupplier,
+              );
+
+              return Column(
+                children: [
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: invoices.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1),
+                      itemBuilder: (ctx, i) {
+                        final inv = invoices[i];
+                        final supplier = suppliersMap[inv.supplierId];
+                        final cancelled = inv.status == 'cancelled';
+                        return ListTile(
+                          leading: const Icon(Icons.receipt_long),
+                          title: Text(
+                            inv.displayNumber,
+                            style: cancelled
+                                ? const TextStyle(
+                                    decoration: TextDecoration.lineThrough,
+                                    color: Colors.grey,
+                                  )
+                                : null,
+                          ),
+                          subtitle: Text(
+                            '${supplier?.name ?? 'Unknown supplier'}'
+                            '  •  ${dateFmt.format(inv.receivedDate)}'
+                            '${cancelled ? '  •  CANCELLED' : ''}',
+                            style: cancelled
+                                ? const TextStyle(color: Colors.grey)
+                                : null,
+                          ),
+                          trailing: Text(
+                            formatCurrency(inv.totalAmountSupplier),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              decoration: cancelled
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                              color: cancelled ? Colors.grey : null,
+                            ),
+                          ),
+                          onTap: () => _showDetail(
+                            inv,
+                            supplier?.name ?? 'Unknown supplier',
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                  // Footer: grand total
+                  Container(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    child: Row(
+                      children: [
+                        Text(
+                          '${invoices.length} record(s)',
+                          style: const TextStyle(color: Colors.grey),
+                        ),
+                        const Spacer(),
+                        Text(
+                          'Total: ${formatCurrency(totalSupplier)}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Purchase History detail (read-only) ─────────────────────────────────────
+
+class _PurchaseHistoryDetailDialog extends StatelessWidget {
+  final SupplierReceivedInvoice invoice;
+  final String supplierName;
+  final List<SupplierReceivedInvoiceItem> items;
+  final Map<String, Product> productsById;
+
+  const _PurchaseHistoryDetailDialog({
+    required this.invoice,
+    required this.supplierName,
+    required this.items,
+    required this.productsById,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final dateFmt = DateFormat('MMMM dd, yyyy');
+    final cancelled = invoice.status == 'cancelled';
+
+    return Dialog(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 640, maxHeight: 640),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      invoice.displayNumber,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  if (cancelled)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade100,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'CANCELLED',
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              Text(
+                'Supplier Reference / DR Number',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 12),
+              _infoRow('Supplier', supplierName),
+              _infoRow('Received Date', dateFmt.format(invoice.receivedDate)),
+              if (invoice.notes != null && invoice.notes!.isNotEmpty)
+                _infoRow('Notes', invoice.notes!),
+              const SizedBox(height: 12),
+              const Divider(height: 1),
+              const SizedBox(height: 8),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Table(
+                    border: TableBorder.all(color: Colors.grey.shade300),
+                    columnWidths: const {
+                      0: FlexColumnWidth(3),
+                      1: FlexColumnWidth(2),
+                      2: FlexColumnWidth(1.6),
+                      3: FlexColumnWidth(1.6),
+                    },
+                    children: [
+                      _tableHeader(['Product', 'Qty', 'Price (Box)', 'Amount']),
+                      ...items.map((item) {
+                        final product = productsById[item.productId];
+                        final perBox = product?.piecesPerBox ?? 1;
+                        final boxes = perBox > 0 ? item.quantity ~/ perBox : 0;
+                        final pcs = perBox > 0
+                            ? item.quantity % perBox
+                            : item.quantity;
+                        final qtyParts = [
+                          if (boxes > 0) '$boxes box(es)',
+                          if (pcs > 0) '$pcs pc(s)',
+                        ];
+                        final qtyLabel = qtyParts.isEmpty
+                            ? '0'
+                            : qtyParts.join(' + ');
+                        final priceDiffers =
+                            (item.supplierPrice * 100).round() !=
+                            (item.systemPrice * 100).round();
+                        return TableRow(
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.all(8),
+                              child: Text(product?.name ?? item.productId),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.all(8),
+                              child: Text(
+                                item.isFree ? '$qtyLabel (FREE)' : qtyLabel,
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.all(8),
+                              child: Text(
+                                formatCurrency(item.supplierPrice * perBox),
+                                style: TextStyle(
+                                  color: priceDiffers
+                                      ? Colors.orange.shade800
+                                      : null,
+                                  fontWeight: priceDiffers
+                                      ? FontWeight.bold
+                                      : null,
+                                ),
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.all(8),
+                              child: Text(
+                                formatCurrency(item.subtotalSupplier),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Divider(height: 1),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text(
+                    'System Total: ${formatCurrency(invoice.totalAmountSystem)}',
+                    style: TextStyle(
+                      color:
+                          invoice.totalAmountSystem !=
+                              invoice.totalAmountSupplier
+                          ? Colors.orange.shade800
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    'Supplier Total: ${formatCurrency(invoice.totalAmountSupplier)}',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Close'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _infoRow(String label, String value) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 2),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 140,
+          child: Text(label, style: TextStyle(color: Colors.grey.shade600)),
+        ),
+        Expanded(child: Text(value)),
+      ],
+    ),
+  );
+
+  TableRow _tableHeader(List<String> cells) => TableRow(
+    decoration: BoxDecoration(color: Colors.grey.shade200),
+    children: cells
+        .map(
+          (c) => Padding(
+            padding: const EdgeInsets.all(8),
+            child: Text(c, style: const TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        )
+        .toList(),
+  );
+}
+
+// ── Reorder Suggestions Tab ────────────────────────────────────────────────
+//
+// Forecasting is a simple moving-average model: average daily sales pieces
+// over the trailing window, projected forward against current stock. No ML/
+// external calls involved — this is deterministic arithmetic so it works
+// fully offline.
+
+class _ReorderRow {
+  final String productName;
+  final String supplierName;
+  final int piecesPerBox;
+  final int currentStockPieces;
+  final double avgDailyVelocity;
+  final double daysLeft; // double.infinity when no recent sales
+  final int? reorderPoint;
+  final int suggestedQtyPieces;
+  final bool flagged;
+
+  _ReorderRow({
+    required this.productName,
+    required this.supplierName,
+    required this.piecesPerBox,
+    required this.currentStockPieces,
+    required this.avgDailyVelocity,
+    required this.daysLeft,
+    required this.reorderPoint,
+    required this.suggestedQtyPieces,
+    required this.flagged,
+  });
+
+  int get suggestedBoxes => suggestedQtyPieces ~/ piecesPerBox;
+  int get suggestedRemainPieces => suggestedQtyPieces % piecesPerBox;
+  int get currentBoxes => currentStockPieces ~/ piecesPerBox;
+  int get currentRemainPieces => currentStockPieces % piecesPerBox;
+}
+
+class _ReorderSuggestionsTab extends ConsumerStatefulWidget {
+  const _ReorderSuggestionsTab();
+
+  @override
+  ConsumerState<_ReorderSuggestionsTab> createState() =>
+      _ReorderSuggestionsTabState();
+}
+
+class _ReorderSuggestionsTabState
+    extends ConsumerState<_ReorderSuggestionsTab> {
+  static const _lookbackDays = 30;
+  static const _bufferDays = 3;
+  int _leadTimeDays = 7;
+  bool _showAll = false;
+  late Future<List<_ReorderRow>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  void _setLeadTime(int days) {
+    if (days < 1) return;
+    setState(() {
+      _leadTimeDays = days;
+      _future = _load();
+    });
+  }
+
+  void _setShowAll(bool value) {
+    setState(() {
+      _showAll = value;
+      _future = _load();
+    });
+  }
+
+  Future<List<_ReorderRow>> _load() async {
+    final products = await ref.read(productRepositoryProvider).getAll();
+    final suppliers = await ref.read(supplierRepositoryProvider).getAll();
+    final suppMap = {for (final s in suppliers) s.id: s.name};
+
+    final inventory = await ref.read(inventoryRepositoryProvider).getAll();
+    final stockMap = {
+      for (final inv in inventory) inv.productId: inv.quantityPieces,
+    };
+
+    final end = DateTime.now();
+    final start = end.subtract(const Duration(days: _lookbackDays));
+    final invoices = await ref
+        .read(invoiceRepositoryProvider)
+        .getAll(startDate: start, endDate: end);
+
+    final Map<String, int> soldMap = {};
+    for (final inv in invoices) {
+      if (inv.status == 'cancelled') continue;
+      final items = await ref.read(invoiceRepositoryProvider).getItems(inv.id);
+      for (final item in items) {
+        soldMap[item.productId] =
+            (soldMap[item.productId] ?? 0) + item.quantity;
+      }
+    }
+
+    final rows = <_ReorderRow>[];
+    for (final p in products) {
+      final currentStock = stockMap[p.id] ?? 0;
+      final sold = soldMap[p.id] ?? 0;
+      final velocity = sold / _lookbackDays;
+      final daysLeft = velocity > 0 ? currentStock / velocity : double.infinity;
+      final belowReorderPoint =
+          p.reorderPoint != null && currentStock <= p.reorderPoint!;
+      final runningLow = velocity > 0 && daysLeft <= _leadTimeDays;
+      final flagged = belowReorderPoint || runningLow;
+      if (!flagged && !_showAll) continue;
+
+      final targetCoverDays = _leadTimeDays + _bufferDays;
+      final computedQty = (velocity * targetCoverDays - currentStock).ceil();
+      final suggestedQty =
+          p.reorderQuantity ?? (computedQty > 0 ? computedQty : 0);
+
+      rows.add(
+        _ReorderRow(
+          productName: p.name,
+          supplierName: suppMap[p.supplierId] ?? 'Unknown',
+          piecesPerBox: p.piecesPerBox,
+          currentStockPieces: currentStock,
+          avgDailyVelocity: velocity,
+          daysLeft: daysLeft,
+          reorderPoint: p.reorderPoint,
+          suggestedQtyPieces: suggestedQty,
+          flagged: flagged,
+        ),
+      );
+    }
+
+    rows.sort((a, b) => a.daysLeft.compareTo(b.daysLeft));
+    return rows;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+          child: Row(
+            children: [
+              const Text('Lead time:', style: TextStyle(fontSize: 13)),
+              IconButton(
+                icon: const Icon(Icons.remove_circle_outline),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => _setLeadTime(_leadTimeDays - 1),
+              ),
+              Text(
+                '$_leadTimeDays day(s)',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              IconButton(
+                icon: const Icon(Icons.add_circle_outline),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => _setLeadTime(_leadTimeDays + 1),
+              ),
+              const Spacer(),
+              FilterChip(
+                label: const Text('Show all'),
+                selected: _showAll,
+                onSelected: _setShowAll,
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Based on sales velocity over the last $_lookbackDays days.',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            ),
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: FutureBuilder<List<_ReorderRow>>(
             future: _future,
             builder: (ctx, snap) {
               if (snap.connectionState == ConnectionState.waiting) {
@@ -954,7 +3719,8 @@ class _ProductMovementsTabState extends ConsumerState<_ProductMovementsTab> {
               final rows = snap.data ?? [];
               if (rows.isEmpty) {
                 return const Center(
-                    child: Text('No movement data for this period.'));
+                  child: Text('No products need reordering right now.'),
+                );
               }
               return ListView.separated(
                 padding: const EdgeInsets.all(8),
@@ -962,43 +3728,55 @@ class _ProductMovementsTabState extends ConsumerState<_ProductMovementsTab> {
                 separatorBuilder: (_, _) => const Divider(height: 1),
                 itemBuilder: (ctx, i) {
                   final row = rows[i];
-                  final isTop = i < 3;
-                  final isLeast = i >= rows.length - 3 && rows.length > 3;
+                  final daysLeftLabel = row.daysLeft.isInfinite
+                      ? 'no recent sales'
+                      : '${row.daysLeft.toStringAsFixed(1)} days left';
+                  final stockLabel = [
+                    if (row.currentBoxes > 0) '${row.currentBoxes} box(es)',
+                    if (row.currentRemainPieces > 0 || row.currentBoxes == 0)
+                      '${row.currentRemainPieces} pcs',
+                  ].join(' + ');
+                  final suggestedLabel = [
+                    if (row.suggestedBoxes > 0) '${row.suggestedBoxes} box(es)',
+                    if (row.suggestedRemainPieces > 0)
+                      '${row.suggestedRemainPieces} pcs',
+                  ].join(' + ');
                   return ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: isTop
-                          ? Colors.green.shade100
-                          : isLeast
-                              ? Colors.orange.shade100
-                              : Colors.grey.shade100,
-                      child: Text('${i + 1}',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: isTop
-                                  ? Colors.green.shade800
-                                  : isLeast
-                                      ? Colors.orange.shade800
-                                      : Colors.grey.shade600)),
+                    leading: Icon(
+                      row.flagged
+                          ? Icons.warning_amber_rounded
+                          : Icons.inventory_2_outlined,
+                      color: row.flagged
+                          ? Colors.red.shade600
+                          : Colors.grey.shade500,
                     ),
-                    title: Text(row.productName),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (row.inPieces > 0)
-                          Text(
-                            'In: ${row.inBoxes} box(es) + ${row.inRemain} pcs',
-                            style: TextStyle(color: Colors.teal.shade700),
-                          ),
-                        if (row.outPieces > 0)
-                          Text(
-                            'Out: ${row.outBoxes} box(es) + ${row.outRemain} pcs',
-                            style: TextStyle(color: Colors.orange.shade700),
-                          ),
-                      ],
+                    title: Text(
+                      row.productName,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
-                    trailing: row.totalAmount > 0
-                        ? Text(formatCurrency(row.totalAmount),
-                            style: const TextStyle(fontWeight: FontWeight.bold))
+                    subtitle: Text(
+                      '${row.supplierName}  •  Stock: $stockLabel  •  $daysLeftLabel',
+                    ),
+                    trailing: row.suggestedQtyPieces > 0
+                        ? Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              const Text(
+                                'Reorder',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                              Text(
+                                suggestedLabel,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          )
                         : null,
                   );
                 },
@@ -1009,26 +3787,4 @@ class _ProductMovementsTabState extends ConsumerState<_ProductMovementsTab> {
       ],
     );
   }
-}
-
-class _MovementRow {
-  final String productName;
-  final int piecesPerBox;
-  int outPieces;
-  double totalAmount;
-  int inPieces;
-
-  _MovementRow({
-    required this.productName,
-    required this.piecesPerBox,
-    required this.outPieces,
-    required this.totalAmount,
-    this.inPieces = 0,
-  });
-
-  int get outBoxes => outPieces ~/ piecesPerBox;
-  int get outRemain => outPieces % piecesPerBox;
-  int get inBoxes  => inPieces ~/ piecesPerBox;
-  int get inRemain => inPieces % piecesPerBox;
-  int get totalMoved => outPieces + inPieces;
 }

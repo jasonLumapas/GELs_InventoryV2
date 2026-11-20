@@ -14,6 +14,28 @@ class ClientRepository extends BaseRepository {
     required super.syncService,
   });
 
+  /// Fixed id/name for the placeholder client used by Bad Orders / Returns
+  /// when no client is specified.
+  static const noClientId = '00000000-0000-0000-0000-000000000000';
+  static const noClientName = 'No Client Specified';
+
+  /// Returns the "No Client Specified" placeholder client, creating it if
+  /// it doesn't exist yet.
+  Future<Client> getOrCreateNoClientPlaceholder() async {
+    final all = await getAll();
+    for (final c in all) {
+      if (c.id == noClientId) return c;
+    }
+    final placeholder = Client(
+      id: noClientId,
+      name: noClientName,
+      address: null,
+      createdAt: DateTime.now(),
+    );
+    await upsert(placeholder);
+    return placeholder;
+  }
+
   Future<List<Client>> getAll() async {
     if (isOnline) {
       final data = await Supabase.instance.client
@@ -33,7 +55,9 @@ class ClientRepository extends BaseRepository {
         .map((r) => Client(
               id: r.id,
               name: r.name,
+              contact: r.contact,
               address: r.address,
+              isBlacklisted: r.isBlacklisted,
               createdAt: r.createdAt,
             ))
         .toList();
@@ -72,7 +96,9 @@ class ClientRepository extends BaseRepository {
     await db.into(db.clients).insertOnConflictUpdate(ClientsCompanion(
           id: drift.Value(c.id),
           name: drift.Value(c.name),
+          contact: drift.Value(c.contact),
           address: drift.Value(c.address),
+          isBlacklisted: drift.Value(c.isBlacklisted),
           createdAt: drift.Value(c.createdAt),
         ));
   }

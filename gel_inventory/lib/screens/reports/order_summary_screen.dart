@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../models/product.dart';
+import '../../repositories/bad_order_repository.dart';
 import '../../repositories/invoice_repository.dart';
 import '../../repositories/product_repository.dart';
+import '../../repositories/stocks_loading_repository.dart';
+import '../../repositories/supplier_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../utils/pdf_generator.dart';
 import '../../widgets/common/app_scaffold.dart';
@@ -13,6 +16,7 @@ import '../../widgets/common/app_scaffold.dart';
 class _Row {
   final String productId;
   final String productName;
+  final String supplierName;
   final int piecesPerBox;
   int totalPieces;
   double totalAmount;
@@ -20,6 +24,7 @@ class _Row {
   _Row({
     required this.productId,
     required this.productName,
+    required this.supplierName,
     required this.piecesPerBox,
     required this.totalPieces,
     required this.totalAmount,
@@ -39,7 +44,8 @@ class OrderSummaryScreen extends ConsumerStatefulWidget {
 }
 
 class _OrderSummaryScreenState extends ConsumerState<OrderSummaryScreen> {
-  DateTime _selectedDate = DateTime.now();
+  DateTime _selectedDate =
+      DateTime.now().add(const Duration(days: 1));
   bool _loading = false;
   List<_Row> _rows = [];
 
@@ -63,16 +69,17 @@ class _OrderSummaryScreenState extends ConsumerState<OrderSummaryScreen> {
         .read(invoiceRepositoryProvider)
         .getAll(startDate: start, endDate: end);
 
-    final products = await ref.read(productRepositoryProvider).getAll();
-    final productsById = <String, Product>{
-      for (final p in products) p.id: p
-    };
+    final products  = await ref.read(productRepositoryProvider).getAll();
+    final suppliers = await ref.read(supplierRepositoryProvider).getAll();
+    final productsById  = <String, Product>{for (final p in products) p.id: p};
+    final suppliersById = <String, String>{for (final s in suppliers) s.id: s.name};
 
     final Map<String, _Row> rowMap = {};
 
     for (final inv in invoices) {
       if (inv.status == 'cancelled') continue;
-      if (!inv.isDelivery) continue; // Layout only shows delivery invoices
+      if (!inv.isDelivery) continue;
+      if (!inv.includeInLayout) continue;
       final items =
           await ref.read(invoiceRepositoryProvider).getItems(inv.id);
       for (final item in items) {
@@ -85,6 +92,7 @@ class _OrderSummaryScreenState extends ConsumerState<OrderSummaryScreen> {
           rowMap[item.productId] = _Row(
             productId: item.productId,
             productName: product.name,
+            supplierName: suppliersById[product.supplierId] ?? 'Unknown',
             piecesPerBox: product.piecesPerBox,
             totalPieces: item.quantity,
             totalAmount: item.subtotal,
@@ -93,9 +101,91 @@ class _OrderSummaryScreenState extends ConsumerState<OrderSummaryScreen> {
       }
     }
 
+    final badOrders = await ref.read(badOrderRepositoryProvider).getAll();
+    for (final o in badOrders) {
+      if (o.type != 'bad_order' && o.type != 'stock_release') continue;
+      if (o.type == 'stock_release' && o.notes != 'Missed delivery') {
+        continue;
+      }
+      if (o.date.isBefore(start) || !o.date.isBefore(end)) continue;
+      final items = await ref.read(badOrderRepositoryProvider).getItems(o.id);
+      for (final item in items) {
+        final product = productsById[item.productId];
+        if (product == null) continue;
+        final pieces = item.unitType == 'box'
+            ? item.quantity * product.piecesPerBox
+            : item.quantity;
+        final price =
+            await ref.read(productRepositoryProvider).getCurrentPrice(item.productId);
+        final amount = pieces * (price?.sellingPrice ?? 0.0);
+        if (rowMap.containsKey(item.productId)) {
+          rowMap[item.productId]!.totalPieces += pieces;
+          rowMap[item.productId]!.totalAmount += amount;
+        } else {
+          rowMap[item.productId] = _Row(
+            productId: item.productId,
+            productName: product.name,
+            supplierName: suppliersById[product.supplierId] ?? 'Unknown',
+            piecesPerBox: product.piecesPerBox,
+            totalPieces: pieces,
+            totalAmount: amount,
+          );
+        }
+      }
+    }
+
+    // ── Stocks for Sale Loading items ────────────────────────────────────────
+    final loadingRepo = ref.read(stocksLoadingRepositoryProvider);
+    final loadingHeaders = await loadingRepo.getByDate(_selectedDate);
+    for (final header in loadingHeaders) {
+      final record = await loadingRepo.getRecord(header);
+      for (final item in record.items) {
+        // Match to a local product by code then by name.
+        Product? matched;
+        if (item.productCode != null && item.productCode!.isNotEmpty) {
+          matched = products
+              .where((p) => p.productCode == item.productCode)
+              .firstOrNull;
+        }
+        matched ??= products
+            .where((p) =>
+                p.name.toLowerCase() == item.productName.toLowerCase())
+            .firstOrNull;
+
+        // Use local product id as key when matched, else fall back to name.
+        final rowKey = matched?.id ?? 'sl_${item.productName}';
+        final ppb = matched?.piecesPerBox ?? item.piecesPerBox;
+
+        double amount = 0;
+        if (matched != null) {
+          final price = await ref
+              .read(productRepositoryProvider)
+              .getCurrentPrice(matched.id);
+          amount = item.quantityPieces * (price?.sellingPrice ?? 0.0);
+        }
+
+        if (rowMap.containsKey(rowKey)) {
+          rowMap[rowKey]!.totalPieces += item.quantityPieces;
+          rowMap[rowKey]!.totalAmount += amount;
+        } else {
+          rowMap[rowKey] = _Row(
+            productId: rowKey,
+            productName: matched?.name ?? item.productName,
+            supplierName: item.supplierName,
+            piecesPerBox: ppb,
+            totalPieces: item.quantityPieces,
+            totalAmount: amount,
+          );
+        }
+      }
+    }
+
     setState(() {
       _rows = rowMap.values.toList()
-        ..sort((a, b) => a.productName.compareTo(b.productName));
+        ..sort((a, b) {
+          final s = a.supplierName.compareTo(b.supplierName);
+          return s != 0 ? s : a.productName.compareTo(b.productName);
+        });
       _loading = false;
     });
   }
@@ -161,37 +251,43 @@ class _OrderSummaryScreenState extends ConsumerState<OrderSummaryScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             child: Row(
               children: [
-                IconButton(
-                  icon: const Icon(Icons.chevron_left),
-                  onPressed: _prevDay,
-                  visualDensity: VisualDensity.compact,
-                ),
                 Expanded(
-                  child: GestureDetector(
-                    onTap: _pickDate,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.calendar_today,
-                            size: 16, color: Colors.grey),
-                        const SizedBox(width: 6),
-                        Text(
-                          dateFmt.format(_selectedDate),
-                          style: const TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w600),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.chevron_left),
+                        onPressed: _prevDay,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      GestureDetector(
+                        onTap: _pickDate,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.calendar_today,
+                                size: 16, color: Colors.grey),
+                            const SizedBox(width: 6),
+                            Text(
+                              dateFmt.format(_selectedDate),
+                              style: const TextStyle(
+                                  fontSize: 16, fontWeight: FontWeight.w600),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.chevron_right),
+                        onPressed: _nextDay,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ],
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.chevron_right),
-                  onPressed: _nextDay,
-                  visualDensity: VisualDensity.compact,
                 ),
                 TextButton(
                   onPressed: () {
-                    setState(() => _selectedDate = DateTime.now());
+                    setState(() => _selectedDate =
+                        DateTime.now().add(const Duration(days: 1)));
                     _load();
                   },
                   style: TextButton.styleFrom(
@@ -224,15 +320,54 @@ class _OrderSummaryScreenState extends ConsumerState<OrderSummaryScreen> {
                   // Header row
                   _TableHeader(),
 
-                  // Data rows
+                  // Data rows grouped by supplier
                   Expanded(
-                    child: ListView.separated(
-                      itemCount: _rows.length,
-                      separatorBuilder: (_, _) =>
-                          const Divider(height: 1),
-                      itemBuilder: (ctx, i) =>
-                          _TableDataRow(row: _rows[i]),
-                    ),
+                    child: Builder(builder: (ctx) {
+                      // Build a flat list: header String + _Row items
+                      final List<dynamic> listItems = [];
+                      String? lastSupplier;
+                      for (final row in _rows) {
+                        if (row.supplierName != lastSupplier) {
+                          listItems.add(row.supplierName);
+                          lastSupplier = row.supplierName;
+                        }
+                        listItems.add(row);
+                      }
+                      return ListView.separated(
+                        itemCount: listItems.length,
+                        separatorBuilder: (_, i) {
+                          // No divider before/after supplier headers
+                          if (listItems[i] is String) return const SizedBox();
+                          if (i + 1 < listItems.length &&
+                              listItems[i + 1] is String) {
+                            return const SizedBox();
+                          }
+                          return const Divider(height: 1);
+                        },
+                        itemBuilder: (ctx, i) {
+                          final item = listItems[i];
+                          if (item is String) {
+                            return Container(
+                              color: Theme.of(ctx)
+                                  .colorScheme
+                                  .surfaceContainerHighest,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 6),
+                              child: Text(item,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                    color: Theme.of(ctx)
+                                        .colorScheme
+                                        .primary,
+                                    letterSpacing: 0.5,
+                                  )),
+                            );
+                          }
+                          return _TableDataRow(row: item as _Row);
+                        },
+                      );
+                    }),
                   ),
 
                   const Divider(height: 1, thickness: 2),

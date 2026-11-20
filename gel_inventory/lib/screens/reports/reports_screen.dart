@@ -7,9 +7,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../models/product.dart';
+import '../../models/product_price.dart';
 import '../../models/supplier_received_invoice.dart';
 import '../../models/supplier_received_invoice_item.dart';
+import '../../models/van_stock.dart';
 import '../../repositories/inventory_repository.dart';
+import '../../repositories/inventory_opening_balance_repository.dart';
 import '../../repositories/invoice_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../repositories/stock_movement_repository.dart';
@@ -1369,14 +1372,34 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
   /// Ending   = current + pieces sold AFTER selected date
   /// Beginning = ending + pieces sold ON selected date
   Future<_InvData> _loadData(DateTime date, String? supplierId) async {
-    var products = await ref.read(productRepositoryProvider).getAll();
+    final dayStart = DateTime(date.year, date.month, date.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+    final now = DateTime.now();
+    // +2 days so that invoices dated tomorrow (the new default) are always
+    // captured in the "after" window for today's report.
+    final nowEnd = DateTime(now.year, now.month, now.day + 2);
+    final beforeBaseline = dayStart.isBefore(DateTime(2026, 6, 14));
+    final activityEnd = beforeBaseline || !dayEnd.isBefore(nowEnd)
+        ? dayEnd
+        : nowEnd;
+
+    final pricesFuture =
+        ref.read(productRepositoryProvider).getAllCurrentPriceRecords();
+    final staticData = await Future.wait<dynamic>([
+      ref.read(productsListProvider.future),
+      ref.read(suppliersListProvider.future),
+      ref.read(inventoryListProvider.future),
+    ]);
+    var products = staticData[0] as List<Product>;
     if (supplierId != null) {
       products = products.where((p) => p.supplierId == supplierId).toList();
     }
 
     // Sort by supplier name, then alphabetically by product name.
-    final suppliers = await ref.read(supplierRepositoryProvider).getAll();
-    final supplierNames = {for (final s in suppliers) s.id: s.name};
+    final suppliers = staticData[1] as List;
+    final supplierNames = <String, String>{
+      for (final s in suppliers) s.id as String: s.name as String,
+    };
     products = List.of(products)
       ..sort((a, b) {
         final cmp = (supplierNames[a.supplierId] ?? '')
@@ -1384,23 +1407,18 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
         return cmp != 0 ? cmp : a.name.compareTo(b.name);
       });
 
-    final inventoryItems =
-        await ref.read(inventoryRepositoryProvider).getAll();
+    final inventoryItems = staticData[2] as List;
     final currentInv = <String, int>{
       for (final i in inventoryItems) i.productId: i.quantityPieces
     };
-
-    final dayStart = DateTime(date.year, date.month, date.day);
-    final dayEnd = dayStart.add(const Duration(days: 1));
-    final now = DateTime.now();
-    // +2 days so that invoices dated tomorrow (the new default) are always
-    // captured in the "after" window for today's report.
-    final nowEnd =
-        DateTime(now.year, now.month, now.day + 2);
-
     // Helper: sum van stock transactions by type for a date range
+    final vanRangeCache = <String, Future<List<VanStock>>>{};
     Future<Map<String, int>> sumVan(String type, DateTime from, DateTime to) async {
-      final txs = await ref.read(vanStockRepositoryProvider).getForRange(from, to);
+      final rangeKey = '${from.toIso8601String()}|${to.toIso8601String()}';
+      final txs = await vanRangeCache.putIfAbsent(
+        rangeKey,
+        () => ref.read(vanStockRepositoryProvider).getForRange(from, to),
+      );
       final totals = <String, int>{};
       for (final t in txs.where((t) => t.type == type)) {
         totals[t.productId] = (totals[t.productId] ?? 0) + t.quantityPieces;
@@ -1415,10 +1433,79 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
     }
 
     // Pieces sold + van-out + manually-removed stock ON the selected date → Stock Out
-    final invoiceOut    = await _sumSold(ref, dayStart, dayEnd);
-    final vanOutOnDate  = await sumVan('out', dayStart, dayEnd);
-    final (movOutOnDate, badOrderOutOnDate, bulkClearOutOnDate) =
-        await ref.read(stockMovementRepositoryProvider).sumOutSplitForDate(date);
+    final afterHasActivity = dayEnd.isBefore(activityEnd);
+    final activityData = await Future.wait<dynamic>([
+      _sumSold(ref, dayStart, dayEnd),
+      sumVan('out', dayStart, dayEnd),
+      ref
+          .read(stockMovementRepositoryProvider)
+          .getForRange(dayStart, activityEnd),
+      afterHasActivity
+          ? _sumSold(ref, dayEnd, activityEnd)
+          : Future.value(<String, int>{}),
+      afterHasActivity
+          ? sumVan('out', dayEnd, activityEnd)
+          : Future.value(<String, int>{}),
+      sumVan('in', dayStart, dayEnd),
+      afterHasActivity
+          ? sumVan('in', dayEnd, activityEnd)
+          : Future.value(<String, int>{}),
+      pricesFuture,
+    ]);
+
+    final invoiceOut = activityData[0] as Map<String, int>;
+    final vanOutOnDate = activityData[1] as Map<String, int>;
+    final movements = activityData[2] as List;
+    final invoiceOutAfter = activityData[3] as Map<String, int>;
+    final vanOutAfter = activityData[4] as Map<String, int>;
+    final vanInOnDate = activityData[5] as Map<String, int>;
+    final vanInAfter = activityData[6] as Map<String, int>;
+    final prices = activityData[7] as Map<String, ProductPrice>;
+
+    final movIn = <String, int>{};
+    final movOutOnDate = <String, int>{};
+    final badOrderOutOnDate = <String, int>{};
+    final bulkClearOutOnDate = <String, int>{};
+    final bcRestockOnDate = <String, int>{};
+    final movInAfter = <String, int>{};
+    final movOutAfter = <String, int>{};
+    final dayKey = _inventoryDateKey(dayStart);
+    for (final movement in movements) {
+      final referenceDate = movement.referenceDate as DateTime?;
+      if (referenceDate == null) continue;
+      final movementDay = _inventoryDateKey(referenceDate);
+      final productId = movement.productId as String;
+      final quantity = movement.quantityPieces as int;
+      final type = movement.movementType as String;
+      if (movementDay == dayKey) {
+        if (type == 'in') {
+          movIn[productId] = (movIn[productId] ?? 0) + quantity;
+          if (movement.comments == 'Bulk clear restock import') {
+            bcRestockOnDate[productId] =
+                (bcRestockOnDate[productId] ?? 0) + quantity;
+          }
+        } else if (type == 'out') {
+          if (movement.comments == 'Bulk clear all stock') {
+            bulkClearOutOnDate[productId] =
+                (bulkClearOutOnDate[productId] ?? 0) + quantity;
+          } else if ((movement.invoiceNumber as String?)?.startsWith('BO-') ??
+              false) {
+            badOrderOutOnDate[productId] =
+                (badOrderOutOnDate[productId] ?? 0) + quantity;
+          } else {
+            movOutOnDate[productId] =
+                (movOutOnDate[productId] ?? 0) + quantity;
+          }
+        }
+      } else if (movementDay.compareTo(dayKey) > 0) {
+        if (type == 'in') {
+          movInAfter[productId] = (movInAfter[productId] ?? 0) + quantity;
+        } else if (type == 'out') {
+          movOutAfter[productId] =
+              (movOutAfter[productId] ?? 0) + quantity;
+        }
+      }
+    }
     final stockOutInvoices = invoiceOut;
     final stockOutVan       = vanOutOnDate;
     final stockOutManual    = movOutOnDate;
@@ -1427,37 +1514,12 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
     final onDate = merge(merge(merge(merge(stockOutInvoices, stockOutVan), stockOutManual), stockOutBO), stockOutBulkClear);
 
     // Pieces sold + van-out + manually-removed stock AFTER the selected date
-    final Map<String, int> invoiceOutAfter;
-    final Map<String, int> vanOutAfter;
-    final Map<String, int> movOutAfter;
-    if (dayEnd.isBefore(nowEnd)) {
-      invoiceOutAfter = await _sumSold(ref, dayEnd, nowEnd);
-      vanOutAfter     = await sumVan('out', dayEnd, nowEnd);
-      final (nonBOAfter, boAfter, bulkClearAfter) =
-          await ref.read(stockMovementRepositoryProvider).sumOutSplitForRange(dayEnd, nowEnd);
-      movOutAfter = merge(merge(nonBOAfter, boAfter), bulkClearAfter);
-    } else {
-      invoiceOutAfter = {};
-      vanOutAfter     = {};
-      movOutAfter     = {};
-    }
     final afterDate = merge(merge(invoiceOutAfter, vanOutAfter), movOutAfter);
 
     // Stock-in (movements) + van-in ON the selected date → Stock In
-    final movIn        = await ref.read(stockMovementRepositoryProvider).sumInForDate(date);
-    final vanInOnDate  = await sumVan('in', dayStart, dayEnd);
     final stockIn      = merge(movIn, vanInOnDate);
 
     // Stock-in + van-in AFTER the selected date
-    final Map<String, int> movInAfter;
-    final Map<String, int> vanInAfter;
-    if (dayEnd.isBefore(nowEnd)) {
-      movInAfter  = await ref.read(stockMovementRepositoryProvider).sumInForRange(dayEnd, nowEnd);
-      vanInAfter  = await sumVan('in', dayEnd, nowEnd);
-    } else {
-      movInAfter = {};
-      vanInAfter = {};
-    }
     final stockInAfter = merge(movInAfter, vanInAfter);
 
     // Reconstruct ending and beginning by working backwards from current stock.
@@ -1474,14 +1536,44 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
       beginning[p.id] = beg.clamp(0, 999999);
     }
 
+    // June 14, 2026 is the initial inventory cutover. Earlier dates have no
+    // opening quantity and are not persisted as snapshots.
+    if (beforeBaseline) {
+      for (final p in products) {
+        beginning[p.id] = 0;
+      }
+    } else {
+      final savedBeginning = await ref
+          .read(inventoryOpeningBalanceRepositoryProvider)
+          .getOrCreateForDate(
+            reportDate: date,
+            calculatedOpening: beginning,
+          );
+      beginning
+        ..clear()
+        ..addAll(savedBeginning);
+    }
+    for (final p in products) {
+      final end = (beginning[p.id] ?? 0) +
+          (stockIn[p.id] ?? 0) -
+          (onDate[p.id] ?? 0);
+      ending[p.id] = end.clamp(0, 999999);
+    }
+    if (!beforeBaseline) {
+      await ref
+          .read(inventoryOpeningBalanceRepositoryProvider)
+          .saveNextDayOpeningFromEnding(
+            reportDate: date,
+            endingByProductId: ending,
+          );
+    }
+
     // A "Bulk clear restock import" merely undoes a same-date "Bulk clear all
     // stock" out-movement, so for *display* purposes the two cancel each
     // other out (up to their overlap) — otherwise Stock In would appear to
     // double-count stock that was only ever cleared and restored the same
     // day. Beginning/Ending above are computed from the raw totals and are
     // unaffected.
-    final bcRestockOnDate =
-        await ref.read(stockMovementRepositoryProvider).sumBulkClearRestockForDate(date);
     final stockInDisplay = <String, int>{};
     final stockOutBulkClearDisplay = <String, int>{};
     for (final p in products) {
@@ -1498,9 +1590,7 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
     double totalEndingSellingValue = 0;
     double totalStockInValue       = 0;
     for (final p in products) {
-      final price = await ref
-          .read(productRepositoryProvider)
-          .getCurrentPrice(p.id);
+      final price = prices[p.id];
       if (price == null) continue;
       final endPieces = ending[p.id] ?? 0;
       if (endPieces > 0) {
@@ -1530,21 +1620,26 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
 
   Future<Map<String, int>> _sumSold(
       WidgetRef ref, DateTime from, DateTime to) async {
-    final invoices = await ref
-        .read(invoiceRepositoryProvider)
-        .getAll(startDate: from, endDate: to);
+    final invoiceRepo = ref.read(invoiceRepositoryProvider);
+    final invoices = await invoiceRepo.getAll(startDate: from, endDate: to);
+    if (invoices.isEmpty) return {};
+    final itemsByInvoice = await invoiceRepo.sumQuantitiesByInvoiceIds(
+      invoices.map((invoice) => invoice.id),
+    );
     final sold = <String, int>{};
     for (final inv in invoices) {
       if (inv.status == 'cancelled') continue;
-      final items =
-          await ref.read(invoiceRepositoryProvider).getItems(inv.id);
-      for (final item in items) {
-        sold[item.productId] =
-            (sold[item.productId] ?? 0) + item.quantity;
+      for (final entry in (itemsByInvoice[inv.id] ?? {}).entries) {
+        sold[entry.key] = (sold[entry.key] ?? 0) + entry.value;
       }
     }
     return sold;
   }
+
+  String _inventoryDateKey(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
 }
 
 class _InvData {

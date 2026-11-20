@@ -159,6 +159,45 @@ class ProductRepository extends BaseRepository {
     return prices;
   }
 
+  /// Returns the latest full price record for each product with one query.
+  Future<Map<String, ProductPrice>> getAllCurrentPriceRecords() async {
+    final prices = <String, ProductPrice>{};
+    if (isOnline) {
+      var offset = 0;
+      while (true) {
+        final data = await Supabase.instance.client
+            .from('product_prices')
+            .select()
+            .order('effective_from', ascending: false)
+            .range(offset, offset + 999);
+        for (final row in data as List) {
+          final price = ProductPrice.fromJson(Map<String, dynamic>.from(row));
+          prices.putIfAbsent(price.productId, () => price);
+        }
+        if ((data as List).length < 1000) break;
+        offset += 1000;
+      }
+    } else {
+      final rows = await (db.select(db.productPrices)
+            ..orderBy([(t) => drift.OrderingTerm.desc(t.effectiveFrom)]))
+          .get();
+      for (final row in rows) {
+        prices.putIfAbsent(
+          row.productId,
+          () => ProductPrice(
+            id: row.id,
+            productId: row.productId,
+            withdrawalPrice: row.withdrawalPrice,
+            sellingPrice: row.sellingPrice,
+            sellingPriceOp: row.sellingPriceOp,
+            effectiveFrom: row.effectiveFrom,
+          ),
+        );
+      }
+    }
+    return prices;
+  }
+
   /// Returns the latest cost (withdrawal) price per product as a
   /// `Map<productId, withdrawalPrice>`.
   Future<Map<String, double>> getAllCurrentCostPrices() async {

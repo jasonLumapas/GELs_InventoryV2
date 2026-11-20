@@ -138,19 +138,28 @@ class InvoiceRepository extends BaseRepository {
     DateTime? endDate,
   }) async {
     if (isOnline) {
-      var q = Supabase.instance.client
-          .from('invoices')
-          .select()
-          .neq('status', 'cancelled')
-          .neq('status', 'draft');
-      if (startDate != null) {
-        q = q.gte('invoice_date', startDate.toIso8601String());
+      final invoices = <Invoice>[];
+      var offset = 0;
+      while (true) {
+        var q = Supabase.instance.client
+            .from('invoices')
+            .select()
+            .neq('status', 'cancelled')
+            .neq('status', 'draft');
+        if (startDate != null) {
+          q = q.gte('invoice_date', startDate.toIso8601String());
+        }
+        if (endDate != null) {
+          q = q.lt('invoice_date', endDate.toIso8601String());
+        }
+        final data = await q
+            .order('invoice_number', ascending: true)
+            .range(offset, offset + 999);
+        invoices.addAll((data as List).map((row) => Invoice.fromJson(row)));
+        if ((data as List).length < 1000) break;
+        offset += 1000;
       }
-      if (endDate != null) {
-        q = q.lt('invoice_date', endDate.toIso8601String());
-      }
-      final data = await q.order('invoice_number', ascending: true);
-      return (data as List).map((j) => Invoice.fromJson(j)).toList();
+      return invoices;
     }
     final rows = await (db.select(db.invoices)
           ..where((t) {
@@ -307,6 +316,70 @@ class InvoiceRepository extends BaseRepository {
               discountPercent: r.discountPercent,
             ))
         .toList();
+  }
+
+  /// Aggregates item quantities for many invoices using a small number of
+  /// batched queries. Used by date-range reports to avoid one request per
+  /// invoice.
+  Future<Map<String, Map<String, int>>> sumQuantitiesByInvoiceIds(
+    Iterable<String> invoiceIds,
+  ) async {
+    final ids = invoiceIds.toSet().toList();
+    if (ids.isEmpty) return {};
+
+    const chunkSize = 200;
+    final chunks = [
+      for (var i = 0; i < ids.length; i += chunkSize)
+        ids.sublist(i, i + chunkSize > ids.length ? ids.length : i + chunkSize),
+    ];
+    final totals = <String, Map<String, int>>{};
+
+    if (isOnline) {
+      final results = await Future.wait(
+        chunks.map((chunk) async {
+          final rows = <dynamic>[];
+          var offset = 0;
+          while (true) {
+            final data = await Supabase.instance.client
+                .from('invoice_items')
+                .select('invoice_id, product_id, quantity')
+                .inFilter('invoice_id', chunk)
+                .range(offset, offset + 999);
+            rows.addAll(data as List);
+            if ((data as List).length < 1000) break;
+            offset += 1000;
+          }
+          return rows;
+        }),
+      );
+      for (final rows in results) {
+        for (final row in rows) {
+          final invoiceId = row['invoice_id'] as String;
+          final productId = row['product_id'] as String;
+          final quantity = (row['quantity'] as num).toInt();
+          final invoiceTotals = totals.putIfAbsent(invoiceId, () => {});
+          invoiceTotals[productId] =
+              (invoiceTotals[productId] ?? 0) + quantity;
+        }
+      }
+      return totals;
+    }
+
+    final results = await Future.wait(
+      chunks.map(
+        (chunk) => (db.select(db.invoiceItems)
+              ..where((t) => t.invoiceId.isIn(chunk)))
+            .get(),
+      ),
+    );
+    for (final rows in results) {
+      for (final row in rows) {
+        final invoiceTotals = totals.putIfAbsent(row.invoiceId, () => {});
+        invoiceTotals[row.productId] =
+            (invoiceTotals[row.productId] ?? 0) + row.quantity;
+      }
+    }
+    return totals;
   }
 
   Future<Invoice> saveInvoice({

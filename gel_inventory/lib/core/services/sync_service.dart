@@ -50,6 +50,12 @@ class SyncService {
         switch (item.operation) {
           case 'insert':
             await client.from(item.targetTable).upsert(payload);
+          case 'insert_if_absent':
+            await client.from(item.targetTable).upsert(
+                  payload,
+                  onConflict: 'id',
+                  ignoreDuplicates: true,
+                );
           case 'update':
             await client
                 .from(item.targetTable)

@@ -159,9 +159,10 @@ class StockMovementRepository extends BaseRepository {
 
   Future<Map<String, int>> _sumForTypeAndDate(
       String movementType, DateTime date) async {
-    final dayStr = '${date.year}-'
-        '${date.month.toString().padLeft(2, '0')}-'
-        '${date.day.toString().padLeft(2, '0')}'; // 'YYYY-MM-DD'
+    final dayStart = DateTime(date.year, date.month, date.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+    final dayStr = _dateKey(dayStart);
+    final nextDayStr = _dateKey(dayEnd);
     final totals = <String, int>{};
 
     debugPrint('sumForTypeAndDate($movementType): filtering for date=$dayStr isOnline=$isOnline');
@@ -171,7 +172,9 @@ class StockMovementRepository extends BaseRepository {
         final data = await Supabase.instance.client
             .from('stock_movements')
             .select('product_id, quantity_pieces, reference_date')
-            .eq('movement_type', movementType);
+            .eq('movement_type', movementType)
+            .gte('reference_date', dayStr)
+            .lt('reference_date', nextDayStr);
         debugPrint('sumForTypeAndDate($movementType): Supabase returned ${(data as List).length} rows');
         for (final m in data) {
           final refStr = m['reference_date'] as String?;
@@ -193,10 +196,11 @@ class StockMovementRepository extends BaseRepository {
     }
 
     // Offline or Supabase unavailable — read from local SQLite
-    final dayStart = DateTime(date.year, date.month, date.day);
-    final dayEnd   = dayStart.add(const Duration(days: 1));
     final rows = await (db.select(db.stockMovements)
-          ..where((t) => t.movementType.equals(movementType)))
+          ..where((t) =>
+              t.movementType.equals(movementType) &
+              t.referenceDate.isBiggerOrEqualValue(dayStart) &
+              t.referenceDate.isSmallerThanValue(dayEnd)))
         .get();
     debugPrint('sumForTypeAndDate($movementType): local SQLite returned ${rows.length} rows');
     for (final r in rows) {
@@ -223,7 +227,9 @@ class StockMovementRepository extends BaseRepository {
         final data = await Supabase.instance.client
             .from('stock_movements')
             .select('product_id, quantity_pieces, reference_date')
-            .eq('movement_type', movementType);
+            .eq('movement_type', movementType)
+            .gte('reference_date', fromStr)
+            .lt('reference_date', toStr);
         for (final m in data as List) {
           final refStr = m['reference_date'] as String?;
           if (refStr == null) continue;
@@ -241,7 +247,10 @@ class StockMovementRepository extends BaseRepository {
     }
 
     final rows = await (db.select(db.stockMovements)
-          ..where((t) => t.movementType.equals(movementType)))
+          ..where((t) =>
+              t.movementType.equals(movementType) &
+              t.referenceDate.isBiggerOrEqualValue(from) &
+              t.referenceDate.isSmallerThanValue(to)))
         .get();
     for (final r in rows) {
       final rd = r.referenceDate;
@@ -261,9 +270,10 @@ class StockMovementRepository extends BaseRepository {
   /// Sum of 'in' movements on [date] that were created by re-importing a
   /// "Bulk Clear" export (`comments == 'Bulk clear restock import'`).
   Future<Map<String, int>> sumBulkClearRestockForDate(DateTime date) async {
-    final dayStr = '${date.year}-'
-        '${date.month.toString().padLeft(2, '0')}-'
-        '${date.day.toString().padLeft(2, '0')}';
+    final dayStart = DateTime(date.year, date.month, date.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+    final dayStr = _dateKey(dayStart);
+    final nextDayStr = _dateKey(dayEnd);
     final totals = <String, int>{};
 
     if (isOnline) {
@@ -271,7 +281,9 @@ class StockMovementRepository extends BaseRepository {
         final data = await Supabase.instance.client
             .from('stock_movements')
             .select('product_id, quantity_pieces, reference_date, comments')
-            .eq('movement_type', 'in');
+            .eq('movement_type', 'in')
+            .gte('reference_date', dayStr)
+            .lt('reference_date', nextDayStr);
         for (final m in data as List) {
           if (!_isBulkClearRestock(m['comments'] as String?)) continue;
           final refStr = m['reference_date'] as String?;
@@ -289,10 +301,11 @@ class StockMovementRepository extends BaseRepository {
       }
     }
 
-    final dayStart = DateTime(date.year, date.month, date.day);
-    final dayEnd   = dayStart.add(const Duration(days: 1));
     final rows = await (db.select(db.stockMovements)
-          ..where((t) => t.movementType.equals('in')))
+          ..where((t) =>
+              t.movementType.equals('in') &
+              t.referenceDate.isBiggerOrEqualValue(dayStart) &
+              t.referenceDate.isSmallerThanValue(dayEnd)))
         .get();
     for (final r in rows) {
       if (!_isBulkClearRestock(r.comments)) continue;
@@ -324,9 +337,10 @@ class StockMovementRepository extends BaseRepository {
   /// starts with `BO-` or `comments` marks a bulk clear.
   Future<(Map<String, int>, Map<String, int>, Map<String, int>)> sumOutSplitForDate(
       DateTime date) async {
-    final dayStr = '${date.year}-'
-        '${date.month.toString().padLeft(2, '0')}-'
-        '${date.day.toString().padLeft(2, '0')}';
+    final dayStart = DateTime(date.year, date.month, date.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+    final dayStr = _dateKey(dayStart);
+    final nextDayStr = _dateKey(dayEnd);
     final nonBO = <String, int>{};
     final bo = <String, int>{};
     final bulkClear = <String, int>{};
@@ -336,7 +350,9 @@ class StockMovementRepository extends BaseRepository {
         final data = await Supabase.instance.client
             .from('stock_movements')
             .select('product_id, quantity_pieces, reference_date, invoice_number, comments')
-            .eq('movement_type', 'out');
+            .eq('movement_type', 'out')
+            .gte('reference_date', dayStr)
+            .lt('reference_date', nextDayStr);
         for (final m in data as List) {
           final refStr = m['reference_date'] as String?;
           if (refStr == null) continue;
@@ -356,10 +372,11 @@ class StockMovementRepository extends BaseRepository {
       }
     }
 
-    final dayStart = DateTime(date.year, date.month, date.day);
-    final dayEnd = dayStart.add(const Duration(days: 1));
     final rows = await (db.select(db.stockMovements)
-          ..where((t) => t.movementType.equals('out')))
+          ..where((t) =>
+              t.movementType.equals('out') &
+              t.referenceDate.isBiggerOrEqualValue(dayStart) &
+              t.referenceDate.isSmallerThanValue(dayEnd)))
         .get();
     for (final r in rows) {
       final rd = r.referenceDate;
@@ -393,7 +410,9 @@ class StockMovementRepository extends BaseRepository {
         final data = await Supabase.instance.client
             .from('stock_movements')
             .select('product_id, quantity_pieces, reference_date, invoice_number, comments')
-            .eq('movement_type', 'out');
+            .eq('movement_type', 'out')
+            .gte('reference_date', fromStr)
+            .lt('reference_date', toStr);
         for (final m in data as List) {
           final refStr = m['reference_date'] as String?;
           if (refStr == null) continue;
@@ -414,7 +433,10 @@ class StockMovementRepository extends BaseRepository {
     }
 
     final rows = await (db.select(db.stockMovements)
-          ..where((t) => t.movementType.equals('out')))
+          ..where((t) =>
+              t.movementType.equals('out') &
+              t.referenceDate.isBiggerOrEqualValue(from) &
+              t.referenceDate.isSmallerThanValue(to)))
         .get();
     for (final r in rows) {
       final rd = r.referenceDate;
@@ -484,6 +506,59 @@ class StockMovementRepository extends BaseRepository {
             ))
         .toList();
   }
+
+  /// Returns dated stock movements in [from, to), filtering at the database
+  /// so reports do not download the full movement history on every date load.
+  Future<List<StockMovement>> getForRange(DateTime from, DateTime to) async {
+    final fromDay = _dateKey(from);
+    final toDay = _dateKey(to);
+
+    if (isOnline) {
+      try {
+        final rows = <StockMovement>[];
+        var offset = 0;
+        while (true) {
+          final data = await Supabase.instance.client
+              .from('stock_movements')
+              .select()
+              .gte('reference_date', fromDay)
+              .lt('reference_date', toDay)
+              .range(offset, offset + 999);
+          rows.addAll(
+            (data as List).map((row) => StockMovement.fromJson(row)),
+          );
+          if ((data as List).length < 1000) break;
+          offset += 1000;
+        }
+        return rows;
+      } catch (e) {
+        debugPrint('getForRange Supabase failed: $e. Falling back to local.');
+      }
+    }
+
+    final rows = await (db.select(db.stockMovements)
+          ..where((t) =>
+              t.referenceDate.isBiggerOrEqualValue(from) &
+              t.referenceDate.isSmallerThanValue(to)))
+        .get();
+    return rows
+        .map((row) => StockMovement(
+              id: row.id,
+              productId: row.productId,
+              movementType: row.movementType,
+              quantityPieces: row.quantityPieces,
+              referenceDate: row.referenceDate,
+              invoiceNumber: row.invoiceNumber,
+              comments: row.comments,
+              createdAt: row.createdAt,
+            ))
+        .toList();
+  }
+
+  String _dateKey(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
 }
 
 final stockMovementRepositoryProvider =

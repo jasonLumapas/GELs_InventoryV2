@@ -514,11 +514,14 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 39;
+  int get schemaVersion => 40;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (m) => m.createAll(),
+        onCreate: (m) async {
+          await m.createAll();
+          await _createInventoryOpeningBalances(m.database);
+        },
         onUpgrade: (m, from, to) async {
           if (from < 2) {
             await _addColumnIfMissing(
@@ -709,6 +712,9 @@ class LocalDatabase extends _$LocalDatabase {
             await _addColumnIfMissing(m.database, 'product_supplier_prices',
                 'free_quantity_unit', "TEXT NOT NULL DEFAULT 'box'");
           }
+          if (from < 40) {
+            await _createInventoryOpeningBalances(m.database);
+          }
         },
         beforeOpen: (details) async {
           // Some installs reached a schema version past the point a table's
@@ -727,8 +733,28 @@ class LocalDatabase extends _$LocalDatabase {
               await migrator.createTable(table);
             }
           }
+          await _createInventoryOpeningBalances(this);
         },
       );
+
+  static Future<void> _createInventoryOpeningBalances(
+    DatabaseConnectionUser db,
+  ) async {
+    await db.customStatement('''
+      CREATE TABLE IF NOT EXISTS inventory_opening_balances (
+        id TEXT PRIMARY KEY NOT NULL,
+        product_id TEXT NOT NULL REFERENCES products(id),
+        report_date TEXT NOT NULL,
+        quantity_pieces INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(product_id, report_date)
+      )
+    ''');
+    await db.customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_inventory_opening_balances_report_date
+      ON inventory_opening_balances(report_date)
+    ''');
+  }
 
   static Future<void> _addColumnIfMissing(
     DatabaseConnectionUser db,

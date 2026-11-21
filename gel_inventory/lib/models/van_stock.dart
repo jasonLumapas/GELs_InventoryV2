@@ -4,6 +4,7 @@ class VanStock {
   final String type; // 'out' | 'in'
   final int quantityPieces;
   final DateTime date;
+  final DateTime createdAt;
   final String? notes;
   final String? areaId;
 
@@ -13,6 +14,7 @@ class VanStock {
     required this.type,
     required this.quantityPieces,
     required this.date,
+    required this.createdAt,
     this.notes,
     this.areaId,
   });
@@ -23,6 +25,8 @@ class VanStock {
         type: j['type'] as String,
         quantityPieces: j['quantity_pieces'] as int,
         date: DateTime.parse(j['date'] as String),
+        createdAt: DateTime.parse(
+            (j['created_at'] as String?) ?? (j['date'] as String)),
         notes: j['notes'] as String?,
         areaId: j['area_id'] as String?,
       );
@@ -33,6 +37,7 @@ class VanStock {
         'type': type,
         'quantity_pieces': quantityPieces,
         'date': date.toIso8601String(),
+        'created_at': createdAt.toIso8601String(),
         'notes': notes,
         'area_id': areaId,
       };

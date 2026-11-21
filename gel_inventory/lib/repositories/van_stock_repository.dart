@@ -57,6 +57,7 @@ class VanStockRepository extends BaseRepository {
               type: r.type,
               quantityPieces: r.quantityPieces,
               date: r.date,
+              createdAt: r.createdAt,
               notes: r.notes,
               areaId: r.areaId,
             ))
@@ -88,6 +89,7 @@ class VanStockRepository extends BaseRepository {
               type: r.type,
               quantityPieces: r.quantityPieces,
               date: r.date,
+              createdAt: r.createdAt,
               notes: r.notes,
               areaId: r.areaId,
             ))
@@ -150,12 +152,14 @@ class VanStockRepository extends BaseRepository {
     DateTime? date,
     String? areaId,
   }) async {
+    final createdAt = DateTime.now();
     final tx = VanStock(
       id: const Uuid().v4(),
       productId: productId,
       type: type,
       quantityPieces: quantityPieces,
       date: date ?? DateTime.now(),
+      createdAt: createdAt,
       notes: notes,
       areaId: areaId,
     );
@@ -178,6 +182,7 @@ class VanStockRepository extends BaseRepository {
           type: drift.Value(tx.type),
           quantityPieces: drift.Value(tx.quantityPieces),
           date: drift.Value(tx.date),
+          createdAt: drift.Value(tx.createdAt),
           notes: drift.Value(tx.notes),
           areaId: drift.Value(tx.areaId),
         )));

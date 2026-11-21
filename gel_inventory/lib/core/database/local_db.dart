@@ -245,6 +245,8 @@ class VanStocks extends Table {
   TextColumn get type => text()();
   IntColumn get quantityPieces => integer()();
   DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get createdAt =>
+      dateTime().withDefault(currentDateAndTime)();
   TextColumn get notes => text().nullable()();
   TextColumn get areaId => text().nullable()();
 
@@ -514,7 +516,7 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 40;
+  int get schemaVersion => 41;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -714,6 +716,12 @@ class LocalDatabase extends _$LocalDatabase {
           }
           if (from < 40) {
             await _createInventoryOpeningBalances(m.database);
+          }
+          if (from < 41) {
+            await _addColumnIfMissing(
+                m.database, 'van_stocks', 'created_at', 'INTEGER');
+            await m.database.customStatement(
+                'UPDATE van_stocks SET created_at = date WHERE created_at IS NULL');
           }
         },
         beforeOpen: (details) async {

@@ -6681,6 +6681,18 @@ class $VanStocksTable extends VanStocks
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
   static const VerificationMeta _notesMeta = const VerificationMeta('notes');
   @override
   late final GeneratedColumn<String> notes = GeneratedColumn<String>(
@@ -6706,6 +6718,7 @@ class $VanStocksTable extends VanStocks
     type,
     quantityPieces,
     date,
+    createdAt,
     notes,
     areaId,
   ];
@@ -6759,6 +6772,12 @@ class $VanStocksTable extends VanStocks
         date.isAcceptableOrUnknown(data['date']!, _dateMeta),
       );
     }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
     if (data.containsKey('notes')) {
       context.handle(
         _notesMeta,
@@ -6800,6 +6819,10 @@ class $VanStocksTable extends VanStocks
         DriftSqlType.dateTime,
         data['${effectivePrefix}date'],
       )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
       notes: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}notes'],
@@ -6823,6 +6846,7 @@ class VanStock extends DataClass implements Insertable<VanStock> {
   final String type;
   final int quantityPieces;
   final DateTime date;
+  final DateTime createdAt;
   final String? notes;
   final String? areaId;
   const VanStock({
@@ -6831,6 +6855,7 @@ class VanStock extends DataClass implements Insertable<VanStock> {
     required this.type,
     required this.quantityPieces,
     required this.date,
+    required this.createdAt,
     this.notes,
     this.areaId,
   });
@@ -6842,6 +6867,7 @@ class VanStock extends DataClass implements Insertable<VanStock> {
     map['type'] = Variable<String>(type);
     map['quantity_pieces'] = Variable<int>(quantityPieces);
     map['date'] = Variable<DateTime>(date);
+    map['created_at'] = Variable<DateTime>(createdAt);
     if (!nullToAbsent || notes != null) {
       map['notes'] = Variable<String>(notes);
     }
@@ -6858,6 +6884,7 @@ class VanStock extends DataClass implements Insertable<VanStock> {
       type: Value(type),
       quantityPieces: Value(quantityPieces),
       date: Value(date),
+      createdAt: Value(createdAt),
       notes: notes == null && nullToAbsent
           ? const Value.absent()
           : Value(notes),
@@ -6878,6 +6905,7 @@ class VanStock extends DataClass implements Insertable<VanStock> {
       type: serializer.fromJson<String>(json['type']),
       quantityPieces: serializer.fromJson<int>(json['quantityPieces']),
       date: serializer.fromJson<DateTime>(json['date']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       notes: serializer.fromJson<String?>(json['notes']),
       areaId: serializer.fromJson<String?>(json['areaId']),
     );
@@ -6891,6 +6919,7 @@ class VanStock extends DataClass implements Insertable<VanStock> {
       'type': serializer.toJson<String>(type),
       'quantityPieces': serializer.toJson<int>(quantityPieces),
       'date': serializer.toJson<DateTime>(date),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
       'notes': serializer.toJson<String?>(notes),
       'areaId': serializer.toJson<String?>(areaId),
     };
@@ -6902,6 +6931,7 @@ class VanStock extends DataClass implements Insertable<VanStock> {
     String? type,
     int? quantityPieces,
     DateTime? date,
+    DateTime? createdAt,
     Value<String?> notes = const Value.absent(),
     Value<String?> areaId = const Value.absent(),
   }) => VanStock(
@@ -6910,6 +6940,7 @@ class VanStock extends DataClass implements Insertable<VanStock> {
     type: type ?? this.type,
     quantityPieces: quantityPieces ?? this.quantityPieces,
     date: date ?? this.date,
+    createdAt: createdAt ?? this.createdAt,
     notes: notes.present ? notes.value : this.notes,
     areaId: areaId.present ? areaId.value : this.areaId,
   );
@@ -6922,6 +6953,7 @@ class VanStock extends DataClass implements Insertable<VanStock> {
           ? data.quantityPieces.value
           : this.quantityPieces,
       date: data.date.present ? data.date.value : this.date,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       notes: data.notes.present ? data.notes.value : this.notes,
       areaId: data.areaId.present ? data.areaId.value : this.areaId,
     );
@@ -6935,6 +6967,7 @@ class VanStock extends DataClass implements Insertable<VanStock> {
           ..write('type: $type, ')
           ..write('quantityPieces: $quantityPieces, ')
           ..write('date: $date, ')
+          ..write('createdAt: $createdAt, ')
           ..write('notes: $notes, ')
           ..write('areaId: $areaId')
           ..write(')'))
@@ -6942,8 +6975,16 @@ class VanStock extends DataClass implements Insertable<VanStock> {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, productId, type, quantityPieces, date, notes, areaId);
+  int get hashCode => Object.hash(
+    id,
+    productId,
+    type,
+    quantityPieces,
+    date,
+    createdAt,
+    notes,
+    areaId,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -6953,6 +6994,7 @@ class VanStock extends DataClass implements Insertable<VanStock> {
           other.type == this.type &&
           other.quantityPieces == this.quantityPieces &&
           other.date == this.date &&
+          other.createdAt == this.createdAt &&
           other.notes == this.notes &&
           other.areaId == this.areaId);
 }
@@ -6963,6 +7005,7 @@ class VanStocksCompanion extends UpdateCompanion<VanStock> {
   final Value<String> type;
   final Value<int> quantityPieces;
   final Value<DateTime> date;
+  final Value<DateTime> createdAt;
   final Value<String?> notes;
   final Value<String?> areaId;
   final Value<int> rowid;
@@ -6972,6 +7015,7 @@ class VanStocksCompanion extends UpdateCompanion<VanStock> {
     this.type = const Value.absent(),
     this.quantityPieces = const Value.absent(),
     this.date = const Value.absent(),
+    this.createdAt = const Value.absent(),
     this.notes = const Value.absent(),
     this.areaId = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -6982,6 +7026,7 @@ class VanStocksCompanion extends UpdateCompanion<VanStock> {
     required String type,
     required int quantityPieces,
     this.date = const Value.absent(),
+    this.createdAt = const Value.absent(),
     this.notes = const Value.absent(),
     this.areaId = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -6995,6 +7040,7 @@ class VanStocksCompanion extends UpdateCompanion<VanStock> {
     Expression<String>? type,
     Expression<int>? quantityPieces,
     Expression<DateTime>? date,
+    Expression<DateTime>? createdAt,
     Expression<String>? notes,
     Expression<String>? areaId,
     Expression<int>? rowid,
@@ -7005,6 +7051,7 @@ class VanStocksCompanion extends UpdateCompanion<VanStock> {
       if (type != null) 'type': type,
       if (quantityPieces != null) 'quantity_pieces': quantityPieces,
       if (date != null) 'date': date,
+      if (createdAt != null) 'created_at': createdAt,
       if (notes != null) 'notes': notes,
       if (areaId != null) 'area_id': areaId,
       if (rowid != null) 'rowid': rowid,
@@ -7017,6 +7064,7 @@ class VanStocksCompanion extends UpdateCompanion<VanStock> {
     Value<String>? type,
     Value<int>? quantityPieces,
     Value<DateTime>? date,
+    Value<DateTime>? createdAt,
     Value<String?>? notes,
     Value<String?>? areaId,
     Value<int>? rowid,
@@ -7027,6 +7075,7 @@ class VanStocksCompanion extends UpdateCompanion<VanStock> {
       type: type ?? this.type,
       quantityPieces: quantityPieces ?? this.quantityPieces,
       date: date ?? this.date,
+      createdAt: createdAt ?? this.createdAt,
       notes: notes ?? this.notes,
       areaId: areaId ?? this.areaId,
       rowid: rowid ?? this.rowid,
@@ -7051,6 +7100,9 @@ class VanStocksCompanion extends UpdateCompanion<VanStock> {
     if (date.present) {
       map['date'] = Variable<DateTime>(date.value);
     }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
     if (notes.present) {
       map['notes'] = Variable<String>(notes.value);
     }
@@ -7071,6 +7123,7 @@ class VanStocksCompanion extends UpdateCompanion<VanStock> {
           ..write('type: $type, ')
           ..write('quantityPieces: $quantityPieces, ')
           ..write('date: $date, ')
+          ..write('createdAt: $createdAt, ')
           ..write('notes: $notes, ')
           ..write('areaId: $areaId, ')
           ..write('rowid: $rowid')
@@ -20720,6 +20773,7 @@ typedef $$VanStocksTableCreateCompanionBuilder =
       required String type,
       required int quantityPieces,
       Value<DateTime> date,
+      Value<DateTime> createdAt,
       Value<String?> notes,
       Value<String?> areaId,
       Value<int> rowid,
@@ -20731,6 +20785,7 @@ typedef $$VanStocksTableUpdateCompanionBuilder =
       Value<String> type,
       Value<int> quantityPieces,
       Value<DateTime> date,
+      Value<DateTime> createdAt,
       Value<String?> notes,
       Value<String?> areaId,
       Value<int> rowid,
@@ -20786,6 +20841,11 @@ class $$VanStocksTableFilterComposer
 
   ColumnFilters<DateTime> get date => $composableBuilder(
     column: $table.date,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -20852,6 +20912,11 @@ class $$VanStocksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get notes => $composableBuilder(
     column: $table.notes,
     builder: (column) => ColumnOrderings(column),
@@ -20908,6 +20973,11 @@ class $$VanStocksTableAnnotationComposer
 
   GeneratedColumn<DateTime> get date =>
       $composableBuilder(column: $table.date, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get notes =>
       $composableBuilder(column: $table.notes, builder: (column) => column);
@@ -20972,6 +21042,7 @@ class $$VanStocksTableTableManager
                 Value<String> type = const Value.absent(),
                 Value<int> quantityPieces = const Value.absent(),
                 Value<DateTime> date = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<String?> areaId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -20981,6 +21052,7 @@ class $$VanStocksTableTableManager
                 type: type,
                 quantityPieces: quantityPieces,
                 date: date,
+                createdAt: createdAt,
                 notes: notes,
                 areaId: areaId,
                 rowid: rowid,
@@ -20992,6 +21064,7 @@ class $$VanStocksTableTableManager
                 required String type,
                 required int quantityPieces,
                 Value<DateTime> date = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<String?> areaId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -21001,6 +21074,7 @@ class $$VanStocksTableTableManager
                 type: type,
                 quantityPieces: quantityPieces,
                 date: date,
+                createdAt: createdAt,
                 notes: notes,
                 areaId: areaId,
                 rowid: rowid,

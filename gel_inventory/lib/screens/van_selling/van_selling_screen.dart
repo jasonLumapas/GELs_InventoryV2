@@ -365,6 +365,11 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
 
     String? selectedAreaId = draft?.areaId ?? (isOut ? _lastOutAreaId : null);
     DateTime txDate = draft?.txDate ?? (isOut ? _outTxDate : _inTxDate);
+    final today = DateUtils.dateOnly(DateTime.now());
+    if (isOut && DateUtils.dateOnly(txDate).isBefore(today)) {
+      txDate = today;
+      _outTxDate = today;
+    }
     final lineItems = <_VanLineItem>[];
     if (draft != null) {
       final productsById = {for (final p in _products) p.id: p};
@@ -516,8 +521,14 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
                     onTap: () async {
                       final picked = await showDatePicker(
                         context: ctx,
-                        initialDate: txDate,
-                        firstDate: DateTime(2020),
+                        initialDate: isOut &&
+                                DateUtils.dateOnly(txDate).isBefore(
+                                    DateUtils.dateOnly(DateTime.now()))
+                            ? DateUtils.dateOnly(DateTime.now())
+                            : txDate,
+                        firstDate: isOut
+                            ? DateUtils.dateOnly(DateTime.now())
+                            : DateTime(2020),
                         lastDate: DateTime(2100),
                       );
                       if (picked != null) {
@@ -895,6 +906,8 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
   }) {
     final dateFmt      = DateFormat('MMM dd, yyyy');
     final productsById = {for (final p in _products) p.id: p};
+    final canEditOut = !isOut ||
+        !DateUtils.dateOnly(date).isBefore(DateUtils.dateOnly(DateTime.now()));
     final areaFiltered = areaFilter == null
         ? items
         : items.where((t) => t.areaId == areaFilter).toList();
@@ -1098,23 +1111,34 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
                               .map((a) => a.name).firstOrNull,
                         ].whereType<String>().join('  •  ');
                         if (isOut) {
+                          final subtitle = [
+                            if (sub.isNotEmpty) sub,
+                            'Created: ${dateFmt.format(tx.createdAt)}',
+                          ].join('  •  ');
                           return _EditableVanStockTile(
                             key: ValueKey(tx.id),
                             tx: tx,
                             productName: p?.name ?? tx.productId,
-                            subtitle: sub,
+                            subtitle: subtitle,
                             piecesPerBox: ppb,
+                            enabled: canEditOut,
                             currentQtyPieces:
                                 _pendingEdits[tx.id] ?? tx.quantityPieces,
-                            onChanged: (newPcs) =>
-                                setState(() => _pendingEdits[tx.id] = newPcs),
-                            onDelete: () async {
-                              await ref
-                                  .read(vanStockRepositoryProvider)
-                                  .delete(tx);
-                              ref.invalidate(inventoryListProvider);
-                              _loadOutItems();
+                            onChanged: (newPcs) {
+                              if (canEditOut) {
+                                setState(() =>
+                                    _pendingEdits[tx.id] = newPcs);
+                              }
                             },
+                            onDelete: canEditOut
+                                ? () async {
+                                    await ref
+                                        .read(vanStockRepositoryProvider)
+                                        .delete(tx);
+                                    ref.invalidate(inventoryListProvider);
+                                    _loadOutItems();
+                                  }
+                                : null,
                           );
                         }
                         return ListTile(
@@ -1149,7 +1173,7 @@ class _VanSellingScreenState extends ConsumerState<VanSellingScreen>
         ),
 
         // Save pending edits footer
-        if (isOut && _pendingEdits.isNotEmpty)
+        if (isOut && canEditOut && _pendingEdits.isNotEmpty)
           Container(
             color: Colors.blue.shade50,
             padding:
@@ -1406,9 +1430,10 @@ class _EditableVanStockTile extends StatefulWidget {
   final String productName;
   final String subtitle;
   final int piecesPerBox;
+  final bool enabled;
   final int currentQtyPieces;
   final void Function(int newQtyPieces) onChanged;
-  final VoidCallback onDelete;
+  final VoidCallback? onDelete;
 
   const _EditableVanStockTile({
     super.key,
@@ -1416,6 +1441,7 @@ class _EditableVanStockTile extends StatefulWidget {
     required this.productName,
     required this.subtitle,
     required this.piecesPerBox,
+    required this.enabled,
     required this.currentQtyPieces,
     required this.onChanged,
     required this.onDelete,
@@ -1477,6 +1503,7 @@ class _EditableVanStockTileState extends State<_EditableVanStockTile> {
             width: 64,
             child: TextField(
               controller: _boxCtrl,
+              enabled: widget.enabled,
               decoration:
                   const InputDecoration(labelText: 'Boxes', isDense: true),
               keyboardType: TextInputType.number,
@@ -1489,6 +1516,7 @@ class _EditableVanStockTileState extends State<_EditableVanStockTile> {
             width: 52,
             child: TextField(
               controller: _pcCtrl,
+              enabled: widget.enabled,
               decoration:
                   const InputDecoration(labelText: 'Pcs', isDense: true),
               keyboardType: TextInputType.number,
@@ -1497,8 +1525,8 @@ class _EditableVanStockTileState extends State<_EditableVanStockTile> {
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.delete_outline,
-                color: Colors.red, size: 20),
+            icon: Icon(Icons.delete_outline,
+                color: widget.enabled ? Colors.red : Colors.grey, size: 20),
             onPressed: widget.onDelete,
           ),
         ],

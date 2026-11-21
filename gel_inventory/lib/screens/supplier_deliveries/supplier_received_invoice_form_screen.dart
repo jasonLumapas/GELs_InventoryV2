@@ -141,6 +141,7 @@ class SupplierReceivedInvoiceFormScreen extends ConsumerStatefulWidget {
 class _SupplierReceivedInvoiceFormScreenState
     extends ConsumerState<SupplierReceivedInvoiceFormScreen> {
   bool get isNew => widget.invoiceId == null;
+  bool get _canEdit => isNew && _status != 'cancelled';
 
   late String _invoiceId;
   late DateTime _createdAt;
@@ -150,7 +151,6 @@ class _SupplierReceivedInvoiceFormScreenState
   final _referenceCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   final List<_LineItem> _lineItems = [];
-  List<SupplierReceivedInvoiceItem> _oldItems = [];
   final List<double> _discountPercents = [];
   bool _vatEnabled = false;
 
@@ -222,7 +222,6 @@ class _SupplierReceivedInvoiceFormScreenState
         _vatEnabled = invoice.vatEnabled;
 
         final items = await repo.getItems(invoice.id);
-        _oldItems = items;
         final productsById = {for (final p in products) p.id: p};
         for (final it in items) {
           final product = productsById[it.productId];
@@ -282,17 +281,29 @@ class _SupplierReceivedInvoiceFormScreenState
   }
 
   Future<void> _pickDate() async {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final firstDate = DateTime(2020);
+    final selectedDate = DateUtils.dateOnly(_receivedDate);
+    final initialDate = selectedDate.isBefore(firstDate)
+        ? firstDate
+        : selectedDate.isAfter(today)
+            ? today
+            : selectedDate;
     final picked = await showDatePicker(
       context: context,
-      initialDate: _receivedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
+      initialDate: initialDate,
+      firstDate: firstDate,
+      lastDate: today,
     );
     if (picked != null) {
       setState(() => _receivedDate = picked);
       _scheduleAutoSave();
     }
   }
+
+  bool get _receivedDateIsInFuture =>
+      DateUtils.dateOnly(_receivedDate)
+          .isAfter(DateUtils.dateOnly(DateTime.now()));
 
   Future<void> _pickSupplier() async {
     final sorted = List<Supplier>.from(_suppliers)
@@ -725,11 +736,21 @@ class _SupplierReceivedInvoiceFormScreenState
   }
 
   bool get _canSave =>
+      isNew &&
       !_saving &&
       _status != 'cancelled' &&
+      !_receivedDateIsInFuture &&
+      _referenceCtrl.text.trim().isNotEmpty &&
       _selectedSupplier != null &&
       _lineItems.isNotEmpty &&
       _lineItems.every((item) => item.quantityInPieces > 0);
+
+  bool get _canPrint =>
+      !isNew &&
+      !_saving &&
+      _status != 'cancelled' &&
+      _selectedSupplier != null &&
+      _lineItems.isNotEmpty;
 
   ({SupplierReceivedInvoice invoice, List<SupplierReceivedInvoiceItem> items})
       _buildPayload() {
@@ -811,7 +832,7 @@ class _SupplierReceivedInvoiceFormScreenState
   }
 
   Future<void> _autoSaveDraft() async {
-    if (_finalized || !mounted) return;
+    if (_finalized || !mounted || !isNew) return;
     if (!_hasDraftContent) return;
     setState(() => _autoSaving = true);
     final payload = _buildDraftPayload();
@@ -830,28 +851,22 @@ class _SupplierReceivedInvoiceFormScreenState
 
   Future<({SupplierReceivedInvoice invoice, List<SupplierReceivedInvoiceItem> items})>
       _persist() async {
+    if (!isNew) {
+      throw StateError('Existing supplier deliveries are read-only.');
+    }
     _autoSaveTimer?.cancel();
     final payload = _buildPayload();
     final repo = ref.read(supplierReceivedInvoiceRepositoryProvider);
-    if (isNew) {
-      if (_draftPersisted) {
-        await repo.finalizeDraft(
-          invoice: payload.invoice,
-          items: payload.items,
-          supplier: _selectedSupplier!,
-        );
-      } else {
-        await repo.saveInvoice(
-          invoice: payload.invoice,
-          items: payload.items,
-          supplier: _selectedSupplier!,
-        );
-      }
-    } else {
-      await repo.editInvoice(
+    if (_draftPersisted) {
+      await repo.finalizeDraft(
         invoice: payload.invoice,
-        newItems: payload.items,
-        oldItems: _oldItems,
+        items: payload.items,
+        supplier: _selectedSupplier!,
+      );
+    } else {
+      await repo.saveInvoice(
+        invoice: payload.invoice,
+        items: payload.items,
         supplier: _selectedSupplier!,
       );
     }
@@ -896,6 +911,7 @@ class _SupplierReceivedInvoiceFormScreenState
   }
 
   Future<void> _save() async {
+    if (!isNew || !_canSave) return;
     setState(() => _saving = true);
     try {
       await _persist();
@@ -907,67 +923,36 @@ class _SupplierReceivedInvoiceFormScreenState
   }
 
   Future<void> _print() async {
+    if (!_canPrint) return;
     setState(() => _saving = true);
-    final ({SupplierReceivedInvoice invoice, List<SupplierReceivedInvoiceItem> items})
-        persisted;
     try {
-      persisted = await _persist();
-    } on InsufficientStockException catch (e) {
-      _showStockError(e);
-      return;
-    }
+      final repo = ref.read(supplierReceivedInvoiceRepositoryProvider);
+      final invoice = await repo.getById(_invoiceId);
+      if (invoice == null) {
+        throw StateError('This supplier delivery could not be found.');
+      }
+      final items = await repo.getItems(_invoiceId);
+      final productsById = {for (final product in _products) product.id: product};
+      await printSupplierReceivedInvoice(
+        invoice: invoice,
+        supplier: _selectedSupplier!,
+        items: items,
+        productsById: productsById,
+      );
 
-    final productsById = {
-      for (final li in _lineItems) li.product.id: li.product
-    };
-    await printSupplierReceivedInvoice(
-      invoice: persisted.invoice,
-      supplier: _selectedSupplier!,
-      items: persisted.items,
-      productsById: productsById,
-    );
-
-    if (mounted) context.go('/supplier-deliveries');
-  }
-
-  Future<void> _cancelInvoice() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Cancel Delivery'),
-        content: const Text(
-            'This will reverse the inventory added by this delivery. Continue?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('No')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Yes, Cancel')),
-        ],
-      ),
-    );
-    if (confirm != true) return;
-
-    try {
-      await ref
-          .read(supplierReceivedInvoiceRepositoryProvider)
-          .cancelInvoice(_invoiceId);
-    } on InsufficientStockException catch (e) {
+      if (mounted) context.go('/supplier-deliveries');
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(e.toString()),
+            content: Text('Unable to print supplier delivery: $e'),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
       }
-      return;
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
-    ref.invalidate(supplierReceivedInvoicesListProvider);
-    ref.invalidate(filteredSupplierReceivedInvoicesProvider);
-    ref.invalidate(inventoryListProvider);
-    if (mounted) context.go('/supplier-deliveries');
   }
 
   @override
@@ -993,6 +978,20 @@ class _SupplierReceivedInvoiceFormScreenState
                       ),
                     ),
                   ),
+                if (!isNew)
+                  Container(
+                    width: double.infinity,
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.visibility_outlined, size: 18),
+                        SizedBox(width: 8),
+                        Text('Read-only delivery details'),
+                      ],
+                    ),
+                  ),
                 if (_status == 'cancelled')
                   Container(
                     width: double.infinity,
@@ -1014,13 +1013,17 @@ class _SupplierReceivedInvoiceFormScreenState
                     children: [
                       Expanded(
                         child: InkWell(
-                          onTap: _status == 'cancelled' ? null : _pickDate,
+                          onTap: _canEdit ? _pickDate : null,
                           borderRadius: BorderRadius.circular(4),
                           child: InputDecorator(
                             decoration: const InputDecoration(
                               labelText: 'Received Date',
                               border: OutlineInputBorder(),
                               suffixIcon: Icon(Icons.calendar_today, size: 18),
+                            ).copyWith(
+                              errorText: _receivedDateIsInFuture
+                                  ? 'Cannot be in the future'
+                                  : null,
                             ),
                             child: Text(
                               DateFormat('MMM dd, yyyy').format(_receivedDate),
@@ -1031,7 +1034,7 @@ class _SupplierReceivedInvoiceFormScreenState
                       const SizedBox(width: 12),
                       Expanded(
                         child: InkWell(
-                          onTap: _status == 'cancelled' ? null : _pickSupplier,
+                          onTap: _canEdit ? _pickSupplier : null,
                           borderRadius: BorderRadius.circular(4),
                           child: InputDecorator(
                             decoration: const InputDecoration(
@@ -1064,20 +1067,24 @@ class _SupplierReceivedInvoiceFormScreenState
                       Expanded(
                         child: TextField(
                           controller: _referenceCtrl,
-                          enabled: _status != 'cancelled',
+                          enabled: _canEdit,
                           decoration: const InputDecoration(
-                            labelText: 'Supplier Reference / DR Number',
+                            labelText: 'Supplier Reference / DR Number *',
                             border: OutlineInputBorder(),
                             isDense: true,
+                            helperText: 'Required',
                           ),
-                          onChanged: (_) => _scheduleAutoSave(),
+                          onChanged: (_) {
+                            setState(() {});
+                            _scheduleAutoSave();
+                          },
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: TextField(
                           controller: _notesCtrl,
-                          enabled: _status != 'cancelled',
+                          enabled: _canEdit,
                           decoration: const InputDecoration(
                             labelText: 'Notes',
                             border: OutlineInputBorder(),
@@ -1103,7 +1110,7 @@ class _SupplierReceivedInvoiceFormScreenState
                       TextButton.icon(
                         icon: const Icon(Icons.add),
                         label: const Text('Add Product'),
-                        onPressed: _status == 'cancelled' ? null : _pickProduct,
+                        onPressed: _canEdit ? _pickProduct : null,
                       ),
                     ],
                   ),
@@ -1120,14 +1127,13 @@ class _SupplierReceivedInvoiceFormScreenState
                       OutlinedButton.icon(
                         icon: const Icon(Icons.percent, size: 16),
                         label: const Text('Add Discount %'),
-                        onPressed:
-                            _status == 'cancelled' ? null : _promptAddDiscount,
+                        onPressed: _canEdit ? _promptAddDiscount : null,
                       ),
                       for (int i = 0; i < _discountPercents.length; i++)
                         Chip(
                           label: Text(
                               '${formatNumber(_discountPercents[i])}% off'),
-                          onDeleted: _status == 'cancelled'
+                          onDeleted: !_canEdit
                               ? null
                               : () {
                                   setState(
@@ -1138,7 +1144,7 @@ class _SupplierReceivedInvoiceFormScreenState
                       FilterChip(
                         label: const Text('Add VAT (12%)'),
                         selected: _vatEnabled,
-                        onSelected: _status == 'cancelled'
+                        onSelected: !_canEdit
                             ? null
                             : (v) {
                                 setState(() => _vatEnabled = v);
@@ -1159,7 +1165,7 @@ class _SupplierReceivedInvoiceFormScreenState
                           itemBuilder: (ctx, i) => _LineItemTile(
                             key: ValueKey(_lineItems[i].id),
                             item: _lineItems[i],
-                            enabled: _status != 'cancelled',
+                            enabled: _canEdit,
                             onRemove: () {
                               setState(() {
                                 final removed = _lineItems.removeAt(i);
@@ -1225,13 +1231,6 @@ class _SupplierReceivedInvoiceFormScreenState
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          if (!isNew && _status == 'received')
-                            OutlinedButton(
-                              onPressed: _saving ? null : _cancelInvoice,
-                              style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.red),
-                              child: const Text('Cancel Invoice'),
-                            ),
                           const Spacer(),
                           OutlinedButton(
                             onPressed: () =>
@@ -1239,18 +1238,20 @@ class _SupplierReceivedInvoiceFormScreenState
                             child: const Text('Back'),
                           ),
                           const SizedBox(width: 8),
-                          OutlinedButton.icon(
-                            icon: _saving
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child:
-                                        CircularProgressIndicator(strokeWidth: 2))
-                                : const Icon(Icons.save_outlined),
-                            label: const Text('Save'),
-                            onPressed: _canSave ? _save : null,
-                          ),
-                          const SizedBox(width: 8),
+                          if (isNew) ...[
+                            OutlinedButton.icon(
+                              icon: _saving
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2))
+                                  : const Icon(Icons.save_outlined),
+                              label: const Text('Save'),
+                              onPressed: _canSave ? _save : null,
+                            ),
+                            const SizedBox(width: 8),
+                          ],
                           if (!isNew)
                             FilledButton.icon(
                               icon: _saving
@@ -1261,7 +1262,7 @@ class _SupplierReceivedInvoiceFormScreenState
                                           strokeWidth: 2, color: Colors.white))
                                   : const Icon(Icons.print),
                               label: const Text('Print'),
-                              onPressed: _canSave ? _print : null,
+                              onPressed: _canPrint ? _print : null,
                             ),
                         ],
                       ),

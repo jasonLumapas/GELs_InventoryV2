@@ -24,6 +24,7 @@ class _SupplierReceivedInvoiceListScreenState
   _FilterType _filter = _FilterType.day;
   DateTime _anchor = DateTime.now();
   String? _selectedSupplierId;
+  String? _cancellingInvoiceId;
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
 
@@ -104,6 +105,54 @@ class _SupplierReceivedInvoiceListScreenState
       lastDate: DateTime(2100),
     );
     if (picked != null) setState(() => _anchor = picked);
+  }
+
+  Future<void> _cancelDelivery(String invoiceId, String displayNumber) async {
+    if (_cancellingInvoiceId != null) return;
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Cancel Supplier Delivery',
+      message:
+          'Cancel $displayNumber? This will reverse the inventory added by this delivery.',
+      confirmLabel: 'Cancel Delivery',
+    );
+    if (!confirmed || !mounted) return;
+
+    setState(() => _cancellingInvoiceId = invoiceId);
+    try {
+      await ref
+          .read(supplierReceivedInvoiceRepositoryProvider)
+          .cancelInvoice(invoiceId);
+      ref.invalidate(supplierReceivedInvoicesListProvider);
+      ref.invalidate(filteredSupplierReceivedInvoicesProvider);
+      ref.invalidate(inventoryListProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Delivery cancelled and inventory updated.')),
+        );
+      }
+    } on InsufficientStockException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Unable to cancel delivery: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _cancellingInvoiceId = null);
+    }
   }
 
   // ── Build ────────────────────────────────────────────────────────────────
@@ -347,9 +396,12 @@ class _SupplierReceivedInvoiceListScreenState
                           final ref = (inv.referenceNumber ?? '').toLowerCase();
                           final dateStr =
                               dateFmt.format(inv.receivedDate).toLowerCase();
+                          final createdDateStr =
+                              dateFmt.format(inv.createdAt).toLowerCase();
                           return supplierName.contains(q) ||
                               ref.contains(q) ||
-                              dateStr.contains(q);
+                              dateStr.contains(q) ||
+                              createdDateStr.contains(q);
                         }).toList();
                       }();
 
@@ -379,7 +431,12 @@ class _SupplierReceivedInvoiceListScreenState
                           final supplier = suppliersMap[inv.supplierId];
                           final cancelled = inv.status == 'cancelled';
                           return ListTile(
-                            leading: const Icon(Icons.move_to_inbox),
+                            leading: Icon(
+                              cancelled
+                                  ? Icons.cancel_outlined
+                                  : Icons.move_to_inbox,
+                              color: cancelled ? Colors.grey : null,
+                            ),
                             title: Text(
                               inv.displayNumber,
                               style: cancelled
@@ -400,6 +457,15 @@ class _SupplierReceivedInvoiceListScreenState
                                       ? const TextStyle(color: Colors.grey)
                                       : null,
                                 ),
+                                Text(
+                                  'Created: ${dateFmt.format(inv.createdAt)}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: cancelled
+                                        ? Colors.grey
+                                        : Colors.grey.shade700,
+                                  ),
+                                ),
                                 if (inv.notes != null && inv.notes!.isNotEmpty)
                                   Text(
                                     inv.notes!,
@@ -415,31 +481,55 @@ class _SupplierReceivedInvoiceListScreenState
                                   ),
                               ],
                             ),
-                            trailing: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.end,
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text(
-                                  'Sys: ${formatCurrency(inv.totalAmountSystem)}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    decoration: cancelled
-                                        ? TextDecoration.lineThrough
-                                        : null,
-                                    color: cancelled ? Colors.grey : null,
-                                  ),
+                                Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      'Sys: ${formatCurrency(inv.totalAmountSystem)}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        decoration: cancelled
+                                            ? TextDecoration.lineThrough
+                                            : null,
+                                        color: cancelled ? Colors.grey : null,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Sup: ${formatCurrency(inv.totalAmountSupplier)}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        decoration: cancelled
+                                            ? TextDecoration.lineThrough
+                                            : null,
+                                        color: cancelled ? Colors.grey : null,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                Text(
-                                  'Sup: ${formatCurrency(inv.totalAmountSupplier)}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    decoration: cancelled
-                                        ? TextDecoration.lineThrough
+                                if (!cancelled)
+                                  IconButton(
+                                    tooltip: 'Cancel delivery',
+                                    onPressed: _cancellingInvoiceId == null
+                                        ? () => _cancelDelivery(
+                                            inv.id, inv.displayNumber)
                                         : null,
-                                    color: cancelled ? Colors.grey : null,
+                                    icon: _cancellingInvoiceId == inv.id
+                                        ? const SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2),
+                                          )
+                                        : const Icon(
+                                            Icons.cancel_outlined,
+                                            color: Colors.red,
+                                          ),
                                   ),
-                                ),
                               ],
                             ),
                             onTap: () async {

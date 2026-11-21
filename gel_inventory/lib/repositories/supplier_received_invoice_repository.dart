@@ -374,10 +374,29 @@ class SupplierReceivedInvoiceRepository extends BaseRepository {
     if (invoice == null || invoice.status == 'cancelled') return;
 
     final items = await getItems(id);
+    final quantitiesByProduct = <String, int>{};
     for (final item in items) {
+      quantitiesByProduct.update(
+        item.productId,
+        (quantity) => quantity + item.quantity,
+        ifAbsent: () => item.quantity,
+      );
+    }
+    for (final entry in quantitiesByProduct.entries) {
+      final inventoryItem = await inventoryRepo.getByProductId(entry.key);
+      final available = inventoryItem?.quantityPieces ?? 0;
+      if (available < entry.value) {
+        throw InsufficientStockException(
+          productId: entry.key,
+          available: available,
+          requested: entry.value,
+        );
+      }
+    }
+    for (final entry in quantitiesByProduct.entries) {
       await inventoryRepo.adjust(
-        productId: item.productId,
-        deltaPieces: -item.quantity,
+        productId: entry.key,
+        deltaPieces: -entry.value,
       );
     }
     await stockMovementRepo.deleteByInvoiceNumber('SRI-$id');

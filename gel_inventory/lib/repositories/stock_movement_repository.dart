@@ -2,6 +2,7 @@ import 'package:drift/drift.dart' as drift;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 import '../core/database/local_db.dart' hide StockMovement;
 import '../core/services/connectivity_service.dart';
 import '../core/services/sync_service.dart';
@@ -24,6 +25,12 @@ class StockMovementRepository extends BaseRepository {
             .insert(payload);
       } catch (e) {
         debugPrint('stock_movements Supabase insert failed: $e. Falling back to local save.');
+        await syncService.enqueue(
+          tableName: 'stock_movements',
+          recordId: movement.id,
+          operation: 'insert',
+          payload: payload,
+        );
       }
     } else {
       await syncService.enqueue(
@@ -33,7 +40,7 @@ class StockMovementRepository extends BaseRepository {
         payload: payload,
       );
     }
-    await trySaveLocal(() => db.into(db.stockMovements).insert(
+    await trySaveLocal(() => db.into(db.stockMovements).insertOnConflictUpdate(
           StockMovementsCompanion(
             id: drift.Value(movement.id),
             productId: drift.Value(movement.productId),
@@ -45,6 +52,29 @@ class StockMovementRepository extends BaseRepository {
             createdAt: drift.Value(movement.createdAt),
           ),
         ));
+  }
+
+  /// Records a signed inventory change: positive pieces are stock-in and
+  /// negative pieces are stock-out.
+  Future<void> recordDelta({
+    required String productId,
+    required int deltaPieces,
+    DateTime? referenceDate,
+    String? invoiceNumber,
+    String? comments,
+  }) async {
+    if (deltaPieces == 0) return;
+    final now = DateTime.now();
+    await save(StockMovement(
+      id: const Uuid().v4(),
+      productId: productId,
+      movementType: deltaPieces > 0 ? 'in' : 'out',
+      quantityPieces: deltaPieces.abs(),
+      referenceDate: referenceDate ?? now,
+      invoiceNumber: invoiceNumber,
+      comments: comments,
+      createdAt: now,
+    ));
   }
 
   Future<void> deleteById(String id) async {
@@ -481,19 +511,25 @@ class StockMovementRepository extends BaseRepository {
   }
 
   Future<List<StockMovement>> getForProduct(String productId) async {
+    List<StockMovement>? remoteMovements;
     if (isOnline) {
-      final data = await Supabase.instance.client
-          .from('stock_movements')
-          .select()
-          .eq('product_id', productId)
-          .order('created_at', ascending: false);
-      return (data as List).map((e) => StockMovement.fromJson(e)).toList();
+      try {
+        final data = await Supabase.instance.client
+            .from('stock_movements')
+            .select()
+            .eq('product_id', productId)
+            .order('created_at', ascending: false);
+        remoteMovements =
+            (data as List).map((e) => StockMovement.fromJson(e)).toList();
+      } catch (e) {
+        debugPrint('getForProduct Supabase failed: $e. Falling back to local.');
+      }
     }
     final rows = await (db.select(db.stockMovements)
           ..where((t) => t.productId.equals(productId))
           ..orderBy([(t) => drift.OrderingTerm.desc(t.createdAt)]))
         .get();
-    return rows
+    final localMovements = rows
         .map((r) => StockMovement(
               id: r.id,
               productId: r.productId,
@@ -505,6 +541,17 @@ class StockMovementRepository extends BaseRepository {
               createdAt: r.createdAt,
             ))
         .toList();
+    if (remoteMovements == null) return localMovements;
+
+    // Keep locally queued movements visible while online, and prefer the
+    // server copy when the same movement exists in both places.
+    final byId = {for (final m in localMovements) m.id: m};
+    for (final movement in remoteMovements) {
+      byId[movement.id] = movement;
+    }
+    final combined = byId.values.toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return combined;
   }
 
   /// Returns dated stock movements in [from, to), filtering at the database

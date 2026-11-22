@@ -8,6 +8,7 @@ import '../../models/product.dart';
 import '../../models/stocks_loading.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/product_repository.dart';
+import '../../repositories/stock_movement_repository.dart';
 import '../../repositories/stocks_loading_repository.dart';
 import '../../widgets/common/app_scaffold.dart';
 
@@ -176,6 +177,7 @@ class _StocksForSaleLoadingScreenState
     setState(() => _saving = true);
     try {
       final inventoryRepo = ref.read(inventoryRepositoryProvider);
+      final stockMovementRepo = ref.read(stockMovementRepositoryProvider);
       final loadingRepo = ref.read(stocksLoadingRepositoryProvider);
 
       for (final row in _preview) {
@@ -183,6 +185,12 @@ class _StocksForSaleLoadingScreenState
           await inventoryRepo.adjust(
             productId: row.matchedProductId!,
             deltaPieces: row.source.quantityPieces,
+          );
+          await stockMovementRepo.recordDelta(
+            productId: row.matchedProductId!,
+            deltaPieces: row.source.quantityPieces,
+            referenceDate: _selectedDate,
+            comments: 'Stocks for Sale loading import',
           );
         }
       }

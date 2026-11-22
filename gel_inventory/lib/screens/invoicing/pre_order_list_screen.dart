@@ -12,6 +12,7 @@ import '../../repositories/client_repository.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/invoice_repository.dart';
 import '../../repositories/product_repository.dart';
+import '../../repositories/stock_movement_repository.dart';
 import '../../repositories/supplier_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../utils/pdf_generator.dart';
@@ -195,6 +196,7 @@ class _PreOrderListScreenState
     final itemsJson = (json['items'] as List<dynamic>?) ?? [];
     final products = await ref.read(productRepositoryProvider).getAll();
     final inventoryRepo = ref.read(inventoryRepositoryProvider);
+    final stockMovementRepo = ref.read(stockMovementRepositoryProvider);
 
     // Match each entry to a local product.
     final entries = <_ConfirmedEntry>[];
@@ -336,6 +338,13 @@ class _PreOrderListScreenState
         await inventoryRepo.adjust(
           productId: entry.matched!.id,
           deltaPieces: entry.confirmedPieces,
+        );
+        await stockMovementRepo.recordDelta(
+          productId: entry.matched!.id,
+          deltaPieces: entry.confirmedPieces,
+          referenceDate: DateTime.now(),
+          invoiceNumber: picked.uri.pathSegments.last,
+          comments: 'Confirmed pre-order stock import',
         );
         updatedCount++;
       }

@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../repositories/inventory_repository.dart';
 import '../../repositories/pre_order_review_repository.dart';
 import '../../repositories/product_repository.dart';
+import '../../repositories/stock_movement_repository.dart';
 import '../../utils/currency_format.dart';
 import '../../utils/pdf_generator.dart';
 import '../../widgets/common/app_scaffold.dart';
@@ -343,6 +344,7 @@ class _PreOrderImportScreenState
     setState(() => _saving = true);
     try {
       final inventoryRepo = ref.read(inventoryRepositoryProvider);
+      final stockMovementRepo = ref.read(stockMovementRepositoryProvider);
       final reviewRepo = ref.read(preOrderReviewRepositoryProvider);
       int updatedCount = 0;
 
@@ -353,6 +355,14 @@ class _PreOrderImportScreenState
         await inventoryRepo.adjust(
           productId: row.matchedProductId!,
           deltaPieces: -delta,
+        );
+        await stockMovementRepo.recordDelta(
+          productId: row.matchedProductId!,
+          deltaPieces: -delta,
+          referenceDate: DateTime.now(),
+          invoiceNumber:
+              _currentSourceFile.isEmpty ? null : _currentSourceFile,
+          comments: 'Pre-order review adjustment',
         );
         row.savedPieces = row.adjustedPieces;
         updatedCount++;

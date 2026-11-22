@@ -345,10 +345,12 @@ class BadOrderRepository extends BaseRepository {
       productId: oldItem.productId,
       deltaPieces: reverseDelta,
     );
-
-    await stockMovementRepo.deleteOneByInvoiceNumberAndProduct(
-      'BO-${order.id}',
-      oldItem.productId,
+    await stockMovementRepo.recordDelta(
+      productId: oldItem.productId,
+      deltaPieces: reverseDelta,
+      referenceDate: DateTime.now(),
+      invoiceNumber: 'BO-${order.id}',
+      comments: '${order.typeLabel} item correction reversal',
     );
 
     final newDelta = order.restoresInventory ? newPieces : -newPieces;
@@ -356,18 +358,12 @@ class BadOrderRepository extends BaseRepository {
       productId: oldItem.productId,
       deltaPieces: newDelta,
     );
-
-    await stockMovementRepo.save(
-      StockMovement(
-        id: const Uuid().v4(),
-        productId: oldItem.productId,
-        movementType: order.restoresInventory ? 'in' : 'out',
-        quantityPieces: newPieces,
-        referenceDate: order.date,
-        invoiceNumber: 'BO-${order.id}',
-        comments: order.typeLabel,
-        createdAt: DateTime.now(),
-      ),
+    await stockMovementRepo.recordDelta(
+      productId: oldItem.productId,
+      deltaPieces: newDelta,
+      referenceDate: DateTime.now(),
+      invoiceNumber: 'BO-${order.id}',
+      comments: '${order.typeLabel} item corrected',
     );
 
     final payload = {
@@ -418,9 +414,12 @@ class BadOrderRepository extends BaseRepository {
       productId: item.productId,
       deltaPieces: reverseDelta,
     );
-    await stockMovementRepo.deleteOneByInvoiceNumberAndProduct(
-      'BO-${order.id}',
-      item.productId,
+    await stockMovementRepo.recordDelta(
+      productId: item.productId,
+      deltaPieces: reverseDelta,
+      referenceDate: DateTime.now(),
+      invoiceNumber: 'BO-${order.id}',
+      comments: '${order.typeLabel} item deleted - stock reversed',
     );
     if (isOnline) {
       await Supabase.instance.client
@@ -451,6 +450,7 @@ class BadOrderRepository extends BaseRepository {
     if (items.isNotEmpty) {
       final products = await productRepo.getAll();
       final ppbMap = {for (final p in products) p.id: p.piecesPerBox};
+      final orderLabel = order?.typeLabel ?? 'Bad order';
       for (final item in items) {
         final ppb = ppbMap[item.productId] ?? 1;
         final pieces = item.unitType == 'box'
@@ -465,8 +465,14 @@ class BadOrderRepository extends BaseRepository {
           productId: item.productId,
           deltaPieces: reverseDelta,
         );
+        await stockMovementRepo.recordDelta(
+          productId: item.productId,
+          deltaPieces: reverseDelta,
+          referenceDate: DateTime.now(),
+          invoiceNumber: 'BO-$id',
+          comments: '$orderLabel deleted - stock reversed',
+        );
       }
-      await stockMovementRepo.deleteByInvoiceNumber('BO-$id');
     }
 
     if (isOnline) {

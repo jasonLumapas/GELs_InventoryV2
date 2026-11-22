@@ -11,15 +11,18 @@ import '../models/van_stock.dart';
 import '../models/van_stock_draft.dart';
 import 'base_repository.dart';
 import 'inventory_repository.dart';
+import 'stock_movement_repository.dart';
 
 class VanStockRepository extends BaseRepository {
   final InventoryRepository inventoryRepo;
+  final StockMovementRepository stockMovementRepo;
 
   VanStockRepository({
     required super.db,
     required super.connectivity,
     required super.syncService,
     required this.inventoryRepo,
+    required this.stockMovementRepo,
   });
 
   Future<List<VanStock>> getAll({DateTime? date}) async {
@@ -192,9 +195,21 @@ class VanStockRepository extends BaseRepository {
       productId: productId,
       deltaPieces: type == 'out' ? -quantityPieces : quantityPieces,
     );
+    await stockMovementRepo.recordDelta(
+      productId: productId,
+      deltaPieces: type == 'out' ? -quantityPieces : quantityPieces,
+      referenceDate: tx.date,
+      invoiceNumber: 'VAN-${tx.id}',
+      comments: type == 'out'
+          ? 'Van stock loaded to van'
+          : 'Van stock returned from van',
+    );
   }
 
   Future<void> updateRecord(VanStock old, int newQuantityPieces) async {
+    final inventoryDelta = old.isOut
+        ? old.quantityPieces - newQuantityPieces
+        : newQuantityPieces - old.quantityPieces;
     // Reverse old inventory effect, apply new one
     await inventoryRepo.adjust(
       productId: old.productId,
@@ -221,6 +236,13 @@ class VanStockRepository extends BaseRepository {
       productId: old.productId,
       deltaPieces: old.isOut ? -newQuantityPieces : newQuantityPieces,
     );
+    await stockMovementRepo.recordDelta(
+      productId: old.productId,
+      deltaPieces: inventoryDelta,
+      referenceDate: DateTime.now(),
+      invoiceNumber: 'VAN-${old.id}',
+      comments: 'Van stock record updated',
+    );
   }
 
   Future<void> delete(VanStock tx) async {
@@ -246,6 +268,13 @@ class VanStockRepository extends BaseRepository {
     await inventoryRepo.adjust(
       productId: tx.productId,
       deltaPieces: tx.isOut ? tx.quantityPieces : -tx.quantityPieces,
+    );
+    await stockMovementRepo.recordDelta(
+      productId: tx.productId,
+      deltaPieces: tx.isOut ? tx.quantityPieces : -tx.quantityPieces,
+      referenceDate: DateTime.now(),
+      invoiceNumber: 'VAN-${tx.id}',
+      comments: 'Van stock record deleted - stock reversed',
     );
   }
 
@@ -334,6 +363,7 @@ final vanStockRepositoryProvider = Provider<VanStockRepository>((ref) {
     connectivity: ref.watch(connectivityServiceProvider),
     syncService: ref.watch(syncServiceProvider),
     inventoryRepo: ref.watch(inventoryRepositoryProvider),
+    stockMovementRepo: ref.watch(stockMovementRepositoryProvider),
   );
 });
 

@@ -305,6 +305,15 @@ class SupplierReceivedInvoiceRepository extends BaseRepository {
       final delta = (newQty[pid] ?? 0) - (oldQty[pid] ?? 0);
       if (delta != 0) {
         await inventoryRepo.adjust(productId: pid, deltaPieces: delta);
+        await stockMovementRepo.recordDelta(
+          productId: pid,
+          deltaPieces: delta,
+          referenceDate: DateTime.now(),
+          invoiceNumber: 'SRI-${invoice.id}',
+          comments: delta > 0
+              ? 'Received invoice edit from ${supplier.name} - stock added'
+              : 'Received invoice edit from ${supplier.name} - stock removed',
+        );
       }
     }
 
@@ -352,20 +361,6 @@ class SupplierReceivedInvoiceRepository extends BaseRepository {
       await trySaveLocal(() => _saveLocalItem(item));
     }
 
-    // Replace stock movement audit trail with fresh entries.
-    await stockMovementRepo.deleteByInvoiceNumber('SRI-${invoice.id}');
-    for (final item in newItems) {
-      await stockMovementRepo.save(StockMovement(
-        id: _newId(),
-        productId: item.productId,
-        movementType: 'in',
-        quantityPieces: item.quantity,
-        referenceDate: invoice.receivedDate,
-        invoiceNumber: 'SRI-${invoice.id}',
-        comments: 'Received from ${supplier.name}',
-        createdAt: DateTime.now(),
-      ));
-    }
   }
 
   /// Cancels a received invoice, reversing the inventory it added.
@@ -393,13 +388,20 @@ class SupplierReceivedInvoiceRepository extends BaseRepository {
         );
       }
     }
+    final reversedAt = DateTime.now();
     for (final entry in quantitiesByProduct.entries) {
       await inventoryRepo.adjust(
         productId: entry.key,
         deltaPieces: -entry.value,
       );
+      await stockMovementRepo.recordDelta(
+        productId: entry.key,
+        deltaPieces: -entry.value,
+        referenceDate: reversedAt,
+        invoiceNumber: 'SRI-$id',
+        comments: 'Received invoice cancelled - stock removed',
+      );
     }
-    await stockMovementRepo.deleteByInvoiceNumber('SRI-$id');
 
     final updated = {'status': 'cancelled'};
     if (isOnline) {
@@ -431,8 +433,14 @@ class SupplierReceivedInvoiceRepository extends BaseRepository {
           productId: item.productId,
           deltaPieces: -item.quantity,
         );
+        await stockMovementRepo.recordDelta(
+          productId: item.productId,
+          deltaPieces: -item.quantity,
+          referenceDate: DateTime.now(),
+          invoiceNumber: 'SRI-${invoice.id}',
+          comments: 'Received invoice deleted - stock removed',
+        );
       }
-      await stockMovementRepo.deleteByInvoiceNumber('SRI-${invoice.id}');
     }
 
     if (isOnline) {

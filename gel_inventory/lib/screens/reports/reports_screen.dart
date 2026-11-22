@@ -1471,6 +1471,14 @@ class _InventoryReportTabState extends ConsumerState<_InventoryReportTab> {
     final movOutAfter = <String, int>{};
     final dayKey = _inventoryDateKey(dayStart);
     for (final movement in movements) {
+      final comments = movement.comments as String?;
+      // Invoice and van movements are represented by their source ledgers
+      // below. They are stored in stock_movements for item-level history, so
+      // omit them here to avoid counting the same inventory change twice.
+      if (comments?.startsWith('Invoice ') == true ||
+          comments?.startsWith('Van stock ') == true) {
+        continue;
+      }
       final referenceDate = movement.referenceDate as DateTime?;
       if (referenceDate == null) continue;
       final movementDay = _inventoryDateKey(referenceDate);

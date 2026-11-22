@@ -12,15 +12,18 @@ import '../models/invoice.dart';
 import '../models/invoice_item.dart';
 import 'base_repository.dart';
 import 'inventory_repository.dart';
+import 'stock_movement_repository.dart';
 
 class InvoiceRepository extends BaseRepository {
   final InventoryRepository inventoryRepo;
+  final StockMovementRepository stockMovementRepo;
 
   InvoiceRepository({
     required super.db,
     required super.connectivity,
     required super.syncService,
     required this.inventoryRepo,
+    required this.stockMovementRepo,
   });
 
   /// Generates a unique invoice number in YYYYMMDD-NNN format for the given date.
@@ -423,6 +426,13 @@ class InvoiceRepository extends BaseRepository {
         productId: item.productId,
         deltaPieces: -item.quantity,
       );
+      await stockMovementRepo.recordDelta(
+        productId: item.productId,
+        deltaPieces: -item.quantity,
+        referenceDate: inv.invoiceDate,
+        invoiceNumber: _invoiceMovementReference(inv),
+        comments: 'Invoice sale',
+      );
     }
 
     return inv;
@@ -532,6 +542,15 @@ class InvoiceRepository extends BaseRepository {
       final delta = (newQty[pid] ?? 0) - (oldQty[pid] ?? 0);
       if (delta != 0) {
         await inventoryRepo.adjust(productId: pid, deltaPieces: -delta);
+        await stockMovementRepo.recordDelta(
+          productId: pid,
+          deltaPieces: -delta,
+          referenceDate: DateTime.now(),
+          invoiceNumber: _invoiceMovementReference(invoice),
+          comments: delta > 0
+              ? 'Invoice edit - additional stock out'
+              : 'Invoice edit - stock returned',
+        );
       }
     }
 
@@ -678,6 +697,13 @@ class InvoiceRepository extends BaseRepository {
           productId: item.productId,
           deltaPieces: item.quantity, // restore deducted stock
         );
+        await stockMovementRepo.recordDelta(
+          productId: item.productId,
+          deltaPieces: item.quantity,
+          referenceDate: DateTime.now(),
+          invoiceNumber: _invoiceMovementReference(invoice),
+          comments: 'Invoice deleted - stock restored',
+        );
       }
     }
 
@@ -726,6 +752,13 @@ class InvoiceRepository extends BaseRepository {
           productId: item.productId,
           deltaPieces: item.quantity, // restore deducted stock
         );
+        await stockMovementRepo.recordDelta(
+          productId: item.productId,
+          deltaPieces: item.quantity,
+          referenceDate: DateTime.now(),
+          invoiceNumber: _invoiceMovementReference(invoice),
+          comments: 'Invoice cancelled - stock restored',
+        );
       }
     }
     final updated = {'status': 'cancelled'};
@@ -754,6 +787,13 @@ class InvoiceRepository extends BaseRepository {
       await inventoryRepo.adjust(
         productId: item.productId,
         deltaPieces: -item.quantity, // re-deduct stock
+      );
+      await stockMovementRepo.recordDelta(
+        productId: item.productId,
+        deltaPieces: -item.quantity,
+        referenceDate: DateTime.now(),
+        invoiceNumber: _invoiceMovementReference(invoice),
+        comments: 'Invoice restored - stock deducted',
       );
     }
     final updated = {'status': 'printed'};
@@ -940,12 +980,20 @@ class InvoiceRepository extends BaseRepository {
   }
 }
 
+String _invoiceMovementReference(Invoice invoice) {
+  final invoiceNumber = invoice.invoiceNumber?.trim();
+  return invoiceNumber == null || invoiceNumber.isEmpty
+      ? 'INV-${invoice.id}'
+      : invoiceNumber;
+}
+
 final invoiceRepositoryProvider = Provider<InvoiceRepository>((ref) {
   return InvoiceRepository(
     db: ref.watch(localDatabaseProvider),
     connectivity: ref.watch(connectivityServiceProvider),
     syncService: ref.watch(syncServiceProvider),
     inventoryRepo: ref.watch(inventoryRepositoryProvider),
+    stockMovementRepo: ref.watch(stockMovementRepositoryProvider),
   );
 });
 
